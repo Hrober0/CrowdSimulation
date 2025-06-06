@@ -7,10 +7,10 @@ namespace HCore.Extensions
         public const float DEFAULT_Y = 0;
         public const float Y_2D_POSITION = 0;
 
-        public static Vector3 To3D(this Vector2 vector2D) => new Vector3(vector2D.x, DEFAULT_Y, vector2D.y);
-        public static Vector3 To3D(this Vector2 vector2D, float y) => new Vector3(vector2D.x, y, vector2D.y);
+        public static Vector3 To3D(this Vector2 vector2D) => new Vector3(vector2D.x, vector2D.y);
+        public static Vector3 To3D(this Vector2 vector2D, float y) => new Vector3(vector2D.x, vector2D.y);
 
-        public static Vector2 To2D(this Vector3 vector3D) => new Vector2(vector3D.x, vector3D.z);
+        public static Vector2 To2D(this Vector3 vector3D) => new Vector2(vector3D.x, vector3D.y);
 
         public static void DrawPoint(this Vector2 point, Color color, float? duration = null) => DrawPoint(point.To3D(Y_2D_POSITION), color, duration);
         public static void DrawPoint(this Vector3 point, Color color, float? duration = null)

@@ -5,11 +5,9 @@ using HCore.Shapes;
 using HCore.Systems;
 using Objects.GenericSystems;
 using Unity.Mathematics;
-using Unity.VisualScripting;
 using UnityEngine;
-using IInitializable = HCore.Systems.IInitializable;
 
-namespace Objects
+namespace Objects.Obstacles
 {
     public class ObstacleSystem : MonoBehaviour, ISystem
     {
@@ -150,7 +148,7 @@ namespace Objects
         {
             if (_drawObstacles)
             {
-                ObstacleLookup.DrawObstacle();
+                ObstacleLookup?.DrawObstacle();
             }
         }
     }

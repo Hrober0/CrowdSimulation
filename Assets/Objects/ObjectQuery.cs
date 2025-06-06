@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using HCore.Shapes;
 using HCore.Systems;
+using Objects.Agents;
+using Objects.Obstacles;
 using UnityEngine;
 
 namespace Objects.GenericSystems

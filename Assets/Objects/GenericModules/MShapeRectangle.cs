@@ -1,4 +1,5 @@
-﻿using HCore.Shapes;
+﻿using HCore.Extensions;
+using HCore.Shapes;
 using HCore.Systems;
 using UnityEngine;
 
@@ -10,13 +11,13 @@ namespace Objects.GenericModules
 
         void IInitializable.Initialize(ISystemManager systems)
         {
-            Bounds = CreateBounds(transform.position);
+            Bounds = CreateBounds(transform.position.To2D());
         }
         void IInitializable.Deinitialize() { }
 
         public IShape CreateBounds(Vector2 position)
         {
-            Vector2 hSize = transform.lossyScale * 0.5f;
+            Vector2 hSize = transform.lossyScale.To2D() * 0.5f;
             return Rectangle.CreateByMinMax(position - hSize, position + hSize);
         }
 
@@ -29,7 +30,7 @@ namespace Objects.GenericModules
                 return;
             if (Bounds == null || __lastPos != transform.position || __lastScale != transform.lossyScale)
             {
-                Bounds = CreateBounds(transform.position);
+                Bounds = CreateBounds(transform.position.To2D());
                 __lastPos = transform.position;
                 __lastScale = transform.lossyScale;
             }

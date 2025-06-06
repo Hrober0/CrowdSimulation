@@ -5,12 +5,12 @@ using AgentSimulation;
 using HCore.Shapes;
 using HCore.Systems;
 using Objects.GenericSystems;
+using Objects.Obstacles;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.Serialization;
 
-namespace Objects
+namespace Objects.Agents
 {
     public class AgentsSystem : MonoBehaviour, ISystem
     {
@@ -94,7 +94,7 @@ namespace Objects
             {
                 yield return _simulationInterval;
 
-                // SyncAgentDataIn();
+                SyncAgentDataIn();
 
                 AgentLookup.UpdateAgentLookup();
 
@@ -111,7 +111,7 @@ namespace Objects
                 }
                 .Schedule(AgentLookup.Agents.Length, 4).Complete();
 
-                // SyncAgentDataOut();
+                SyncAgentDataOut();
 
                 //Debug.Log("Updated agents");
             }
@@ -141,21 +141,43 @@ namespace Objects
             Array.Resize(ref _queries, newSize);
         }
         
+        private void SyncAgentDataIn()
+        {
+            for (int i = 0; i < AgentLookup.Agents.Length; i++)
+            {
+                var agentData = AgentLookup.Agents[i];
+                var agentM = _objectsSystem.Objects[agentData.ObjectId].GetModule<IMovingObject>();
+                agentData.PrefVelocity = agentM.TargetVelocity;
+                agentData.Position = agentM.Position;
+                AgentLookup.Agents[i] = agentData;
+            }
+        }
+
+        private void SyncAgentDataOut()
+        {
+            for (int i = 0; i < AgentLookup.Agents.Length; i++)
+            {
+                var agentData = AgentLookup.Agents[i];
+                var agentM = _objectsSystem.Objects[agentData.ObjectId].GetModule<IMovingObject>();
+                agentM.SetVelocity(agentData.Velocity);
+            }
+        }
+        
         private void OnDrawGizmos()
         {
             if (_drawPositions)
             {
-                AgentLookup.DrawPositions();
+                AgentLookup?.DrawPositions();
             }
             
             if (_drawVelocities)
             {
-                AgentLookup.DrawVelocities();
+                AgentLookup?.DrawVelocities();
             }
             
             if (_drawPreferredVelocities)
             {
-                AgentLookup.DrawPreferredVelocities();
+                AgentLookup?.DrawPreferredVelocities();
             }
         }
     }
