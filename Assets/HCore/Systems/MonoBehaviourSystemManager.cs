@@ -62,7 +62,7 @@ namespace HCore.Systems
             Debug.Log("=== <b>Gameplay System Deinitilization</b> ===");
             for (int i = _systemsOrdered.Count - 1; i >= 0 ; i--)
             {
-                Debug.Log($"<b>Deinitilization...</b> {_systemsOrdered[i].GetType()}");
+                Debug.Log($"<b>Deinitilization...</b> {_systemsOrdered[i].Value.GetType()}");
                 _systemsOrdered[i].Value.Deinitialize();
             }
             _systems.Clear();
