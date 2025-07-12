@@ -15,7 +15,7 @@ namespace HCore.Systems
         public bool IsOperational { get; private set; } = false;
 
         private bool _isInitialize = false;
-
+        
         private void Start()
         {
             StartCoroutine(Initialize());
