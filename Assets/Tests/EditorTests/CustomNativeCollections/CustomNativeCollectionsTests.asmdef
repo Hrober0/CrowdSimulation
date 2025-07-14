@@ -1,0 +1,19 @@
+{
+    "name": "CustomNativeCollectionsTests",
+    "rootNamespace": "",
+    "references": [
+        "GUID:376cdc24452d4604284b2389f75fef80",
+        "GUID:e372c541aba5148868e12aa078ca7c20"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
