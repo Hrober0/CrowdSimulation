@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using DelaunayTriangulation;
-using Navigation;
+using FluentAssertions;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -24,11 +24,13 @@ namespace Tests.EditorTests.DelaunayTriangulationTests
             var result = new List<Triangle2D>();
             triangulation.GetTrianglesDiscardingHoles(result);
 
-            DebugResult(result);
-
-            Assert.AreEqual(result.Count, 2);
-            Assert.AreEqual(new Triangle2D(new (0,10), new (0, 0), new (10, 0)), result[0]);
-            Assert.AreEqual(new Triangle2D(new (0,10), new (10, 0), new (10, 10)), result[1]);
+            // DebugResult(result);
+            
+            result.Should().BeEquivalentTo(new List<Triangle2D>()
+                {
+                    new(new(0, 10), new(0, 0), new(10, 0)),
+                    new(new(0, 10), new(10, 0), new(10, 10))
+                });
         }
         
         [Test]
@@ -48,13 +50,15 @@ namespace Tests.EditorTests.DelaunayTriangulationTests
             var result = new List<Triangle2D>();
             triangulation.GetTrianglesDiscardingHoles(result);
 
-            DebugResult(result);
-            
-            Assert.AreEqual(result.Count, 4);
-            Assert.AreEqual(new Triangle2D(new (3,5), new (0, 0), new (10, 0)), result[0]);
-            Assert.AreEqual(new Triangle2D(new (10,10), new (0, 10), new (3, 5)), result[1]);
-            Assert.AreEqual(new Triangle2D(new (10,10), new (3, 5), new (10, 0)), result[2]);
-            Assert.AreEqual(new Triangle2D(new (0,10), new (0, 0), new (3, 5)), result[3]);
+            // DebugResult(result);
+
+            result.Should().BeEquivalentTo(new List<Triangle2D>()
+            {
+                new(new(3, 5), new(0, 0), new(10, 0)),
+                new(new(10, 10), new(0, 10), new(3, 5)),
+                new(new(10, 10), new(3, 5), new(10, 0)),
+                new(new(0, 10), new(0, 0), new(3, 5)),
+            });
         }
         
         [Test]
@@ -83,16 +87,18 @@ namespace Tests.EditorTests.DelaunayTriangulationTests
             var result = new List<Triangle2D>();
             triangulation.GetTrianglesDiscardingHoles(result);
             
-            DebugResult(result);
+            // DebugResult(result);
             
-            Assert.AreEqual(result.Count, 7);
-            Assert.AreEqual(new Triangle2D(new (3,5), new (0, 0), new (6, 5)), result[0]);
-            Assert.AreEqual(new Triangle2D(new (6,5), new (10, 0), new (10, 10)), result[1]);
-            Assert.AreEqual(new Triangle2D(new (3,5), new (0, 10), new (0, 0)), result[2]);
-            Assert.AreEqual(new Triangle2D(new (5,7), new (10, 10), new (0, 10)), result[3]);
-            Assert.AreEqual(new Triangle2D(new (6,5), new (0, 0), new (10, 0)), result[4]);
-            Assert.AreEqual(new Triangle2D(new (5,7), new (0, 10), new (3, 5)), result[5]);
-            Assert.AreEqual(new Triangle2D(new (5,7), new (6, 5), new (10, 10)), result[6]);
+            result.Should().BeEquivalentTo(new List<Triangle2D>()
+            {
+                new(new (3,5), new (0, 0), new (6, 5)),
+                new(new (6,5), new (10, 0), new (10, 10)),
+                new(new (3,5), new (0, 10), new (0, 0)),
+                new(new (5,7), new (10, 10), new (0, 10)),
+                new(new (6,5), new (0, 0), new (10, 0)),
+                new(new (5,7), new (0, 10), new (3, 5)),
+                new(new (5,7), new (6, 5), new (10, 10)),
+            });
         }
 
         private static void DebugResult(List<Triangle2D> result)

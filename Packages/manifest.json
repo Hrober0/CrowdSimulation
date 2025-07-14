@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.boundfoxstudios.fluentassertions": "https://github.com/BoundfoxStudios/fluentassertions-unity.git#upm",
     "com.unity.collab-proxy": "2.8.2",
     "com.unity.entities": "1.3.14",
     "com.unity.feature.2d": "2.0.1",
