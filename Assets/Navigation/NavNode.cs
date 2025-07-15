@@ -1,13 +1,23 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using HCore.Shapes;
 using Unity.Mathematics;
 using UnityEngine;
 
 namespace Navigation
 {
-    public readonly struct PathNode : IOutline
+    public readonly struct NavNode : IOutline
     {
-        public static readonly PathNode Empty = new PathNode();
+        public enum EdgeId
+        {
+            AB,
+            AC,
+            BC,
+        }
+        
+        public const int NULL_INDEX = -1;
+        
+        public static readonly NavNode Empty = new NavNode();
 
         public readonly float2 CornerA;
         public readonly float2 CornerB;
@@ -26,7 +36,7 @@ namespace Navigation
         
         public readonly int ConfigIndex;
 
-        public PathNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionAC, int connectionBC, int configIndex)
+        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionAC, int connectionBC, int configIndex)
         {
             CornerA = cornerA;
             CornerB = cornerB;
@@ -57,6 +67,14 @@ namespace Navigation
             yield return CornerC;
         }
 
+        public Edge GetEdge(EdgeId id) => id switch
+        {
+            EdgeId.AB => new(CornerA, CornerB),
+            EdgeId.AC => new(CornerA, CornerC),
+            EdgeId.BC => new(CornerB, CornerC),
+            _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
+        };
+        
         public override string ToString() =>
             $"Node({CornerA}, {CornerB}, {CornerC}) connectionsAB: {ConnectionAB}, connectionAC: {ConnectionAC}, connectionBC: {ConnectionBC}";
     }

@@ -11,13 +11,12 @@ namespace Navigation
 {
     public class NavMesh : MonoBehaviour
     {
-        private const int NULL_INDEX = -1;
         private const float CELL_SIZE = 3f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
 
         [SerializeField] private List<Transform> _borderPoints;
 
-        private NativeList<PathNode> _nodes;
+        private NativeList<NavNode> _nodes;
         private readonly Stack<int> _freeNodesIndexes = new();
         
         // cell position to node index
@@ -76,7 +75,7 @@ namespace Navigation
             int2 min = ChunkPosition(math.min(math.min(a, b), c));
             int2 max = ChunkPosition(math.max(math.max(a, b), c));
 
-            List<PathNode> removedNodes = await RemoveNodes(min, max);
+            List<NavNode> removedNodes = await RemoveNodes(min, max);
 
             HashSet<Vector2> freeSpaceBorderPoints = HullEdges.GetHullEdgesPointsUnordered(removedNodes);
 
@@ -129,9 +128,9 @@ namespace Navigation
         }
 
 
-        private async Awaitable<List<PathNode>> RemoveNodes(int2 min, int2 max)
+        private async Awaitable<List<NavNode>> RemoveNodes(int2 min, int2 max)
         {
-            var removedNodes = new List<PathNode>();
+            var removedNodes = new List<NavNode>();
             foreach (var cell in GetCellsFromMinMax(min, max))
             {
                 foreach (var nodeIndex in _nodesPositionLookup.GetValuesForKey(cell))
@@ -147,14 +146,14 @@ namespace Navigation
                     node.DrawBorder(Color.red, 1);
                     // DebugCell(cell);
 
-                    _nodes[nodeIndex] = PathNode.Empty;
+                    _nodes[nodeIndex] = NavNode.Empty;
                     _freeNodesIndexes.Push(nodeIndex);
                     removedNodes.Add(node);
 
                     // disconnect AB
                     {
                         var edge = new EdgeKey(node.CornerA, node.CornerB);
-                        if (node.ConnectionAB == NULL_INDEX)
+                        if (node.ConnectionAB == NavNode.NULL_INDEX)
                         {
                             // this edge has to be removed from lookup
                             _nodesEdgeLookup.Remove(edge);
@@ -163,14 +162,14 @@ namespace Navigation
                         {
                             // other node contains this edge so it need to make sure that lookup point to that node
                             _nodesEdgeLookup[edge] = node.ConnectionAB;
-                            SetConnectionWithEdge(node.ConnectionAB, edge, NULL_INDEX);
+                            SetConnectionWithEdge(node.ConnectionAB, edge, NavNode.NULL_INDEX);
                         }
                     }
 
                     // disconnect AC
                     {
                         var edge = new EdgeKey(node.CornerA, node.CornerC);
-                        if (node.ConnectionAC == NULL_INDEX)
+                        if (node.ConnectionAC == NavNode.NULL_INDEX)
                         {
                             // this edge has to be removed from lookup
                             _nodesEdgeLookup.Remove(edge);
@@ -179,14 +178,14 @@ namespace Navigation
                         {
                             // other node contains this edge so it need to make sure that lookup point to that node
                             _nodesEdgeLookup[edge] = node.ConnectionAC;
-                            SetConnectionWithEdge(node.ConnectionAC, edge, NULL_INDEX);
+                            SetConnectionWithEdge(node.ConnectionAC, edge, NavNode.NULL_INDEX);
                         }
                     }
 
                     // disconnect BC
                     {
                         var edge = new EdgeKey(node.CornerB, node.CornerC);
-                        if (node.ConnectionBC == NULL_INDEX)
+                        if (node.ConnectionBC == NavNode.NULL_INDEX)
                         {
                             // this edge has to be removed from lookup
                             _nodesEdgeLookup.Remove(edge);
@@ -195,7 +194,7 @@ namespace Navigation
                         {
                             // other node contains this edge so it need to make sure that lookup point to that node
                             _nodesEdgeLookup[edge] = node.ConnectionBC;
-                            SetConnectionWithEdge(node.ConnectionBC, edge, NULL_INDEX);
+                            SetConnectionWithEdge(node.ConnectionBC, edge, NavNode.NULL_INDEX);
                         }
                     }
 
@@ -237,7 +236,7 @@ namespace Navigation
                 _nodesPositionLookup.Add(cell, newIndex);
             }
 
-            var newNode = new PathNode(
+            var newNode = new NavNode(
                 a,
                 b,
                 c,
@@ -278,12 +277,12 @@ namespace Navigation
 
             // Debug.Log($"Not found edge: {edge} for {newIndex}");
             _nodesEdgeLookup[edge] = newIndex;
-            return NULL_INDEX;
+            return NavNode.NULL_INDEX;
         }
 
         private void SetConnectionWithEdge(int nodeIndex, EdgeKey edge, int targetIndex)
         {
-            PathNode node = _nodes[nodeIndex];
+            NavNode node = _nodes[nodeIndex];
 
             int connectionAB = node.ConnectionAB;
             int connectionAC = node.ConnectionAC;
@@ -309,7 +308,7 @@ namespace Navigation
 
             // Debug.Log($"Connect {nodeIndex} with {targetIndex} on {edge}");
 
-            _nodes[nodeIndex] = new PathNode(
+            _nodes[nodeIndex] = new NavNode(
                 node.CornerA,
                 node.CornerB,
                 node.CornerC,
@@ -357,17 +356,17 @@ namespace Navigation
                         continue;
                     }
 
-                    if (node.ConnectionAB != NULL_INDEX)
+                    if (node.ConnectionAB != NavNode.NULL_INDEX)
                     {
                         Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAB].Center.To3D());
                     }
 
-                    if (node.ConnectionAC != NULL_INDEX)
+                    if (node.ConnectionAC != NavNode.NULL_INDEX)
                     {
                         Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAC].Center.To3D());
                     }
 
-                    if (node.ConnectionBC != NULL_INDEX)
+                    if (node.ConnectionBC != NavNode.NULL_INDEX)
                     {
                         Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionBC].Center.To3D());
                     }

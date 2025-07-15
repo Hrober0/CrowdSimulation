@@ -7,11 +7,11 @@ namespace Navigation
 {
     public static class HullEdges
     {
-        public static HashSet<Vector2> GetHullEdgesPointsUnordered(List<PathNode> triangles)
+        public static HashSet<Vector2> GetHullEdgesPointsUnordered(List<NavNode> triangles)
         {
             var edgeCount = new Dictionary<EdgeKey, int>();
 
-            foreach (PathNode tr in triangles)
+            foreach (NavNode tr in triangles)
             {
                 AddEdge(edgeCount, new(tr.CornerA, tr.CornerB));
                 AddEdge(edgeCount, new(tr.CornerA, tr.CornerC));
