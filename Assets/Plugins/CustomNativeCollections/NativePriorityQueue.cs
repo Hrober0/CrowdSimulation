@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
@@ -11,20 +10,23 @@ namespace CustomNativeCollections
     /// Priority Queue implementation with item data stored in native containers. This version uses an IComparer<T> instead of relying on IComparable<T> being implemented by the stored type.
     /// </summary>
     /// <typeparam name="T"></typeparam>
+
     [NativeContainer]
     [DebuggerDisplay("Length = {Count}")]
-    public struct NativePriorityQueue<T> : IDisposable where T : struct
+    public struct NativePriorityQueue<T> : IDisposable where T : struct, IComparable<T>
     {
-        public int Count { get; private set; }
         private NativeArray<T> _heap;
-        
-        private readonly IComparer<T> _comparer;
+        private NativeReference<int> _count;
 
-        public NativePriorityQueue(IComparer<T> comparer, int initialCapacity = 64, Allocator allocator = Allocator.Temp) : this() {
-            _comparer = comparer;
+        public int Count => _count.Value;
+
+        public NativePriorityQueue(int initialCapacity = 64, Allocator allocator = Allocator.Temp) : this()
+        {
             _heap = new NativeArray<T>(initialCapacity, allocator);
+            _count = new NativeReference<int>(allocator);
+            _count.Value = 0;
         }
-        
+
 
         /// <summary>
         /// Disposes of any native memory held by this instance
@@ -35,8 +37,13 @@ namespace CustomNativeCollections
             {
                 _heap.Dispose();
             }
+
+            if (_count.IsCreated)
+            {
+                _count.Dispose();
+            }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T Peek()
         {
@@ -55,15 +62,16 @@ namespace CustomNativeCollections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Enqueue(T item)
         {
-            if (Count >= _heap.Length) {
+            if (Count >= _heap.Length)
+            {
                 throw new OverflowException();
-            }            
-            
+            }
+
             _heap[Count] = item;
 
             HeapifyUp(Count);
 
-            Count++;
+            _count.Value++;
         }
 
         /// <summary>
@@ -76,10 +84,10 @@ namespace CustomNativeCollections
             {
                 throw new InvalidOperationException("Cannot remove item from an empty heap");
             }
-            
+
             T v = _heap[0];
-            
-            Count--;
+
+            _count.Value--;
 
             // Copy the last node to the root node
             _heap[0] = _heap[Count];
@@ -109,9 +117,10 @@ namespace CustomNativeCollections
 
         private void HeapifyUp(int index)
         {
-            while (index > 0) {
+            while (index > 0)
+            {
                 int parent = (index - 1) >> 1;
-                if (_comparer.Compare(_heap[index], _heap[parent]) >= 0)
+                if (_heap[index].CompareTo(_heap[parent]) >= 0)
                 {
                     break;
                 }
@@ -123,17 +132,18 @@ namespace CustomNativeCollections
 
         private void HeapifyDown(int index)
         {
-            while (true) {
+            while (true)
+            {
                 int smallest = index;
                 int left = 2 * index + 1;
                 int right = 2 * index + 2;
 
-                if (left < Count && _comparer.Compare(_heap[left], _heap[smallest]) < 0)
+                if (left < Count && _heap[left].CompareTo(_heap[smallest]) < 0)
                 {
                     smallest = left;
                 }
 
-                if (right < Count && _comparer.Compare(_heap[right], _heap[smallest]) < 0)
+                if (right < Count && _heap[right].CompareTo(_heap[smallest]) < 0)
                 {
                     smallest = right;
                 }

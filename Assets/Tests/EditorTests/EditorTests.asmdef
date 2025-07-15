@@ -5,7 +5,9 @@
         "Navigation",
         "Unity.Mathematics",
         "Unity.Collections",
-        "DelaunayTriangulation"
+        "DelaunayTriangulation",
+        "BoundfoxStudios.FluentAssertions",
+        "TestsUtilities"
     ],
     "includePlatforms": [
         "Editor"

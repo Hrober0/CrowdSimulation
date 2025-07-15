@@ -9,15 +9,10 @@ namespace Tests.EditorTests.CustomNativeCollections
 {
     public class NativePriorityQueueTests
     {
-        private struct IntComparer : IComparer<int>
-        {
-            public int Compare(int x, int y) => x.CompareTo(y);
-        }
-
         [Test]
         public void EnqueueAndDequeue_ShouldMaintainHeapOrder()
         {
-            var queue = new NativePriorityQueue<int>(new IntComparer(), 10, Allocator.Temp);
+            var queue = new NativePriorityQueue<int>(10, Allocator.Temp);
 
             queue.Enqueue(5);
             queue.Enqueue(3);
@@ -39,7 +34,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [Test]
         public void Peek_ShouldReturnMinElementWithoutRemoving()
         {
-            var queue = new NativePriorityQueue<int>(new IntComparer(), 5, Allocator.Temp);
+            var queue = new NativePriorityQueue<int>(5, Allocator.Temp);
 
             queue.Enqueue(10);
             queue.Enqueue(2);
@@ -57,7 +52,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [Test]
         public void Dequeue_OnEmptyQueue_ShouldThrow()
         {
-            var queue = new NativePriorityQueue<int>(new IntComparer(), 5, Allocator.Temp);
+            var queue = new NativePriorityQueue<int>(5, Allocator.Temp);
 
             FluentActions.Invoking(() => queue.Dequeue())
                          .Should().Throw<InvalidOperationException>();
@@ -68,7 +63,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [Test]
         public void Enqueue_BeyondCapacity_ShouldThrow()
         {
-            var queue = new NativePriorityQueue<int>(new IntComparer(), 2, Allocator.Temp);
+            var queue = new NativePriorityQueue<int>(2, Allocator.Temp);
 
             queue.Enqueue(1);
             queue.Enqueue(2);
@@ -82,7 +77,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [Test]
         public void ToArray_ShouldReturnAllElements()
         {
-            var queue = new NativePriorityQueue<int>(new IntComparer(), 5, Allocator.Temp);
+            var queue = new NativePriorityQueue<int>(5, Allocator.Temp);
 
             queue.Enqueue(3);
             queue.Enqueue(1);
@@ -93,6 +88,28 @@ namespace Tests.EditorTests.CustomNativeCollections
             arr.Length.Should().Be(3);
 
             queue.Dispose();
+        }
+        
+        [Test]
+        public void ShouldModifyOriginalQueue_WhenPassAsArgument()
+        {
+            var queue = new NativePriorityQueue<int>(5, Allocator.Temp);
+
+            TestMethod(queue);
+
+            queue.Count.Should().Be(2);
+            queue.Dequeue().Should().Be(2);
+            queue.Dequeue().Should().Be(3);
+
+            queue.Dispose();
+
+            void TestMethod(NativePriorityQueue<int> queue)
+            {
+                queue.Enqueue(3);
+                queue.Enqueue(1);
+                queue.Enqueue(2);
+                queue.Dequeue();
+            }
         }
     }
 }

@@ -49,5 +49,32 @@ namespace Navigation
             yield return B;
             yield return C;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Sign(float2 a, float2 b, float2 c) => (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsPointIn(float2 p, float2 a, float2 b, float2 c)
+        {
+            float d1 = Sign(p, a, b);
+            float d2 = Sign(p, b, c);
+            float d3 = Sign(p, c, a);
+
+            bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+            bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+            return !(hasNeg && hasPos);
+        }
+        
+        /// <summary>
+        /// positive if CCW, negative if CW
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Area2(float2 a, float2 b, float2 c)
+        {
+            float2 ab = b - a;
+            float2 ac = c - a;
+            return ab.x * ac.y - ac.x * ab.y;
+        }
     }
 }
