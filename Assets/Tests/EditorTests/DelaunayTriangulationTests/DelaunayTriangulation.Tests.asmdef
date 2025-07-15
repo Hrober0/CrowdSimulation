@@ -1,5 +1,5 @@
 {
-    "name": "TriangulationTests",
+    "name": "DelaunayTriangulationTests",
     "rootNamespace": "",
     "references": [
         "DelaunayTriangulation",
@@ -13,9 +13,7 @@
     "overrideReferences": true,
     "precompiledReferences": [],
     "autoReferenced": false,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
+    "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
 }
