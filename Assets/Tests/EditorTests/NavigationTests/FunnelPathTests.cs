@@ -61,10 +61,10 @@ namespace Tests.EditorTests.NavigationTests
 
             FunnelPath.FromPortals(portals, result);
 
-            for (var index = 0; index < result.Length; index++)
-            {
-                Debug.Log($"result[{index}].Should().Be(new float2({result[index].x}, {result[index].y}));");
-            }
+            // for (var index = 0; index < result.Length; index++)
+            // {
+            //     Debug.Log($"result[{index}].Should().Be(new float2({result[index].x}, {result[index].y}));");
+            // }
 
             result.Length.Should().Be(5);
             result[0].Should().BeApproximately(new(0, 0));

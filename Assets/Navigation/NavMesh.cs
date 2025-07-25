@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using DelaunayTriangulation;
 using HCore.Extensions;
@@ -9,12 +10,10 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public class NavMesh : MonoBehaviour
+    public class NavMesh : IDisposable
     {
         private const float CELL_SIZE = 3f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
-
-        [SerializeField] private List<Transform> _borderPoints;
 
         private NativeList<NavNode> _nodes;
         private readonly Stack<int> _freeNodesIndexes = new();
@@ -27,35 +26,11 @@ namespace Navigation
         
         private readonly DelaunayTriangulation.DelaunayTriangulation _triangulation = new();
         
-        private void Start()
+        public NavMesh(List<Vector2> startPoints)
         {
             _nodes = new(Allocator.Persistent);
             _nodesPositionLookup = new(1000, Allocator.Persistent);
 
-            _ = Init();
-        }
-
-        private void OnDestroy()
-        {
-            _nodes.Dispose();
-            _nodesPositionLookup.Dispose();
-        }
-
-        private async Awaitable WaitForClick()
-        {
-            do
-            {
-                await Awaitable.NextFrameAsync();
-            } while (!Input.GetKeyDown(KeyCode.Space));
-        }
-        private async Awaitable Init()
-        {
-            var startPoints = new List<Vector2>();
-            foreach (var pointTransform in _borderPoints)
-            {
-                startPoints.Add(pointTransform.position.To2D());
-            }
-            
             _triangulation.Triangulate(startPoints);
             var result = new List<Triangle2D>();
             _triangulation.GetTrianglesDiscardingHoles(result); 
@@ -63,19 +38,20 @@ namespace Navigation
             {
                 AddNode(triangle.p0, triangle.p1, triangle.p2, 0);
             }
-
-            await Add(new float2(1, 1), new float2(3, 1), new float2(3, 3));
-            await Add(new float2(10, 10), new float2(8, 8), new float2(10, 8));
+        }
+        
+        public void Dispose()
+        {
+            _nodes.Dispose();
+            _nodesPositionLookup.Dispose();
         }
 
-        public async Awaitable Add(float2 a, float2 b, float2 c)
+        public void Add(float2 a, float2 b, float2 c)
         {
-            await WaitForClick();
-
             int2 min = ChunkPosition(math.min(math.min(a, b), c));
             int2 max = ChunkPosition(math.max(math.max(a, b), c));
 
-            List<NavNode> removedNodes = await RemoveNodes(min, max);
+            List<NavNode> removedNodes = RemoveNodes(min, max);
 
             HashSet<Vector2> freeSpaceBorderPoints = HullEdges.GetHullEdgesPointsUnordered(removedNodes);
 
@@ -98,11 +74,9 @@ namespace Navigation
             _triangulation.GetTrianglesDiscardingHoles(fill);
             foreach (var triangle in fill)
             {
-                await WaitForClick();
                 AddNode(triangle.p0, triangle.p1, triangle.p2, 0);
             }
             
-            await WaitForClick();
             AddNode(a, b, c, 1);
         }
 
@@ -128,14 +102,14 @@ namespace Navigation
         }
 
 
-        private async Awaitable<List<NavNode>> RemoveNodes(int2 min, int2 max)
+        private List<NavNode> RemoveNodes(int2 min, int2 max)
         {
             var removedNodes = new List<NavNode>();
             foreach (var cell in GetCellsFromMinMax(min, max))
             {
                 foreach (var nodeIndex in _nodesPositionLookup.GetValuesForKey(cell))
                 {
-                    var node = _nodes[nodeIndex];
+                    NavNode node = _nodes[nodeIndex];
 
                     if (!node.IsEmpty)
                     {
@@ -203,8 +177,6 @@ namespace Navigation
                     {
                         _nodesPositionLookup.Remove(nodeCell, nodeIndex);
                     }
-                    
-                    await WaitForClick();
                 }
             }
 
@@ -332,55 +304,43 @@ namespace Navigation
             new Rectangle(s, CELL_SIZE * Vector2.one).DrawBorder(Color.magenta, 2);
         }
 
-        private void OnDrawGizmos()
+        public void DrawNodes()
         {
-            if (_nodes.IsCreated)
+            foreach (var node in _nodes)
             {
-                
-                foreach (var node in _nodes)
+                if (!node.IsEmpty)
                 {
-                    if (!node.IsEmpty)
-                    {
-                        continue;
-                    }
-
-                    Gizmos.color = node.ConfigIndex == 1 ? Color.red : Color.white;
-                    node.DrawBorderGizmos();
+                    continue;
                 }
 
-                Gizmos.color = Color.yellow;
-                foreach (var node in _nodes)
-                {
-                    if (!node.IsEmpty)
-                    {
-                        continue;
-                    }
-
-                    if (node.ConnectionAB != NavNode.NULL_INDEX)
-                    {
-                        Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAB].Center.To3D());
-                    }
-
-                    if (node.ConnectionAC != NavNode.NULL_INDEX)
-                    {
-                        Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAC].Center.To3D());
-                    }
-
-                    if (node.ConnectionBC != NavNode.NULL_INDEX)
-                    {
-                        Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionBC].Center.To3D());
-                    }
-                }
+                Gizmos.color = node.ConfigIndex == 1 ? Color.red : Color.white;
+                node.DrawBorderGizmos();
             }
-            else
+        }
+        public void DrawConnections()
+        {
+            Gizmos.color = Color.yellow;
+            foreach (var node in _nodes)
             {
-                Gizmos.color = Color.red;
-                var startPoints = new List<Vector2>();
-                foreach (var pointTransform in _borderPoints)
+                if (!node.IsEmpty)
                 {
-                    startPoints.Add(pointTransform.position.To2D());
+                    continue;
                 }
-                IOutline.DrawBorderGizmos(startPoints);
+
+                if (node.ConnectionAB != NavNode.NULL_INDEX)
+                {
+                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAB].Center.To3D());
+                }
+
+                if (node.ConnectionAC != NavNode.NULL_INDEX)
+                {
+                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAC].Center.To3D());
+                }
+
+                if (node.ConnectionBC != NavNode.NULL_INDEX)
+                {
+                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionBC].Center.To3D());
+                }
             }
         }
     }
