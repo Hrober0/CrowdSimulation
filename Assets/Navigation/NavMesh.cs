@@ -5,7 +5,6 @@ using CustomNativeCollections;
 using DelaunayTriangulation;
 using HCore.Extensions;
 using HCore.Shapes;
-using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -28,6 +27,8 @@ namespace Navigation
         private readonly DelaunayTriangulation.DelaunayTriangulation _triangulation = new();
 
         private NativeFixedList<Obstacle> _obstacles;
+        
+        public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
 
         public NavMesh(List<Vector2> startPoints)
         {
@@ -205,8 +206,8 @@ namespace Navigation
 
             // Fill empty space to connect inserted nodes
             List<EdgeKey> edges = HullEdges.GetEdgesUnordered(emptyNodes);
-            var pointsList = new List<Vector2>(HullEdges.GetPointsUnordered(edges));
-            _triangulation.Triangulate(pointsList, constrainedEdges: constrains);
+            List<Vector2> borderPoints = HullEdges.GetPointsUnordered(edges);
+            _triangulation.Triangulate(borderPoints, constrainedEdges: constrains);
             var fill = new List<Triangle2D>();
             _triangulation.GetTrianglesDiscardingHoles(fill);
             foreach (var triangle in fill)
@@ -224,6 +225,11 @@ namespace Navigation
                     ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
                 });
             }
+
+            // foreach (var p in pointsList)
+            // {
+            //     p.DrawPoint(Color.magenta, 10);
+            // }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -267,8 +273,8 @@ namespace Navigation
                         continue;
                     }
 
-                    Debug.Log($"Removing node: {nodeIndex} {node}");
-                    node.DrawBorder(Color.red, 1);
+                    // Debug.Log($"Removing node: {nodeIndex} {node}");
+                    // node.DrawBorder(Color.red, 1);
                     // DebugCell(cell);
 
                     _nodes[nodeIndex] = NavNode.Empty;
@@ -364,15 +370,15 @@ namespace Navigation
             );
 
             // add to array
-            Debug.Log($"Add new node to index: {newIndex} / {_nodes.Length}");
-            newNode.DrawBorder(Color.green, 1);
+            // Debug.Log($"Add new node to index: {newIndex} / {_nodes.Length}");
+            // newNode.DrawBorder(Color.green, 1);
             _nodes.Add(newNode);
 
             // add to position lookup
             foreach (var cell in GetCellsFromMinMax(min, max))
             {
                 // DebugCell(cell);
-                Debug.Log($"Adding lookup node: {cell.x}, {cell.y} in {min} {max}");
+                // Debug.Log($"Adding lookup node: {cell.x}, {cell.y} in {min} {max}");
                 _nodesPositionLookup.Add(cell, newIndex);
             }
         }

@@ -549,7 +549,7 @@ Transform:
   m_GameObject: {fileID: 619394800}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -4.2, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -770,6 +770,9 @@ MonoBehaviour:
   - {fileID: 1803557920}
   - {fileID: 1238335099}
   - {fileID: 116136378}
+  _drawConnections: 0
+  _drawNodes: 1
+  _drawObstacles: 1
 --- !u!1 &1641171585
 GameObject:
   m_ObjectHideFlags: 0

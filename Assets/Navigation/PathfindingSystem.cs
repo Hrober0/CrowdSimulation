@@ -25,7 +25,8 @@ namespace Navigation
             }
             _navMesh = new NavMesh(startPoints);
 
-            _ = Init();
+            // _ = CheckInsertion();
+            _ = CheckRectangle();
         }
 
         private void OnDestroy()
@@ -40,7 +41,7 @@ namespace Navigation
                 await Awaitable.NextFrameAsync();
             } while (!Input.GetKeyDown(KeyCode.Space));
         }
-        private async Awaitable Init()
+        private async Awaitable CheckInsertion()
         {
             await WaitForClick();
             var o1 = _navMesh.AddObstacle(new()
@@ -59,6 +60,58 @@ namespace Navigation
             
             await WaitForClick();
             _navMesh.RemoveObstacle(o2);
+        }
+        private async Awaitable CheckRectangle()
+        {
+            float deg = 0;
+            await WaitForClick();
+            while (true)
+            {
+                // var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
+                var mpos = new float2(5, 5);
+                // mpos.DrawPoint(Color.magenta, 1);
+                // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
+                var o1 = _navMesh.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
+
+                await Awaitable.NextFrameAsync();
+                _navMesh.RemoveObstacle(o1);
+
+                deg += Time.deltaTime * 20;
+                Debug.Log(_navMesh.Nodes.Length);
+            }
+        }
+        
+        public static List<Triangle> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
+        {
+            float halfSize = size / 2f;
+            float radians = math.radians(rotationDegrees);
+
+            // Local space corners of square (counter-clockwise)
+            float2[] localCorners = new float2[]
+            {
+                new float2(-halfSize, -halfSize),
+                new float2( halfSize, -halfSize),
+                new float2( halfSize,  halfSize),
+                new float2(-halfSize,  halfSize)
+            };
+
+            float2x2 rotationMatrix = new float2x2(
+                new float2(math.cos(radians), -math.sin(radians)),
+                new float2(math.sin(radians),  math.cos(radians))
+            );
+
+            float2[] worldCorners = new float2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                worldCorners[i] = math.mul(rotationMatrix, localCorners[i]) + center;
+            }
+
+            // Create two triangles
+            return new List<Triangle>
+            {
+                new Triangle(worldCorners[0], worldCorners[1], worldCorners[2]),
+                new Triangle(worldCorners[0], worldCorners[2], worldCorners[3])
+            };
         }
         
         private void OnDrawGizmos()

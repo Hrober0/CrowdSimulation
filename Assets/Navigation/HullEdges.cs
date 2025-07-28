@@ -33,13 +33,13 @@ namespace Navigation
             return borderEdges;
         }
         
-        public static HashSet<Vector2> GetPointsUnordered(List<EdgeKey> edges)
+        public static List<Vector2> GetPointsUnordered(List<EdgeKey> edges)
         {
-            var points = new HashSet<Vector2>();
+            var points = new List<Vector2>();
             foreach (EdgeKey edge in edges)
             {
-                points.Add(edge.A);
-                points.Add(edge.B);
+                AddPoint(points, edge.A);
+                AddPoint(points, edge.B);
             }
 
             return points;
@@ -162,6 +162,19 @@ namespace Navigation
             {
                 dict[edge] = 1;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void AddPoint(List<Vector2> points, Vector2 point)
+        {
+            for (int i = 0; i < points.Count; i++)
+            {
+                if ((points[i] - point).sqrMagnitude < 0.0001f)
+                {
+                    break;
+                }
+            }
+            points.Add(point);
         }
     }
 }
