@@ -8,7 +8,7 @@ namespace Navigation
 {
     public static class HullEdges
     {
-        public static HashSet<Vector2> GetPointsUnordered(List<NavNode> triangles)
+        public static List<EdgeKey> GetEdgesUnordered(List<NavNode> triangles)
         {
             var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
 
@@ -21,17 +21,53 @@ namespace Navigation
             }
 
             // Gather unique boundary points (appear only once)
-            var borderPoints = new HashSet<Vector2>(edgeCounts.Count);
+            var borderEdges = new List<EdgeKey>(edgeCounts.Count);
             foreach (var kvp in edgeCounts)
             {
                 if (kvp.Value == 1)
                 {
-                    borderPoints.Add(kvp.Key.A);
-                    borderPoints.Add(kvp.Key.B);
+                    borderEdges.Add(kvp.Key);
                 }
             }
 
-            return borderPoints;
+            return borderEdges;
+        }
+        
+        public static HashSet<Vector2> GetPointsUnordered(List<EdgeKey> edges)
+        {
+            var points = new HashSet<Vector2>();
+            foreach (EdgeKey edge in edges)
+            {
+                points.Add(edge.A);
+                points.Add(edge.B);
+            }
+
+            return points;
+        }
+        
+        public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
+        {
+            int crossings = 0;
+
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                float2 a = polygon[i].A;
+                float2 b = polygon[i].B;
+
+                // Check if point.x is between a.x and b.x (ray could intersect this edge)
+                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
+                {
+                    // Compute y intersection of vertical ray at point.x with edge (a → b)
+                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
+
+                    if (point.y < yIntersection)
+                    {
+                        crossings++;
+                    }
+                }
+            }
+
+            return (crossings % 2) == 1;
         }
         
         public static List<Vector2> GetPointsCCW(List<Triangle> triangles)

@@ -22,11 +22,11 @@ namespace Navigation
 
         public float2[] Vertices => new[] { A, B, C };
 
-        public (float2, float2)[] Edges => new[]
+        public Edge[] Edges => new[]
         {
-            (A, B),
-            (B, C),
-            (C, A)
+            new Edge(A, B),
+            new Edge(B, C),
+            new Edge(C, A)
         };
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -75,6 +75,9 @@ namespace Navigation
             return p.Equals(x) || p.Equals(y) || p.Equals(z);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float2 Center(float2 a, float2 b, float2 c) => (a + b + c) * 0.3333333f;
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float Sign(float2 a, float2 b, float2 c) => (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y);
 
@@ -183,7 +186,7 @@ namespace Navigation
             {
                 foreach (var e2 in t2.Edges)
                 {
-                    if (EdgesIntersect(e1.Item1, e1.Item2, e2.Item1, e2.Item2))
+                    if (EdgesIntersect(e1.A, e1.B, e2.A, e2.B))
                     {
                         return true;
                     }

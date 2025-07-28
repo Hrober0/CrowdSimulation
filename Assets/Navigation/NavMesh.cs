@@ -180,7 +180,7 @@ namespace Navigation
             }
         }
 
-        private void AddAndFillEmptySpace(List<AddNodeRequest> nodesToAdd, List<NavNode> removedNodes)
+        private void AddAndFillEmptySpace(List<AddNodeRequest> nodesToAdd, List<NavNode> emptyNodes)
         {
             // Add nodes to navigation mesh
             foreach (var node in nodesToAdd)
@@ -204,13 +204,20 @@ namespace Navigation
             }
 
             // Fill empty space to connect inserted nodes
-            HashSet<Vector2> freeSpaceBorderPoints = HullEdges.GetPointsUnordered(removedNodes);
-            var pointsList = new List<Vector2>(freeSpaceBorderPoints);
+            List<EdgeKey> edges = HullEdges.GetEdgesUnordered(emptyNodes);
+            var pointsList = new List<Vector2>(HullEdges.GetPointsUnordered(edges));
             _triangulation.Triangulate(pointsList, constrainedEdges: constrains);
             var fill = new List<Triangle2D>();
             _triangulation.GetTrianglesDiscardingHoles(fill);
             foreach (var triangle in fill)
             {
+                // Prevent insertion triangle outside removed area
+                float2 center = Triangle.Center(triangle.p0, triangle.p1, triangle.p2);
+                if (!HullEdges.IsPointInPolygon(center, edges))
+                {
+                    continue;
+                }
+                
                 AddNode(new()
                 {
                     Triangle = new(triangle.p0, triangle.p1, triangle.p2),
