@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public readonly struct NavNode : IOutline
+    public struct NavNode : IOutline
     {
         public enum EdgeId
         {
@@ -23,13 +23,13 @@ namespace Navigation
         public readonly float2 CornerB;
         public readonly float2 CornerC;
 
-        public readonly int ConnectionAB;
+        public int ConnectionAB;
         public readonly float EdgeAB;
 
-        public readonly int ConnectionAC;
+        public int ConnectionAC;
         public readonly float EdgeAC;
 
-        public readonly int ConnectionBC;
+        public int ConnectionBC;
         public readonly float EdgeBC;
 
         public readonly float2 Center;

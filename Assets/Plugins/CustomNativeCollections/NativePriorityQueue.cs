@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
@@ -45,6 +46,7 @@ namespace CustomNativeCollections
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
         public T Peek()
         {
             if (_heap.Length == 0)
@@ -60,6 +62,7 @@ namespace CustomNativeCollections
         /// </summary>
         /// <param name="item">The item to add to the heap.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [BurstCompile]
         public void Enqueue(T item)
         {
             if (Count >= _heap.Length)
@@ -78,6 +81,7 @@ namespace CustomNativeCollections
         /// Removes and returns the first item in the heap.
         /// </summary>
         /// <returns>The first value in the heap.</returns>
+        [BurstCompile]
         public T Dequeue()
         {
             if (Count == 0)
@@ -101,7 +105,7 @@ namespace CustomNativeCollections
         /// <summary>
         /// Returns the raw (not necessarily sorted) contents of the priority queue as a managed array.
         /// </summary>
-        /// <returns></returns>
+        [BurstCompile]
         public T[] ToArray()
         {
             var length = Count;
@@ -115,6 +119,7 @@ namespace CustomNativeCollections
             return result;
         }
 
+        [BurstCompile]
         private void HeapifyUp(int index)
         {
             while (index > 0)
@@ -130,6 +135,7 @@ namespace CustomNativeCollections
             }
         }
 
+        [BurstCompile]
         private void HeapifyDown(int index)
         {
             while (true)

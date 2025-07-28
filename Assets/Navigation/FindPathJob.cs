@@ -16,10 +16,10 @@ namespace Navigation
     {
         [ReadOnly] public PathSeekerData SeekerData;
         [ReadOnly] public float2 StartPos;
+        [ReadOnly] public int StartNodeIndex;
         [ReadOnly] public float2 TargetPos;
+        [ReadOnly] public int TargetNodeIndex;
         [ReadOnly] public NativeArray<NavNode> Nodes;
-        [ReadOnly] public NativeParallelMultiHashMap<int2, int> NodesPositionLookup;
-        [ReadOnly] public float LookupCellSize;
 
         public NativeList<float2> ResultPath;
 
@@ -29,24 +29,12 @@ namespace Navigation
             var closedSet = new NativeHashSet<int>(Nodes.Length, Allocator.Temp);
             var openSet = new NativePriorityQueue<AStarNode>(Nodes.Length, Allocator.Temp);
 
-            if (!TryGetNodeIndex(StartPos, LookupCellSize, Nodes, NodesPositionLookup, out var startNodeIndex))
-            {
-                Debug.LogError($"StartPos not found: {StartPos}");
-                return;
-            }
-            
-            if (!TryGetNodeIndex(TargetPos, LookupCellSize, Nodes, NodesPositionLookup, out var targetNodeIndex))
-            {
-                Debug.LogError($"TargetPos not found: {TargetPos}");
-                return;
-            }
-
             var requiredSpace = SeekerData.Radius * 2;
 
             openSet.Enqueue(new(
-                index: startNodeIndex,
+                index: StartNodeIndex,
                 gCost: 0,
-                fCost: math.distance(Nodes[startNodeIndex].Center, TargetPos),
+                fCost: math.distance(Nodes[StartNodeIndex].Center, TargetPos),
                 cameFromIndex: -1,
                 comeFromBy: 0));
 
@@ -54,7 +42,7 @@ namespace Navigation
             while (openSet.Count > 0)
             {
                 AStarNode current = openSet.Dequeue();
-                if (current.Index == targetNodeIndex)
+                if (current.Index == TargetNodeIndex)
                 {
                     // Found end node
                     break;
@@ -72,7 +60,7 @@ namespace Navigation
             // first node is target node
             // last node should be start node
             var trianglePath = new NativeList<AStarNode>(Allocator.Temp);
-            int currentIndex = targetNodeIndex;
+            int currentIndex = TargetNodeIndex;
             while (cameFrom.TryGetValue(currentIndex, out AStarNode node))
             {
                 trianglePath.Add(node);
@@ -118,23 +106,6 @@ namespace Navigation
                 ? new(p1, p2)
                 : new(p2, p1);
             return portal;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryGetNodeIndex(float2 position, float lookupCellSize, NativeArray<NavNode> nodes, NativeParallelMultiHashMap<int2, int> nodesPositionLookup, out int nodeIndex)
-        {
-            var cell = (int2)(position / lookupCellSize);
-            foreach (var index in nodesPositionLookup.GetValuesForKey(cell))
-            {
-                var node = nodes[index];
-                if (Triangle.IsPointIn(position, node.CornerA, node.CornerB, node.CornerC))
-                {
-                    nodeIndex = index;
-                    return true;
-                }
-            }
-            nodeIndex = NavNode.NULL_INDEX;
-            return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

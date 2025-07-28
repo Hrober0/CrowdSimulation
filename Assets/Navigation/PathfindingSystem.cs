@@ -10,6 +10,9 @@ namespace Navigation
     public class PathfindingSystem : MonoBehaviour
     {
         [SerializeField] private List<Transform> _borderPoints;
+        [SerializeField] private bool _drawConnections;
+        [SerializeField] private bool _drawNodes;
+        [SerializeField] private bool _drawObstacles;
 
         private NavMesh _navMesh;
 
@@ -40,17 +43,40 @@ namespace Navigation
         private async Awaitable Init()
         {
             await WaitForClick();
-            _navMesh.Add(new float2(1, 1), new float2(3, 1), new float2(3, 3));
+            var o1 = _navMesh.AddObstacle(new()
+            {
+                new(new(1, 1), new(3, 1), new(3, 3))
+            });
+            
             await WaitForClick();
-            _navMesh.Add(new float2(10, 10), new float2(8, 8), new float2(10, 8));
+            var o2 = _navMesh.AddObstacle(new()
+            {
+                new(new(10, 10), new(8, 8), new(10, 8))
+            });
+            
+            await WaitForClick();
+            _navMesh.RemoveObstacle(o1);
+            
+            await WaitForClick();
+            _navMesh.RemoveObstacle(o2);
         }
         
         private void OnDrawGizmos()
         {
             if (_navMesh != null)
             {
-                _navMesh.DrawNodes();
-                _navMesh.DrawConnections();
+                if (_drawConnections)
+                {
+                    _navMesh.DrawConnections();
+                }
+                if (_drawNodes)
+                {
+                    _navMesh.DrawNodes();
+                }
+                if (_drawObstacles)
+                {
+                    _navMesh.DrawObstacles();
+                }
             }
             else
             {

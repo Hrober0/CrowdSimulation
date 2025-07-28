@@ -12,14 +12,55 @@ namespace Navigation
         public readonly float2 A;
         public readonly float2 B;
         public readonly float2 C;
-   
+
         public Triangle(float2 a, float2 b, float2 c)
         {
             A = a;
             B = b;
             C = c;
         }
+
+        public float2[] Vertices => new[] { A, B, C };
+
+        public (float2, float2)[] Edges => new[]
+        {
+            (A, B),
+            (B, C),
+            (C, A)
+        };
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(Triangle other) => A.Equals(other.A) && B.Equals(other.B) && C.Equals(other.C);
+
+        public override bool Equals(object obj) => obj is Triangle other && Equals(other);
+
+        public override int GetHashCode() => HashCode.Combine(A, B, C);
+
+        public override string ToString() => $"T({A}, {B}, {C})";
+
+        public IEnumerable<Vector2> GetBorderPoints()
+        {
+            yield return A;
+            yield return B;
+            yield return C;
+        }
         
+        public (float2 min, float2 max) GetBounds()
+        {
+            float2 min = math.min(math.min(A, B), C);
+            float2 max = math.max(math.max(A, B), C);
+            return (min, max);
+        }
+        
+        public void Deconstruct(out float2 a, out float2 b, out float2 c)
+        {
+            a = A;
+            b = B;
+            c = C;
+        }
+
+        #region Static methods
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Fits(Triangle t1, Triangle t2)
         {
@@ -35,26 +76,10 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Equals(Triangle other) => A.Equals(other.A) && B.Equals(other.B) && C.Equals(other.C);
-
-        public override bool Equals(object obj) => obj is Triangle other && Equals(other);
-
-        public override int GetHashCode() => HashCode.Combine(A, B, C);
-
-        public override string ToString() => $"({A}, {B}, {C})";
-
-        public IEnumerable<Vector2> GetBorderPoints()
-        {
-            yield return A;
-            yield return B;
-            yield return C;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float Sign(float2 a, float2 b, float2 c) => (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsPointIn(float2 p, float2 a, float2 b, float2 c)
+        public static bool PointIn(float2 p, float2 a, float2 b, float2 c)
         {
             float d1 = Sign(p, a, b);
             float d2 = Sign(p, b, c);
@@ -64,6 +89,27 @@ namespace Navigation
             bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
 
             return !(hasNeg && hasPos);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool PointInExcludingEdges(float2 p, float2 a, float2 b, float2 c)
+        {
+            float d1 = Sign(p, a, b);
+            float d2 = Sign(p, b, c);
+            float d3 = Sign(p, c, a);
+
+            bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+            bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+            // Exclude edge cases (d1, d2, d3 == 0)
+            return !(hasNeg && hasPos) && d1 != 0f && d2 != 0f && d3 != 0f;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool AabbOverlap(float2 minA, float2 maxA, float2 minB, float2 maxB)
+        {
+            return !(maxA.x < minB.x || minA.x > maxB.x ||
+                     maxA.y < minB.y || minA.y > maxB.y);
         }
         
         /// <summary>
@@ -76,5 +122,97 @@ namespace Navigation
             float2 ac = c - a;
             return ab.x * ac.y - ac.x * ab.y;
         }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsCCW(float2 a, float2 b, float2 c) => Area2(a, b, c) > 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool OnSegment(float2 a, float2 b, float2 c)
+        {
+            return math.min(a.x, c.x) <= b.x && b.x <= math.max(a.x, c.x) &&
+                   math.min(a.y, c.y) <= b.y && b.y <= math.max(a.y, c.y);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EdgesIntersect(float2 a1, float2 a2, float2 b1, float2 b2)
+        {
+            float2 r = a2 - a1;
+            float2 s = b2 - b1;
+            float rxs = r.x * s.y - r.y * s.x;
+
+            if (math.abs(rxs) < math.E)
+            {
+                return false; // Parallel or collinear
+            }
+
+            float2 delta = b1 - a1;
+            float t = (delta.x * s.y - delta.y * s.x) / rxs;
+            float u = (delta.x * r.y - delta.y * r.x) / rxs;
+
+            return t is > 0f and < 1f && u is > 0f and < 1f;
+        }
+        
+        public static bool TrianglesIntersect(Triangle t1, Triangle t2)
+        {
+            var bounds1 = t1.GetBounds();
+            var bounds2 = t2.GetBounds();
+            if (!AabbOverlap(bounds1.min, bounds1.max, bounds2.min, bounds2.max))
+            {
+                return false;
+            }
+
+            // Interior vertex inside other triangle → definite overlap
+            foreach (var v in t1.Vertices)
+            {
+                if (PointInExcludingEdges(v, t2.A, t2.B, t2.C))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var v in t2.Vertices)
+            {
+                if (PointInExcludingEdges(v, t1.A, t1.B, t1.C))
+                {
+                    return true;
+                }
+            }
+
+            // Interior edge crossing (exclude touching endpoints)
+            foreach (var e1 in t1.Edges)
+            {
+                foreach (var e2 in t2.Edges)
+                {
+                    if (EdgesIntersect(e1.Item1, e1.Item2, e2.Item1, e2.Item2))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static bool AnyTrianglesIntersect(List<Triangle> triangles)
+        {
+            int count = triangles.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                Triangle t1 = triangles[i];
+                for (int j = i + 1; j < count; j++)
+                {
+                    var t2 = triangles[j];
+                    if (TrianglesIntersect(t1, t2))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        
+        #endregion
     }
 }

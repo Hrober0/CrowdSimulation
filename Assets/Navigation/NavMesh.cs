@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CustomNativeCollections;
 using DelaunayTriangulation;
 using HCore.Extensions;
 using HCore.Shapes;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -15,81 +17,218 @@ namespace Navigation
         private const float CELL_SIZE = 3f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
 
-        private NativeList<NavNode> _nodes;
-        private readonly Stack<int> _freeNodesIndexes = new();
-        
+        private NativeFixedList<NavNode> _nodes;
+
         // cell position to node index
         private NativeParallelMultiHashMap<int2, int> _nodesPositionLookup;
 
         // edge to node index (if edge is common it points to one of two nodes)
         private readonly Dictionary<EdgeKey, int> _nodesEdgeLookup = new();
-        
+
         private readonly DelaunayTriangulation.DelaunayTriangulation _triangulation = new();
-        
+
+        private NativeFixedList<Obstacle> _obstacles;
+
         public NavMesh(List<Vector2> startPoints)
         {
-            _nodes = new(Allocator.Persistent);
+            _nodes = new(1000, Allocator.Persistent);
             _nodesPositionLookup = new(1000, Allocator.Persistent);
+
+            _obstacles = new(1000, Allocator.Persistent);
 
             _triangulation.Triangulate(startPoints);
             var result = new List<Triangle2D>();
-            _triangulation.GetTrianglesDiscardingHoles(result); 
+            _triangulation.GetTrianglesDiscardingHoles(result);
             foreach (var triangle in result)
             {
-                AddNode(triangle.p0, triangle.p1, triangle.p2, 0);
+                AddNode(new()
+                {
+                    Triangle = new(triangle.p0, triangle.p1, triangle.p2),
+                    ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
+                });
             }
         }
-        
+
         public void Dispose()
         {
             _nodes.Dispose();
             _nodesPositionLookup.Dispose();
+            _obstacles.Dispose();
         }
 
-        public void Add(float2 a, float2 b, float2 c)
+        public int AddObstacle(List<Triangle> parts)
         {
-            int2 min = ChunkPosition(math.min(math.min(a, b), c));
-            int2 max = ChunkPosition(math.max(math.max(a, b), c));
-
-            List<NavNode> removedNodes = RemoveNodes(min, max);
-
-            HashSet<Vector2> freeSpaceBorderPoints = HullEdges.GetHullEdgesPointsUnordered(removedNodes);
-
-
-            var objectBorderPoints = new List<Vector2>()
+            if (parts.Count == 0)
             {
-                a,
-                b,
-                c,
-            };
-            
-            var constrains = new List<List<Vector2>>()
-            {
-                objectBorderPoints,
-            };
+                Debug.LogWarning($"{nameof(AddObstacle)}: No obstacles parts provided.");
+                return -1;
+            }
 
+            if (Triangle.AnyTrianglesIntersect(parts))
+            {
+                Debug.LogWarning($"{nameof(AddObstacle)}: Obstacles parts are intersecting.");
+                return -1;
+            }
+
+            var worldMin = new float2(float.MaxValue, float.MaxValue);
+            var worldMax = new float2(float.MinValue, float.MinValue);
+            foreach (var part in parts)
+            {
+                worldMin = math.min(math.min(part.A, part.B), math.min(part.C, worldMin));
+                worldMax = math.max(math.max(part.A, part.B), math.max(part.C, worldMax));
+            }
+
+            int2 chunkMin = ChunkPosition(worldMin - new float2(0.1f, 0.1f));
+            int2 chunkMax = ChunkPosition(worldMax + new float2(0.1f, 0.1f));
+
+            int obstacleIndex = _obstacles.Add(new()
+            {
+                ChunkMin = chunkMin,
+                ChunkMax = chunkMax,
+            });
+
+            List<AddNodeRequest> nodesToAdd = new();
+
+            // Add new obstacle to nodes to add 
+            foreach (Triangle part in parts)
+            {
+                nodesToAdd.Add(new()
+                {
+                    Triangle = part,
+                    ObstacleIndex = obstacleIndex,
+                });
+            }
+
+            List<NavNode> removedNodes = RemoveNodes(chunkMin, chunkMax);
+
+            // Add existing but removed obstacle to nodes to add
+            foreach (NavNode node in removedNodes)
+            {
+                // Add only if node is obstacle
+                if (node.ConfigIndex >= 0)
+                {
+                    nodesToAdd.Add(new()
+                    {
+                        Triangle = node.Triangle,
+                        ObstacleIndex = node.ConfigIndex,
+                    });
+                }
+            }
+
+            EnsureValidTriangulation(nodesToAdd);
+
+            AddAndFillEmptySpace(nodesToAdd, removedNodes);
+
+            return obstacleIndex;
+        }
+
+        public void RemoveObstacle(int id)
+        {
+            Obstacle obstacle = _obstacles[id];
+            _obstacles.RemoveAt(id);
+
+            List<NavNode> removedNodes = RemoveNodes(obstacle.ChunkMin, obstacle.ChunkMax);
+
+            List<AddNodeRequest> nodesToAdd = new();
+            foreach (NavNode node in removedNodes)
+            {
+                if (node.ConfigIndex >= 0 && node.ConfigIndex != id)
+                {
+                    nodesToAdd.Add(new()
+                    {
+                        Triangle = node.Triangle,
+                        ObstacleIndex = node.ConfigIndex,
+                    });
+                }
+            }
+
+            AddAndFillEmptySpace(nodesToAdd, removedNodes);
+        }
+
+        public bool TryGetNodeIndex(float2 position, out int nodeIndex)
+        {
+            int2 cell = ChunkPosition(position);
+            foreach (var index in _nodesPositionLookup.GetValuesForKey(cell))
+            {
+                NavNode node = _nodes[index];
+                if (Triangle.PointIn(position, node.CornerA, node.CornerB, node.CornerC))
+                {
+                    nodeIndex = index;
+                    return true;
+                }
+            }
+
+            nodeIndex = NavNode.NULL_INDEX;
+            return false;
+        }
+
+        // TODO: valid implementation
+        public static void EnsureValidTriangulation(List<AddNodeRequest> nodes)
+        {
+            // TODO: Merge obstacle
+
+            // TMP: only check intersection
+            List<Triangle> triangles = new();
+            foreach (var node in nodes)
+            {
+                triangles.Add(node.Triangle);
+            }
+
+            if (Triangle.AnyTrianglesIntersect(triangles))
+            {
+                Debug.LogError($"{nameof(EnsureValidTriangulation)}: Obstacles are intersecting is not implemented yet!");
+            }
+        }
+
+        private void AddAndFillEmptySpace(List<AddNodeRequest> nodesToAdd, List<NavNode> removedNodes)
+        {
+            // Add nodes to navigation mesh
+            foreach (var node in nodesToAdd)
+            {
+                AddNode(node);
+            }
+
+            // Create constrains shapes to not fill space inside them
+            var constrains = new List<List<Vector2>>();
+            foreach (var node in nodesToAdd)
+            {
+                // Make sure that constrains are counterclockwise
+                if (Triangle.IsCCW(node.Triangle.A, node.Triangle.B, node.Triangle.C))
+                {
+                    constrains.Add(new() { node.Triangle.A, node.Triangle.B, node.Triangle.C });
+                }
+                else
+                {
+                    constrains.Add(new() { node.Triangle.A, node.Triangle.C, node.Triangle.B });
+                }
+            }
+
+            // Fill empty space to connect inserted nodes
+            HashSet<Vector2> freeSpaceBorderPoints = HullEdges.GetPointsUnordered(removedNodes);
             var pointsList = new List<Vector2>(freeSpaceBorderPoints);
             _triangulation.Triangulate(pointsList, constrainedEdges: constrains);
             var fill = new List<Triangle2D>();
             _triangulation.GetTrianglesDiscardingHoles(fill);
             foreach (var triangle in fill)
             {
-                AddNode(triangle.p0, triangle.p1, triangle.p2, 0);
+                AddNode(new()
+                {
+                    Triangle = new(triangle.p0, triangle.p1, triangle.p2),
+                    ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
+                });
             }
-            
-            AddNode(a, b, c, 1);
         }
-
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int2 ChunkPosition(float2 worldPos) => (int2)(worldPos * CELL_MULTIPLIER);
-       
+
         private static IEnumerable<int2> GetCellsFromTriangle(float2 a, float2 b, float2 c)
         {
             int2 min = ChunkPosition(math.min(math.min(a, b), c));
             int2 max = ChunkPosition(math.max(math.max(a, b), c));
             return GetCellsFromMinMax(min, max);
         }
+
         private static IEnumerable<int2> GetCellsFromMinMax(int2 min, int2 max)
         {
             for (int x = min.x; x <= max.x; x++)
@@ -101,7 +240,12 @@ namespace Navigation
             }
         }
 
-
+        /// <summary>
+        /// Removes and disconnects nodes on given area
+        /// </summary>
+        /// <param name="min">left bottom area point</param>
+        /// <param name="max">right top area point</param>
+        /// <returns>Removed nodes</returns>
         private List<NavNode> RemoveNodes(int2 min, int2 max)
         {
             var removedNodes = new List<NavNode>();
@@ -121,7 +265,7 @@ namespace Navigation
                     // DebugCell(cell);
 
                     _nodes[nodeIndex] = NavNode.Empty;
-                    _freeNodesIndexes.Push(nodeIndex);
+                    _nodes.RemoveAt(nodeIndex);
                     removedNodes.Add(node);
 
                     // disconnect AB
@@ -183,15 +327,14 @@ namespace Navigation
             return removedNodes;
         }
 
-        private void AddNode(float2 a, float2 b, float2 c, int configIndex)
+        /// <summary>
+        /// Add node to mesh and connect it to existing nodes
+        /// </summary>
+        private void AddNode(AddNodeRequest addAddNodeRequest)
         {
-            if (!_freeNodesIndexes.TryPop(out int newIndex))
-            {
-                newIndex = _nodes.Length;
-            }
-
-            int2 min = ChunkPosition(math.min(math.min(a, b), c));
-            int2 max = ChunkPosition(math.max(math.max(a, b), c));
+            var bounds = addAddNodeRequest.Triangle.GetBounds();
+            int2 min = ChunkPosition(bounds.min);
+            int2 max = ChunkPosition(bounds.max);
 
             // fix position lookup capacity
             var newNumberOfLookupEntries = (max.x - min.x + 1) * (max.y - min.y + 1) + _nodesPositionLookup.Count();
@@ -200,14 +343,9 @@ namespace Navigation
                 _nodesPositionLookup.Capacity = newNumberOfLookupEntries;
             }
 
-            // add to position lookup
-            foreach (var cell in GetCellsFromMinMax(min, max))
-            {
-                // DebugCell(cell);
-                Debug.Log($"Adding lookup node: {cell.x}, {cell.y} in {min} {max}");
-                _nodesPositionLookup.Add(cell, newIndex);
-            }
-
+            // create node
+            var newIndex = _nodes.FreeIndex;
+            (float2 a, float2 b, float2 c) = addAddNodeRequest.Triangle;
             var newNode = new NavNode(
                 a,
                 b,
@@ -215,19 +353,20 @@ namespace Navigation
                 connectionAB: TryConnect(a, b, newIndex),
                 connectionAC: TryConnect(a, c, newIndex),
                 connectionBC: TryConnect(b, c, newIndex),
-                configIndex
+                addAddNodeRequest.ObstacleIndex
             );
 
-            // Add to array
+            // add to array
             Debug.Log($"Add new node to index: {newIndex} / {_nodes.Length}");
             newNode.DrawBorder(Color.green, 1);
-            if (newIndex < _nodes.Length)
+            _nodes.Add(newNode);
+
+            // add to position lookup
+            foreach (var cell in GetCellsFromMinMax(min, max))
             {
-                _nodes[newIndex] = newNode;
-            }
-            else
-            {
-                _nodes.Add(newNode);
+                // DebugCell(cell);
+                Debug.Log($"Adding lookup node: {cell.x}, {cell.y} in {min} {max}");
+                _nodesPositionLookup.Add(cell, newIndex);
             }
         }
 
@@ -256,21 +395,17 @@ namespace Navigation
         {
             NavNode node = _nodes[nodeIndex];
 
-            int connectionAB = node.ConnectionAB;
-            int connectionAC = node.ConnectionAC;
-            int connectionBC = node.ConnectionBC;
-
             if (IsSameEdge(edge, node.CornerA, node.CornerB))
             {
-                connectionAB = targetIndex;
+                node.ConnectionAB = targetIndex;
             }
             else if (IsSameEdge(edge, node.CornerA, node.CornerC))
             {
-                connectionAC = targetIndex;
+                node.ConnectionAC = targetIndex;
             }
             else if (IsSameEdge(edge, node.CornerB, node.CornerC))
             {
-                connectionBC = targetIndex;
+                node.ConnectionBC = targetIndex;
             }
             else
             {
@@ -280,15 +415,7 @@ namespace Navigation
 
             // Debug.Log($"Connect {nodeIndex} with {targetIndex} on {edge}");
 
-            _nodes[nodeIndex] = new NavNode(
-                node.CornerA,
-                node.CornerB,
-                node.CornerC,
-                connectionAB,
-                connectionAC,
-                connectionBC,
-                node.ConfigIndex
-            );
+            _nodes[nodeIndex] = node;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -306,27 +433,30 @@ namespace Navigation
 
         public void DrawNodes()
         {
+            Gizmos.color = Color.white;
             foreach (var node in _nodes)
             {
-                if (!node.IsEmpty)
-                {
-                    continue;
-                }
-
-                Gizmos.color = node.ConfigIndex == 1 ? Color.red : Color.white;
                 node.DrawBorderGizmos();
             }
         }
+
+        public void DrawObstacles()
+        {
+            Gizmos.color = Color.red;
+            foreach (var node in _nodes)
+            {
+                if (node.ConfigIndex >= 0)
+                {
+                    node.DrawBorderGizmos();
+                }
+            }
+        }
+
         public void DrawConnections()
         {
             Gizmos.color = Color.yellow;
             foreach (var node in _nodes)
             {
-                if (!node.IsEmpty)
-                {
-                    continue;
-                }
-
                 if (node.ConnectionAB != NavNode.NULL_INDEX)
                 {
                     Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAB].Center.To3D());
@@ -342,6 +472,20 @@ namespace Navigation
                     Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionBC].Center.To3D());
                 }
             }
+        }
+
+        public struct Obstacle
+        {
+            public int2 ChunkMin;
+            public int2 ChunkMax;
+        }
+
+        public struct AddNodeRequest
+        {
+            public const int NO_OBSTACLE = -1;
+
+            public Triangle Triangle;
+            public int ObstacleIndex;
         }
     }
 }

@@ -66,4 +66,12 @@ namespace Tests.TestsUtilities
             return new AndConstraint<float2>(new(assertion.Vector[0], assertion.Vector[1]));
         }
     }
+    
+    public static class Vector2AssertionExtensions
+    {
+        public static VectorAssertion<float> Should(this Vector2 value)
+        {
+            return new VectorAssertion<float>(new[] { value.x, value.y });
+        }
+    }
 }
