@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.andywiecko.burst.triangulator": "https://github.com/andywiecko/BurstTriangulator.git",
     "com.boundfoxstudios.fluentassertions": "https://github.com/BoundfoxStudios/fluentassertions-unity.git#upm",
     "com.unity.collab-proxy": "2.8.2",
     "com.unity.entities": "1.3.14",

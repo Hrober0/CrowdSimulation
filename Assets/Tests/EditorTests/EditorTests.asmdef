@@ -5,9 +5,10 @@
         "Navigation",
         "Unity.Mathematics",
         "Unity.Collections",
-        "DelaunayTriangulation",
         "BoundfoxStudios.FluentAssertions",
-        "TestsUtilities"
+        "TestsUtilities",
+        "HCore",
+        "andywiecko.BurstTriangulator"
     ],
     "includePlatforms": [
         "Editor"

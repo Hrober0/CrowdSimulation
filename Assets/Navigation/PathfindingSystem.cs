@@ -18,7 +18,7 @@ namespace Navigation
 
         private void Start()
         {
-            var startPoints = new List<Vector2>();
+            var startPoints = new List<float2>();
             foreach (var pointTransform in _borderPoints)
             {
                 startPoints.Add(pointTransform.position.To2D());
@@ -63,19 +63,23 @@ namespace Navigation
         }
         private async Awaitable CheckRectangle()
         {
+            _navMesh.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+            
             float deg = 0;
             await WaitForClick();
             while (true)
             {
-                // var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
-                var mpos = new float2(5, 5);
+                var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
+                // var mpos = new float2(5, 5);
                 // mpos.DrawPoint(Color.magenta, 1);
                 // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
                 var o1 = _navMesh.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
 
+                // await WaitForClick();
+                
                 await Awaitable.NextFrameAsync();
                 _navMesh.RemoveObstacle(o1);
-
+                
                 deg += Time.deltaTime * 20;
                 Debug.Log(_navMesh.Nodes.Length);
             }
@@ -131,7 +135,7 @@ namespace Navigation
                     _navMesh.DrawObstacles();
                 }
             }
-            else
+            else if (_drawNodes)
             {
                 Gizmos.color = Color.red;
                 var startPoints = new List<Vector2>();

@@ -22,9 +22,9 @@ namespace Navigation
                 float2 pRight = portals[i].Right;
 
                 // Left check
-                if (Triangle.Area2(apex, right, pRight) >= 0f)
+                if (Triangle.SignedArea(apex, right, pRight) >= 0f)
                 {
-                    if (apex.Equals(right) || Triangle.Area2(apex, left, pRight) < 0f)
+                    if (apex.Equals(right) || Triangle.SignedArea(apex, left, pRight) < 0f)
                     {
                         right = pRight;
                         rightIndex = i;
@@ -45,9 +45,9 @@ namespace Navigation
                 }
 
                 // Right check
-                if (Triangle.Area2(apex, left, pLeft) <= 0f)
+                if (Triangle.SignedArea(apex, left, pLeft) <= 0f)
                 {
-                    if (apex.Equals(left) || Triangle.Area2(apex, right, pLeft) > 0f)
+                    if (apex.Equals(left) || Triangle.SignedArea(apex, right, pLeft) > 0f)
                     {
                         left = pLeft;
                         leftIndex = i;

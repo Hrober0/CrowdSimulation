@@ -101,7 +101,7 @@ namespace Navigation
         public static Portal CreatePortal(float2 p1, float2 p2, Portal lastPortal)
         {
             float2 lastPortalCenter = (lastPortal.Right + lastPortal.Left) * 0.5f;
-            float area = Triangle.Area2(lastPortalCenter, p1, p2);
+            float area = Triangle.SignedArea(lastPortalCenter, p1, p2);
             Portal portal = area < 0
                 ? new(p1, p2)
                 : new(p2, p1);

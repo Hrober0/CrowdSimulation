@@ -36,7 +36,7 @@ namespace Navigation
 
         public override int GetHashCode() => HashCode.Combine(A, B, C);
 
-        public override string ToString() => $"T({A}, {B}, {C})";
+        public override string ToString() => $"Tri({A}, {B}, {C})";
 
         public IEnumerable<Vector2> GetBorderPoints()
         {
@@ -58,8 +58,10 @@ namespace Navigation
             b = B;
             c = C;
         }
+        
+        public float2 GetCenter => Center(A, B, C);
 
-        #region Static methods
+        #region Simple static methods
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Fits(Triangle t1, Triangle t2)
@@ -107,27 +109,18 @@ namespace Navigation
             // Exclude edge cases (d1, d2, d3 == 0)
             return !(hasNeg && hasPos) && d1 != 0f && d2 != 0f && d3 != 0f;
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AabbOverlap(float2 minA, float2 maxA, float2 minB, float2 maxB)
-        {
-            return !(maxA.x < minB.x || minA.x > maxB.x ||
-                     maxA.y < minB.y || minA.y > maxB.y);
-        }
         
         /// <summary>
         /// positive if CCW, negative if CW
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float Area2(float2 a, float2 b, float2 c)
-        {
-            float2 ab = b - a;
-            float2 ac = c - a;
-            return ab.x * ac.y - ac.x * ab.y;
-        }
+        public static float SignedArea(float2 a, float2 b, float2 c) => Cross(b - a, c - a);
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsCCW(float2 a, float2 b, float2 c) => Area2(a, b, c) > 0;
+        public static float Area(float2 a, float2 b, float2 c) => math.abs(SignedArea(a, b, c)) * 0.5f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsCCW(float2 a, float2 b, float2 c) => SignedArea(a, b, c) > 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool OnSegment(float2 a, float2 b, float2 c)
@@ -141,7 +134,7 @@ namespace Navigation
         {
             float2 r = a2 - a1;
             float2 s = b2 - b1;
-            float rxs = r.x * s.y - r.y * s.x;
+            float rxs = Cross(r, s);
 
             if (math.abs(rxs) < math.E)
             {
@@ -155,7 +148,26 @@ namespace Navigation
             return t is > 0f and < 1f && u is > 0f and < 1f;
         }
         
-        public static bool TrianglesIntersect(Triangle t1, Triangle t2)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float2 LineIntersection(float2 p1, float2 p2, float2 p3, float2 p4)
+        {
+            float2 r = p2 - p1;
+            float2 s = p4 - p3;
+            float rxs = Cross(r, s);
+            if (math.abs(rxs) < 1e-8f)
+            {
+                return (p1 + p2) * 0.5f; // Lines nearly parallel
+            }
+
+            float t = Cross(p3 - p1, s) / rxs;
+            return p1 + t * r;
+        }
+        
+        #endregion
+        
+        #region Static methods
+        
+        public static bool Intersect(Triangle t1, Triangle t2)
         {
             var bounds1 = t1.GetBounds();
             var bounds2 = t2.GetBounds();
@@ -206,7 +218,7 @@ namespace Navigation
                 for (int j = i + 1; j < count; j++)
                 {
                     var t2 = triangles[j];
-                    if (TrianglesIntersect(t1, t2))
+                    if (Intersect(t1, t2))
                     {
                         return true;
                     }
@@ -215,6 +227,92 @@ namespace Navigation
 
             return false;
         }
+        
+        public static List<float2> PolygonIntersection(IReadOnlyList<float2> polyA, IReadOnlyList<float2> polyB)
+        {
+            if (polyA.Count < 3 || polyB.Count < 3)
+            {
+                return new();
+            }
+
+            // Start with all vertices from polyA
+            var output = new List<float2>(polyA);
+    
+            // Clip against each edge of polyB
+            for (int i = 0; i < polyB.Count; i++)
+            {
+                float2 clipA = polyB[i];
+                float2 clipB = polyB[(i + 1) % polyB.Count];
+    
+                List<float2> input = output;
+                output = new();
+    
+                if (input.Count == 0)
+                {
+                    break;
+                }
+
+                float2 s = input[^1];
+                for (int j = 0; j < input.Count; j++)
+                {
+                    float2 e = input[j];
+    
+                    bool eInside = IsInside(clipA, clipB, e);
+                    bool sInside = IsInside(clipA, clipB, s);
+    
+                    if (eInside)
+                    {
+                        if (!sInside)
+                        {
+                            output.Add(LineIntersection(s, e, clipA, clipB));
+                        }
+
+                        output.Add(e);
+                    }
+                    else if (sInside)
+                    {
+                        output.Add(LineIntersection(s, e, clipA, clipB));
+                    }
+    
+                    s = e;
+                }
+            }
+            
+            // RemoveDuplicates
+            for (int i = 0; i < output.Count; i++)
+            {
+                float2 p = output[i];
+                for (int j = i + 1; j < output.Count; j++)
+                {
+                    if (math.lengthsq(p - output[j]) < .0001f)
+                    {
+                        output.RemoveAt(j);
+                        j--;
+                    }
+                }
+            }
+                
+            return output;
+            
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static bool IsInside(float2 a, float2 b, float2 p) =>
+                // Left-of test for AB -> point
+                Cross(b - a, p - a) >= 0f;
+        }
+        
+        #endregion
+
+        #region Static utilities
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool AabbOverlap(float2 minA, float2 maxA, float2 minB, float2 maxB)
+        {
+            return !(maxA.x < minB.x || minA.x > maxB.x ||
+                     maxA.y < minB.y || minA.y > maxB.y);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float Cross(float2 a, float2 b) => a.x * b.y - a.y * b.x;
         
         #endregion
     }

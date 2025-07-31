@@ -32,80 +32,77 @@ namespace Navigation
 
             return borderEdges;
         }
-        
-        public static List<Vector2> GetPointsUnordered(List<EdgeKey> edges)
-        {
-            var points = new List<Vector2>();
-            foreach (EdgeKey edge in edges)
-            {
-                AddPoint(points, edge.A);
-                AddPoint(points, edge.B);
-            }
-
-            return points;
-        }
-        
-        public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
-        {
-            int crossings = 0;
-
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                float2 a = polygon[i].A;
-                float2 b = polygon[i].B;
-
-                // Check if point.x is between a.x and b.x (ray could intersect this edge)
-                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
-                {
-                    // Compute y intersection of vertical ray at point.x with edge (a → b)
-                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
-
-                    if (point.y < yIntersection)
-                    {
-                        crossings++;
-                    }
-                }
-            }
-
-            return (crossings % 2) == 1;
-        }
-        
-        public static List<Vector2> GetPointsCCW(List<Triangle> triangles)
+        public static List<EdgeKey> GetEdgesUnordered(List<Triangle> triangles)
         {
             var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
 
             // Count all triangle edges
-            foreach (var tr in triangles)
+            foreach (Triangle tr in triangles)
             {
                 AddEdge(edgeCounts, new(tr.A, tr.B));
                 AddEdge(edgeCounts, new(tr.A, tr.C));
                 AddEdge(edgeCounts, new(tr.B, tr.C));
             }
-            
-            // Filter outer boundary edges (appear only once)
-            using var edgeMap = new NativeParallelMultiHashMap<float2, EdgeKey>(edgeCounts.Count * 2, Allocator.Temp);
-            EdgeKey? startEdge = null;
-            foreach ((EdgeKey edge, int edgeCount) in edgeCounts)
+
+            // Gather unique boundary points (appear only once)
+            var borderEdges = new List<EdgeKey>(edgeCounts.Count);
+            foreach (var kvp in edgeCounts)
             {
-                if (edgeCount == 1)
+                if (kvp.Value == 1)
                 {
-                    startEdge ??= edge;
-                    edgeMap.Add(edge.A, edge);
-                    edgeMap.Add(edge.B, edge);
+                    borderEdges.Add(kvp.Key);
                 }
             }
-            
-            var loop = new List<Vector2>();
-            if (startEdge == null)
+
+            return borderEdges;
+        }
+        
+        // public static List<float2> GetPointsUnordered(List<EdgeKey> edges)
+        // {
+        //     var points = new List<float2>();
+        //     foreach (EdgeKey edge in edges)
+        //     {
+        //         AddPoint(points, edge.A);
+        //         AddPoint(points, edge.B);
+        //     }
+        //
+        //     return points;
+        // }
+        
+        public static List<float2> GetPointsCCW(List<Triangle> triangles) => GetPointsCCW(GetEdgesUnordered(triangles));
+        public static List<float2> GetPointsCCW(List<EdgeKey> edges)
+        {
+            if (edges.Count == 0)
             {
-                return loop;
+                return new();
             }
+            
+            if (edges.Count == 1)
+            {
+                return new()
+                {
+                    edges[0].A,
+                    edges[0].B,
+                };
+            }
+            
+            // Filter outer boundary edges (appear only once)
+            using var edgeMap = new NativeParallelMultiHashMap<float2, EdgeKey>(edges.Count * 2, Allocator.Temp);
+            foreach (EdgeKey edge in edges)
+            {
+                edgeMap.Add(edge.A, edge);
+                edgeMap.Add(edge.B, edge);
+            }
+            
 
             // Reconstruct ordered boundary loop
-            float2 startVert = startEdge.Value.A;
+            float2 startVert = edges[0].A;
             float2 currentVert = startVert;
-            float2 nextVert = startEdge.Value.B;
-            loop.Add(currentVert);
+            float2 nextVert = edges[0].B;
+            var loop = new List<float2>()
+            {
+                currentVert
+            };
             while (!nextVert.Equals(startVert)) // until we close the loop
             {
                 loop.Add(nextVert);
@@ -150,6 +147,31 @@ namespace Navigation
 
             return loop;
         }
+        
+        public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
+        {
+            int crossings = 0;
+        
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                float2 a = polygon[i].A;
+                float2 b = polygon[i].B;
+        
+                // Check if point.x is between a.x and b.x (ray could intersect this edge)
+                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
+                {
+                    // Compute y intersection of vertical ray at point.x with edge (a → b)
+                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
+        
+                    if (point.y < yIntersection)
+                    {
+                        crossings++;
+                    }
+                }
+            }
+        
+            return (crossings % 2) == 1;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void AddEdge(Dictionary<EdgeKey, int> dict, EdgeKey edge)
@@ -165,13 +187,13 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void AddPoint(List<Vector2> points, Vector2 point)
+        private static void AddPoint(List<float2> points, float2 point)
         {
             for (int i = 0; i < points.Count; i++)
             {
-                if ((points[i] - point).sqrMagnitude < 0.0001f)
+                if (math.lengthsq(points[i] - point) < 0.0001f)
                 {
-                    break;
+                    return;
                 }
             }
             points.Add(point);

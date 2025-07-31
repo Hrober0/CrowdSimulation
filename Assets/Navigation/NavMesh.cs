@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using andywiecko.BurstTriangulator;
 using CustomNativeCollections;
-using DelaunayTriangulation;
 using HCore.Extensions;
 using HCore.Shapes;
 using Unity.Collections;
@@ -13,8 +13,10 @@ namespace Navigation
 {
     public class NavMesh : IDisposable
     {
-        private const float CELL_SIZE = 3f;
+        private const float CELL_SIZE = 1f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
+
+        private const float MIN_TRIANGLE_AREA = 0.01f;
 
         private NativeFixedList<NavNode> _nodes;
 
@@ -24,27 +26,37 @@ namespace Navigation
         // edge to node index (if edge is common it points to one of two nodes)
         private readonly Dictionary<EdgeKey, int> _nodesEdgeLookup = new();
 
-        private readonly DelaunayTriangulation.DelaunayTriangulation _triangulation = new();
-
         private NativeFixedList<Obstacle> _obstacles;
-        
+
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
 
-        public NavMesh(List<Vector2> startPoints)
+        public NavMesh(List<float2> startPoints)
         {
             _nodes = new(1000, Allocator.Persistent);
             _nodesPositionLookup = new(1000, Allocator.Persistent);
 
             _obstacles = new(1000, Allocator.Persistent);
 
-            _triangulation.Triangulate(startPoints);
-            var result = new List<Triangle2D>();
-            _triangulation.GetTrianglesDiscardingHoles(result);
-            foreach (var triangle in result)
+            using var positions = new NativeArray<float2>(startPoints.ToArray(), Allocator.TempJob);
+            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            {
+                Input =
+                {
+                    Positions = positions,
+                },
+            };
+            triangulator.Run();
+
+            var triangles = triangulator.Output.Triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
             {
                 AddNode(new()
                 {
-                    Triangle = new(triangle.p0, triangle.p1, triangle.p2),
+                    Triangle = new(
+                        positions[triangles[i]],
+                        positions[triangles[i + 1]],
+                        positions[triangles[i + 2]]
+                    ),
                     ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
                 });
             }
@@ -110,7 +122,7 @@ namespace Navigation
                 {
                     nodesToAdd.Add(new()
                     {
-                        Triangle = node.Triangle,
+                        Triangle = CreateCCW(node.CornerA, node.CornerB, node.CornerC),
                         ObstacleIndex = node.ConfigIndex,
                     });
                 }
@@ -163,21 +175,167 @@ namespace Navigation
             return false;
         }
 
-        // TODO: valid implementation
         public static void EnsureValidTriangulation(List<AddNodeRequest> nodes)
         {
-            // TODO: Merge obstacle
-
-            // TMP: only check intersection
-            List<Triangle> triangles = new();
-            foreach (var node in nodes)
+            var tries = 1000;
+            for (int i = 0; i < nodes.Count; i++)
             {
-                triangles.Add(node.Triangle);
+                AddNodeRequest t1 = nodes[i];
+                for (int j = i + 1; j < nodes.Count; j++)
+                {
+                    // Safety check
+                    tries--;
+                    if (tries == 0)
+                    {
+                        Debug.LogError($"{nameof(EnsureValidTriangulation)}: Node intersection fix failed.");
+                        return;
+                    }
+
+                    AddNodeRequest t2 = nodes[j];
+
+                    List<float2> intersection = Triangle.PolygonIntersection(t1.Triangle.Vertices, t2.Triangle.Vertices);
+
+                    if (intersection.Count < 3)
+                    {
+                        continue; // no interior overlap — skip
+                    }
+
+                    Debug.LogWarning($"Intersection {t1} {t2} {intersection.ElementsString()}");
+
+                    // Remove old nodes
+                    nodes.RemoveAt(j);
+                    nodes.RemoveAt(i);
+
+                    // Restart loop after modifying the list
+                    i = -1;
+
+                    // Add new create nodes
+                    float2[] intersectionArray = intersection.ToArray();
+                    AddNotCommonPart(t1, intersectionArray, nodes);
+                    AddNotCommonPart(t2, intersectionArray, nodes);
+                    AddIntersection(t1, t2, intersectionArray, nodes);
+
+                    break;
+                }
+            }
+        }
+
+        private static void AddNotCommonPart(AddNodeRequest subject, float2[] intersection, List<AddNodeRequest> output)
+        {
+            using var positions = new NativeList<float2>(intersection.Length + 3, Allocator.TempJob);
+            var constraintEdges = new NativeList<int>(Allocator.TempJob);
+            using var holes = new NativeList<float2>(Allocator.TempJob);
+
+            float2 center = float2.zero;
+            for (int i = 0; i < intersection.Length; i++)
+            {
+                positions.Add(intersection[i]);
+                constraintEdges.Add(i - 1);
+                constraintEdges.Add(i);
+                center += intersection[i];
             }
 
-            if (Triangle.AnyTrianglesIntersect(triangles))
+            constraintEdges[0] = intersection.Length - 1; // fix first constraint edge
+            holes.Add(center / intersection.Length);
+
+            Insert(subject.Triangle.A);
+            Insert(subject.Triangle.B);
+            Insert(subject.Triangle.C);
+
+
+            Debug.Log("Positions:");
+            foreach (var n in positions)
             {
-                Debug.LogError($"{nameof(EnsureValidTriangulation)}: Obstacles are intersecting is not implemented yet!");
+                Debug.Log(n);
+            }
+
+            Debug.Log("ConstraintEdges:");
+            foreach (var n in constraintEdges)
+            {
+                Debug.Log(n);
+            }
+
+            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            {
+                Input =
+                {
+                    Positions = positions.AsArray(),
+                    ConstraintEdges = constraintEdges.AsArray(),
+                    HoleSeeds = holes.AsArray(),
+                },
+            };
+            triangulator.Run();
+
+            Debug.Log("Result");
+            var triangles = triangulator.Output.Triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                float2 a = positions[triangles[i]];
+                float2 b = positions[triangles[i + 1]];
+                float2 c = positions[triangles[i + 2]];
+                if (Triangle.Area(a, b, c) < MIN_TRIANGLE_AREA)
+                {
+                    continue;
+                }
+
+                Debug.Log(CreateCCW(a, b, c));
+                output.Add(new()
+                {
+                    Triangle = CreateCCW(a, b, c),
+                    ObstacleIndex = subject.ObstacleIndex,
+                });
+            }
+
+            constraintEdges.Dispose();
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            int Insert(float2 p)
+            {
+                for (int i = 0; i < positions.Length; i++)
+                {
+                    if (math.lengthsq(p - positions[i]) < .0001f)
+                    {
+                        return i;
+                    }
+                }
+
+                positions.Add(p);
+                return positions.Length - 1;
+            }
+        }
+
+        private static void AddIntersection(AddNodeRequest n1, AddNodeRequest n2, float2[] intersection, List<AddNodeRequest> output)
+        {
+            using var positions = new NativeArray<float2>(intersection, Allocator.TempJob);
+            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            {
+                Input =
+                {
+                    Positions = positions,
+                },
+            };
+            triangulator.Run();
+
+            var triangles = triangulator.Output.Triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                output.Add(new()
+                {
+                    Triangle = CreateCCW(positions[triangles[i]], positions[triangles[i + 1]], positions[triangles[i + 2]]),
+                    ObstacleIndex = n1.ObstacleIndex, // TODO: merge
+                });
+            }
+        }
+
+        private static Triangle CreateCCW(float2 p1, float2 p2, float2 p3)
+        {
+            if (Triangle.IsCCW(p1, p2, p3))
+            {
+                return new(p1, p2, p3);
+            }
+            else
+            {
+                return new(p1, p3, p2);
             }
         }
 
@@ -189,47 +347,139 @@ namespace Navigation
                 AddNode(node);
             }
 
-            // Create constrains shapes to not fill space inside them
-            var constrains = new List<List<Vector2>>();
-            foreach (var node in nodesToAdd)
+            // Calculate Border points
+            List<EdgeKey> borderEdges = HullEdges.GetEdgesUnordered(emptyNodes);
+            List<float2> borderPoints = HullEdges.GetPointsCCW(borderEdges);
+
+            if (borderPoints.Count < 3)
             {
-                // Make sure that constrains are counterclockwise
-                if (Triangle.IsCCW(node.Triangle.A, node.Triangle.B, node.Triangle.C))
-                {
-                    constrains.Add(new() { node.Triangle.A, node.Triangle.B, node.Triangle.C });
-                }
-                else
-                {
-                    constrains.Add(new() { node.Triangle.A, node.Triangle.C, node.Triangle.B });
-                }
+                Debug.LogError($"{nameof(AddAndFillEmptySpace)}: Not enough border points.");
+                return;
             }
 
-            // Fill empty space to connect inserted nodes
-            List<EdgeKey> edges = HullEdges.GetEdgesUnordered(emptyNodes);
-            List<Vector2> borderPoints = HullEdges.GetPointsUnordered(edges);
-            _triangulation.Triangulate(borderPoints, constrainedEdges: constrains);
-            var fill = new List<Triangle2D>();
-            _triangulation.GetTrianglesDiscardingHoles(fill);
-            foreach (var triangle in fill)
+            // Debug.Log("Nodes to add:");
+            // foreach (var n in nodesToAdd)
+            // {
+            //     Debug.Log(n);
+            // }
+            //
+            // Debug.Log("Border points:");
+            // foreach (var p in borderPoints)
+            // {
+            //     Debug.Log(p.To3D().ToString("F6"));
+            // }
+
+            using var positions = new NativeList<float2>(borderPoints.Count + nodesToAdd.Count * 3, Allocator.TempJob);
+            var constraintEdges = new NativeList<int>(borderPoints.Count * 2, Allocator.TempJob);
+            using var holes = new NativeList<float2>(nodesToAdd.Count, Allocator.TempJob);
+
+            var edgesConstraints = new HashSet<EdgeKey>();
+            
+            // Add border points
+            for (int i = 0; i < borderPoints.Count; i++)
             {
-                // Prevent insertion triangle outside removed area
-                float2 center = Triangle.Center(triangle.p0, triangle.p1, triangle.p2);
-                if (!HullEdges.IsPointInPolygon(center, edges))
+                AddPosition(borderPoints[i]);
+            }
+
+            // Add nodes as holes to not fill them
+            for (int i = 0; i < nodesToAdd.Count; i++)
+            {
+                Triangle tr = nodesToAdd[i].Triangle;
+                var indexA = AddPosition(tr.A);
+                var indexB = AddPosition(tr.B);
+                var indexC = AddPosition(tr.C);
+
+                AddConstraint(indexA, indexB);
+                AddConstraint(indexB, indexC);
+                AddConstraint(indexC, indexA);
+                
+                holes.Add(tr.GetCenter);
+            }
+            
+            foreach (var p in borderEdges)
+            {
+                Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta);
+                // Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta, 5);
+            }
+            
+            // foreach (var p in positions)
+            // {
+            //     p.To3D().DrawPoint(Color.magenta, 10);
+            // }
+            //
+            // for (int i = 0; i < constraintEdges.Length; i+=2)
+            // {
+            //     var a = positions[constraintEdges[i]];
+            //     var b = positions[constraintEdges[i + 1]];
+            //     Debug.DrawLine(a.To3D(), b.To3D(), Color.red, 10);
+            // }
+
+            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            {
+                Input =
+                {
+                    Positions = positions.AsArray(),
+                    ConstraintEdges = constraintEdges.AsArray(),
+                    HoleSeeds = holes.AsArray(),
+                },
+                // Settings = { AutoHolesAndBoundary = true, },
+            };
+            triangulator.Run();
+
+            // Fill empty space to connect inserted nodes
+            var triangles = triangulator.Output.Triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                float2 a = positions[triangles[i]];
+                float2 b = positions[triangles[i + 1]];
+                float2 c = positions[triangles[i + 2]];
+                if (Triangle.Area(a, b, c) < MIN_TRIANGLE_AREA)
                 {
                     continue;
                 }
-                
+
+                // This solution not working, borders have to be constrained
+                if (!HullEdges.IsPointInPolygon(Triangle.Center(a, b, c), borderEdges))
+                {
+                    // new Triangle(a, b, c).DrawBorder(Color.blue, 5);
+                    continue;
+                }
+
                 AddNode(new()
                 {
-                    Triangle = new(triangle.p0, triangle.p1, triangle.p2),
+                    Triangle = new(a, b, c),
                     ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
                 });
             }
 
-            // foreach (var p in pointsList)
-            // {
-            //     p.DrawPoint(Color.magenta, 10);
-            // }
+            constraintEdges.Dispose();
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            int AddPosition(float2 p)
+            {
+                for (int i = 0; i < positions.Length; i++)
+                {
+                    if (math.lengthsq(p - positions[i]) < .0001f)
+                    {
+                        return i;
+                    }
+                }
+
+                positions.Add(p);
+                return positions.Length - 1;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void AddConstraint(int pi, int ei)
+            {
+                if (!edgesConstraints.Add(new(pi, ei)))
+                {
+                    return;
+                }
+
+                constraintEdges.Add(pi);
+                constraintEdges.Add(ei);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -450,6 +700,7 @@ namespace Navigation
             foreach (var node in _nodes)
             {
                 node.DrawBorderGizmos();
+                node.Triangle.GetCenter.To3D().DrawPoint(Color.gray, duration: null, size: 0.1f);
             }
         }
 
@@ -499,6 +750,8 @@ namespace Navigation
 
             public Triangle Triangle;
             public int ObstacleIndex;
+
+            public override string ToString() => $"AddNodeRequest: {Triangle} | ObstacleIndex: {ObstacleIndex}";
         }
     }
 }
