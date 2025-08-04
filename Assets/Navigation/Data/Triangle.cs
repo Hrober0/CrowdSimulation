@@ -142,14 +142,34 @@ namespace Navigation
             }
 
             float2 delta = b1 - a1;
-            float t = (delta.x * s.y - delta.y * s.x) / rxs;
-            float u = (delta.x * r.y - delta.y * r.x) / rxs;
+            float t = Cross(delta, s) / rxs;
+            float u = Cross(delta, r) / rxs;
 
             return t is > 0f and < 1f && u is > 0f and < 1f;
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static float2 LineIntersection(float2 p1, float2 p2, float2 p3, float2 p4)
+        public static bool EdgesIntersectIncludeEnds(float2 a1, float2 a2, float2 b1, float2 b2)
+        {
+            float2 r = a2 - a1;
+            float2 s = b2 - b1;
+            float rxs = Cross(r, s);
+            // float q_pxr = Cross(b1 - a1, r);
+
+            if (math.abs(rxs) < math.E)
+            {
+                return false; // Parallel or collinear
+            }
+
+            float2 delta = b1 - a1;
+            float t = Cross(delta, s) / rxs;
+            float u = Cross(delta, r) / rxs;
+
+            return t is >= 0f and <= 1f && u is >= 0f and <= 1f;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float2 IntersectionPoint(float2 p1, float2 p2, float2 p3, float2 p4)
         {
             float2 r = p2 - p1;
             float2 s = p4 - p3;
@@ -264,14 +284,14 @@ namespace Navigation
                     {
                         if (!sInside)
                         {
-                            output.Add(LineIntersection(s, e, clipA, clipB));
+                            output.Add(IntersectionPoint(s, e, clipA, clipB));
                         }
 
                         output.Add(e);
                     }
                     else if (sInside)
                     {
-                        output.Add(LineIntersection(s, e, clipA, clipB));
+                        output.Add(IntersectionPoint(s, e, clipA, clipB));
                     }
     
                     s = e;

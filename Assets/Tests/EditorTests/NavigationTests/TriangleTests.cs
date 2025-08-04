@@ -121,7 +121,7 @@ namespace Tests.EditorTests.NavigationTests
         #region Intersection
 
         [Test]
-        public void Segments_DoNotIntersect_ShouldReturnFalse()
+        public void EdgesIntersect_DoNotIntersect_ShouldReturnFalse()
         {
             float2 a1 = new float2(0, 0);
             float2 a2 = new float2(1, 0);
@@ -135,7 +135,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void Segments_Intersect_ShouldReturnTrue()
+        public void EdgesIntersect_Intersect_ShouldReturnTrue()
         {
             float2 a1 = new float2(0, 0);
             float2 a2 = new float2(2, 2);
@@ -149,7 +149,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void Segments_TouchAtEndpoint_ShouldReturnFalse()
+        public void EdgesIntersect_TouchAtEndpoint_ShouldReturnFalse()
         {
             float2 a1 = new float2(0, 0);
             float2 a2 = new float2(1, 1);
@@ -163,7 +163,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void Segments_AreCollinearAndOverlapping_ShouldReturnFalse()
+        public void EdgesIntersect_AreCollinearAndOverlapping_ShouldReturnFalse()
         {
             float2 a1 = new float2(0, 0);
             float2 a2 = new float2(2, 2);
@@ -177,7 +177,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void Segments_IntersectAtMiddle_ShouldReturnTrue()
+        public void EdgesIntersect_IntersectAtMiddle_ShouldReturnTrue()
         {
             float2 a1 = new float2(0, 0);
             float2 a2 = new float2(4, 4);
@@ -188,6 +188,76 @@ namespace Tests.EditorTests.NavigationTests
             Triangle.EdgesIntersect(a1, a2, b2, b1).Should().BeTrue();
             Triangle.EdgesIntersect(a2, a1, b1, b2).Should().BeTrue();
             Triangle.EdgesIntersect(a2, a1, b2, b1).Should().BeTrue();
+        }
+        
+        [Test]
+        public void EdgesIntersectIncludeEnds_DoNotIntersect_ShouldReturnFalse()
+        {
+            float2 a1 = new float2(0, 0);
+            float2 a2 = new float2(1, 0);
+            float2 b1 = new float2(0, 1);
+            float2 b2 = new float2(1, 1);
+
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b2, b1).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b2, b1).Should().BeFalse();
+        }
+
+        [Test]
+        public void EdgesIntersectIncludeEnds_Intersect_ShouldReturnTrue()
+        {
+            float2 a1 = new float2(0, 0);
+            float2 a2 = new float2(2, 2);
+            float2 b1 = new float2(0, 2);
+            float2 b2 = new float2(2, 0);
+
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b1, b2).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b2, b1).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b1, b2).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b2, b1).Should().BeTrue();
+        }
+
+        [Test]
+        public void EdgesIntersectIncludeEnds_TouchAtEndpoint_ShouldReturnTrue()
+        {
+            float2 a1 = new float2(0, 0);
+            float2 a2 = new float2(1, 1);
+            float2 b1 = new float2(1, 1);
+            float2 b2 = new float2(2, 2);
+
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b2, b1).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b2, b1).Should().BeFalse();
+        }
+
+        [Test]
+        public void EdgesIntersectIncludeEnds_AreCollinearAndOverlapping_ShouldReturnTrue()
+        {
+            float2 a1 = new float2(0, 0);
+            float2 a2 = new float2(2, 2);
+            float2 b1 = new float2(1, 1);
+            float2 b2 = new float2(3, 3);
+
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b2, b1).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b1, b2).Should().BeFalse();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b2, b1).Should().BeFalse();
+        }
+
+        [Test]
+        public void EdgesIntersectIncludeEnds_IntersectAtMiddle_ShouldReturnTrue()
+        {
+            float2 a1 = new float2(0, 0);
+            float2 a2 = new float2(4, 4);
+            float2 b1 = new float2(0, 4);
+            float2 b2 = new float2(4, 0);
+
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b1, b2).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a1, a2, b2, b1).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b1, b2).Should().BeTrue();
+            Triangle.EdgesIntersectIncludeEnds(a2, a1, b2, b1).Should().BeTrue();
         }
 
         [Test]

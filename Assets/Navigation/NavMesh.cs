@@ -29,6 +29,7 @@ namespace Navigation
         private NativeFixedList<Obstacle> _obstacles;
 
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
+        public IEnumerable<NavNode> GetActiveNodes => _nodes;
 
         public NavMesh(List<float2> startPoints)
         {
@@ -349,13 +350,6 @@ namespace Navigation
 
             // Calculate Border points
             List<EdgeKey> borderEdges = HullEdges.GetEdgesUnordered(emptyNodes);
-            List<float2> borderPoints = HullEdges.GetPointsCCW(borderEdges);
-
-            if (borderPoints.Count < 3)
-            {
-                Debug.LogError($"{nameof(AddAndFillEmptySpace)}: Not enough border points.");
-                return;
-            }
 
             // Debug.Log("Nodes to add:");
             // foreach (var n in nodesToAdd)
@@ -369,17 +363,11 @@ namespace Navigation
             //     Debug.Log(p.To3D().ToString("F6"));
             // }
 
-            using var positions = new NativeList<float2>(borderPoints.Count + nodesToAdd.Count * 3, Allocator.TempJob);
-            var constraintEdges = new NativeList<int>(borderPoints.Count * 2, Allocator.TempJob);
+            using var positions = new NativeList<float2>(borderEdges.Count * 2 + nodesToAdd.Count * 3, Allocator.TempJob);
+            var constraintEdges = new NativeList<int>(borderEdges.Count * 4, Allocator.TempJob);
             using var holes = new NativeList<float2>(nodesToAdd.Count, Allocator.TempJob);
 
             var edgesConstraints = new HashSet<EdgeKey>();
-            
-            // Add border points
-            for (int i = 0; i < borderPoints.Count; i++)
-            {
-                AddPosition(borderPoints[i]);
-            }
 
             // Add nodes as holes to not fill them
             for (int i = 0; i < nodesToAdd.Count; i++)
@@ -394,6 +382,36 @@ namespace Navigation
                 AddConstraint(indexC, indexA);
                 
                 holes.Add(tr.GetCenter);
+            }
+            
+            // Add border points
+            for (int i = 0; i < borderEdges.Count; i++)
+            {
+                var edge = borderEdges[i];
+                if (IsIntersectionWithNewTriangles(edge, out Triangle triangle))
+                {
+                    /*if (Triangle.PointInExcludingEdges(edge.A, triangle.A, triangle.B, triangle.C)
+                        || Triangle.PointInExcludingEdges(edge.B, triangle.A, triangle.B, triangle.C))
+                    {
+                        Debug.LogError($"Triangle {triangle} is outside navigation area! It intersects border edge {edge}");
+                        continue;
+                    }
+                    
+                    AddPosition(edge.A);
+                    AddPosition(edge.B);*/
+                    
+                    // TODO:
+                    // 1. add invalid edges to list,
+                    // 2. find triangles that intersects them
+                    // 3. find border base on it
+                    // 4.add border as constraint keeping existing constraints
+                }
+                else
+                {
+                    var aIndex = AddPosition(edge.A);
+                    var bIndex = AddPosition(edge.B);
+                    AddConstraint(aIndex, bIndex);   
+                }
             }
             
             foreach (var p in borderEdges)
@@ -422,7 +440,7 @@ namespace Navigation
                     ConstraintEdges = constraintEdges.AsArray(),
                     HoleSeeds = holes.AsArray(),
                 },
-                // Settings = { AutoHolesAndBoundary = true, },
+                Settings = { AutoHolesAndBoundary = true, },
             };
             triangulator.Run();
 
@@ -435,13 +453,6 @@ namespace Navigation
                 float2 c = positions[triangles[i + 2]];
                 if (Triangle.Area(a, b, c) < MIN_TRIANGLE_AREA)
                 {
-                    continue;
-                }
-
-                // This solution not working, borders have to be constrained
-                if (!HullEdges.IsPointInPolygon(Triangle.Center(a, b, c), borderEdges))
-                {
-                    // new Triangle(a, b, c).DrawBorder(Color.blue, 5);
                     continue;
                 }
 
@@ -479,6 +490,23 @@ namespace Navigation
 
                 constraintEdges.Add(pi);
                 constraintEdges.Add(ei);
+            }
+            
+            bool IsIntersectionWithNewTriangles(EdgeKey newEdge, out Triangle triangle)
+            {
+                for (int ti = 0; ti < nodesToAdd.Count; ti++)
+                {
+                    triangle = nodesToAdd[ti].Triangle;
+                    if (Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.A, triangle.B)
+                        || Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.B, triangle.C)
+                        || Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.C, triangle.A))
+                    {
+                        return true;
+                    }
+                }
+
+                triangle = default;
+                return false;
             }
         }
 
