@@ -441,12 +441,7 @@ namespace Navigation
 
                         borderEdges[intersectedEdgeIndex] = new(intersectedEdge.A, pointsCloseToEdgeA); // reuse removed index
                         borderEdges.Add(new(intersectedEdge.B, pointsCloseToEdgeB));
-                        borderEdges.Add(new(pointsCloseToEdgeA, pointsCloseToEdgeB)); // do not add edge constraint to not break border
-
-                        // Mark edge as already added to preserve adding constraint by triangle later
-                        // var ai = AddPosition(pointsCloseToEdgeA);
-                        // var bi = AddPosition(pointsCloseToEdgeB);
-                        // edgesConstraints.Add(new(ai, bi));
+                        borderEdges.Add(new(pointsCloseToEdgeA, pointsCloseToEdgeB));
                     }
                     else
                     {
