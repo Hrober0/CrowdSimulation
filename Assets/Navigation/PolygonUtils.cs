@@ -6,8 +6,44 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public static class HullEdges
+    public static class PolygonUtils
     {
+        public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
+        {
+            int crossings = 0;
+        
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                float2 a = polygon[i].A;
+                float2 b = polygon[i].B;
+        
+                // Check if point.x is between a.x and b.x (ray could intersect this edge)
+                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
+                {
+                    // Compute y intersection of vertical ray at point.x with edge (a → b)
+                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
+        
+                    if (point.y < yIntersection)
+                    {
+                        crossings++;
+                    }
+                }
+            }
+        
+            return (crossings % 2) == 1;
+        }
+
+        public static float2 PolygonCenter(List<EdgeKey> polygon)
+        {
+            var sum = float2.zero;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+               sum += polygon[i].A;
+               sum += polygon[i].B;
+            }
+            return sum / (polygon.Count * 2);
+        }
+        
         public static List<EdgeKey> GetEdgesUnordered(List<NavNode> triangles)
         {
             var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
@@ -147,31 +183,6 @@ namespace Navigation
 
             return loop;
         }
-        
-        public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
-        {
-            int crossings = 0;
-        
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                float2 a = polygon[i].A;
-                float2 b = polygon[i].B;
-        
-                // Check if point.x is between a.x and b.x (ray could intersect this edge)
-                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
-                {
-                    // Compute y intersection of vertical ray at point.x with edge (a → b)
-                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
-        
-                    if (point.y < yIntersection)
-                    {
-                        crossings++;
-                    }
-                }
-            }
-        
-            return (crossings % 2) == 1;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void AddEdge(Dictionary<EdgeKey, int> dict, EdgeKey edge)
@@ -184,19 +195,6 @@ namespace Navigation
             {
                 dict[edge] = 1;
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void AddPoint(List<float2> points, float2 point)
-        {
-            for (int i = 0; i < points.Count; i++)
-            {
-                if (math.lengthsq(points[i] - point) < 0.0001f)
-                {
-                    return;
-                }
-            }
-            points.Add(point);
         }
     }
 }

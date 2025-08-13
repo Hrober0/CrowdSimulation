@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HCore.Extensions;
 using HCore.Shapes;
 using Unity.Mathematics;
@@ -81,7 +82,7 @@ namespace Navigation
                 _navMesh.RemoveObstacle(o1);
                 
                 deg += Time.deltaTime * 20;
-                Debug.Log(_navMesh.Nodes.Length);
+                Debug.Log(_navMesh.GetActiveNodes.Count());
             }
         }
         

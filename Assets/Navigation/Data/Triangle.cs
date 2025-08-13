@@ -79,7 +79,7 @@ namespace Navigation
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float2 Center(float2 a, float2 b, float2 c) => (a + b + c) * 0.3333333f;
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float Sign(float2 a, float2 b, float2 c) => (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y);
 
@@ -95,7 +95,7 @@ namespace Navigation
 
             return !(hasNeg && hasPos);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool PointInExcludingEdges(float2 p, float2 a, float2 b, float2 c)
         {
@@ -109,79 +109,18 @@ namespace Navigation
             // Exclude edge cases (d1, d2, d3 == 0)
             return !(hasNeg && hasPos) && d1 != 0f && d2 != 0f && d3 != 0f;
         }
-        
+
         /// <summary>
         /// positive if CCW, negative if CW
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float SignedArea(float2 a, float2 b, float2 c) => Cross(b - a, c - a);
-        
+        public static float SignedArea(float2 a, float2 b, float2 c) => GeometryUtils.Cross(b - a, c - a);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float Area(float2 a, float2 b, float2 c) => math.abs(SignedArea(a, b, c)) * 0.5f;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsCCW(float2 a, float2 b, float2 c) => SignedArea(a, b, c) > 0;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool OnSegment(float2 a, float2 b, float2 c)
-        {
-            return math.min(a.x, c.x) <= b.x && b.x <= math.max(a.x, c.x) &&
-                   math.min(a.y, c.y) <= b.y && b.y <= math.max(a.y, c.y);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool EdgesIntersect(float2 a1, float2 a2, float2 b1, float2 b2)
-        {
-            float2 r = a2 - a1;
-            float2 s = b2 - b1;
-            float rxs = Cross(r, s);
-
-            if (math.abs(rxs) < math.E)
-            {
-                return false; // Parallel or collinear
-            }
-
-            float2 delta = b1 - a1;
-            float t = Cross(delta, s) / rxs;
-            float u = Cross(delta, r) / rxs;
-
-            return t is > 0f and < 1f && u is > 0f and < 1f;
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool EdgesIntersectIncludeEnds(float2 a1, float2 a2, float2 b1, float2 b2)
-        {
-            float2 r = a2 - a1;
-            float2 s = b2 - b1;
-            float rxs = Cross(r, s);
-            // float q_pxr = Cross(b1 - a1, r);
-
-            if (math.abs(rxs) < math.E)
-            {
-                return false; // Parallel or collinear
-            }
-
-            float2 delta = b1 - a1;
-            float t = Cross(delta, s) / rxs;
-            float u = Cross(delta, r) / rxs;
-
-            return t is >= 0f and <= 1f && u is >= 0f and <= 1f;
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static float2 IntersectionPoint(float2 p1, float2 p2, float2 p3, float2 p4)
-        {
-            float2 r = p2 - p1;
-            float2 s = p4 - p3;
-            float rxs = Cross(r, s);
-            if (math.abs(rxs) < 1e-8f)
-            {
-                return (p1 + p2) * 0.5f; // Lines nearly parallel
-            }
-
-            float t = Cross(p3 - p1, s) / rxs;
-            return p1 + t * r;
-        }
         
         #endregion
         
@@ -191,7 +130,7 @@ namespace Navigation
         {
             var bounds1 = t1.GetBounds();
             var bounds2 = t2.GetBounds();
-            if (!AabbOverlap(bounds1.min, bounds1.max, bounds2.min, bounds2.max))
+            if (!GeometryUtils.AabbOverlap(bounds1.min, bounds1.max, bounds2.min, bounds2.max))
             {
                 return false;
             }
@@ -218,7 +157,7 @@ namespace Navigation
             {
                 foreach (var e2 in t2.Edges)
                 {
-                    if (EdgesIntersect(e1.A, e1.B, e2.A, e2.B))
+                    if (GeometryUtils.EdgesIntersect(e1.A, e1.B, e2.A, e2.B))
                     {
                         return true;
                     }
@@ -284,14 +223,14 @@ namespace Navigation
                     {
                         if (!sInside)
                         {
-                            output.Add(IntersectionPoint(s, e, clipA, clipB));
+                            output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
                         }
 
                         output.Add(e);
                     }
                     else if (sInside)
                     {
-                        output.Add(IntersectionPoint(s, e, clipA, clipB));
+                        output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
                     }
     
                     s = e;
@@ -317,22 +256,8 @@ namespace Navigation
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static bool IsInside(float2 a, float2 b, float2 p) =>
                 // Left-of test for AB -> point
-                Cross(b - a, p - a) >= 0f;
+                GeometryUtils.Cross(b - a, p - a) >= 0f;
         }
-        
-        #endregion
-
-        #region Static utilities
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AabbOverlap(float2 minA, float2 maxA, float2 minB, float2 maxB)
-        {
-            return !(maxA.x < minB.x || minA.x > maxB.x ||
-                     maxA.y < minB.y || minA.y > maxB.y);
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static float Cross(float2 a, float2 b) => a.x * b.y - a.y * b.x;
         
         #endregion
     }

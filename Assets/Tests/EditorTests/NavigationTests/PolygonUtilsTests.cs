@@ -6,7 +6,7 @@ using Tests.TestsUtilities;
 
 namespace Tests.EditorTests.NavigationTests
 {
-    public class HullEdgesTests
+    public class PolygonUtilsTests
     {
         [Test]
         public void HullEdges_CCWTriangle()
@@ -16,7 +16,7 @@ namespace Tests.EditorTests.NavigationTests
                 new Triangle(new (0, 0), new (1, 0), new (0.5f, 1))
             };
         
-            var result = HullEdges.GetPointsCCW(triangles);
+            var result = PolygonUtils.GetPointsCCW(triangles);
             result.Should().HaveCount(3);
             result[0].Should().BeApproximately(new (0, 0));
             result[1].Should().BeApproximately(new (1, 0));
@@ -31,7 +31,7 @@ namespace Tests.EditorTests.NavigationTests
                 new Triangle(new (0, 0), new (0.5f, 1), new (1, 0))
             };
         
-            var result = HullEdges.GetPointsCCW(triangles);
+            var result = PolygonUtils.GetPointsCCW(triangles);
             result.Should().HaveCount(3);
             result[0].Should().BeApproximately(new (1, 0));
             result[1].Should().BeApproximately(new (0.5f, 1));
@@ -47,7 +47,7 @@ namespace Tests.EditorTests.NavigationTests
                 new Triangle(new (0, 0), new (1, 1), new (0, 1)),
             };
         
-            var result = HullEdges.GetPointsCCW(triangles);
+            var result = PolygonUtils.GetPointsCCW(triangles);
             result.Should().HaveCount(4);
             result[0].Should().BeApproximately(new (0, 0));
             result[1].Should().BeApproximately(new (1, 0));
@@ -64,7 +64,7 @@ namespace Tests.EditorTests.NavigationTests
                 new Triangle(new (0, 0), new (0, 1), new (1, 1)),
             };
         
-            var result = HullEdges.GetPointsCCW(triangles);
+            var result = PolygonUtils.GetPointsCCW(triangles);
             result.Should().HaveCount(4);
             result[0].Should().BeApproximately(new (0, 0));
             result[1].Should().BeApproximately(new (1, 0));
@@ -82,7 +82,7 @@ namespace Tests.EditorTests.NavigationTests
                 new Triangle(new (1, 1), new (0, 1), new (1, 2)),
             };
         
-            var result = HullEdges.GetPointsCCW(triangles);
+            var result = PolygonUtils.GetPointsCCW(triangles);
         
             result.Should().HaveCount(5);
             result[0].Should().BeApproximately(new (0, 0));

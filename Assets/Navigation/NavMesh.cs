@@ -342,14 +342,9 @@ namespace Navigation
 
         private void AddAndFillEmptySpace(List<AddNodeRequest> nodesToAdd, List<NavNode> emptyNodes)
         {
-            // Add nodes to navigation mesh
-            foreach (var node in nodesToAdd)
-            {
-                AddNode(node);
-            }
-
             // Calculate Border points
-            List<EdgeKey> borderEdges = HullEdges.GetEdgesUnordered(emptyNodes);
+            List<EdgeKey> borderEdges = PolygonUtils.GetEdgesUnordered(emptyNodes);
+            float2 borderCenter = PolygonUtils.PolygonCenter(borderEdges);
 
             // Debug.Log("Nodes to add:");
             // foreach (var n in nodesToAdd)
@@ -367,12 +362,103 @@ namespace Navigation
             var constraintEdges = new NativeList<int>(borderEdges.Count * 4, Allocator.TempJob);
             using var holes = new NativeList<float2>(nodesToAdd.Count, Allocator.TempJob);
 
-            var edgesConstraints = new HashSet<EdgeKey>();
+            var edgesConstraints = new HashSet<EdgeKey>(); // it's using ints as indexes not float positions
 
-            // Add nodes as holes to not fill them
+            // Add nodes to navigation mesh
             for (int i = 0; i < nodesToAdd.Count; i++)
             {
-                Triangle tr = nodesToAdd[i].Triangle;
+                AddNodeRequest node = nodesToAdd[i];
+                Triangle tr = node.Triangle;
+
+                // Check border intersection
+                if (IntersectWithBorder(tr, out int intersectedEdgeIndex))
+                {
+                    EdgeKey intersectedEdge = borderEdges[intersectedEdgeIndex];
+
+                    Debug.LogWarning($"Intersected border {intersectedEdge}");
+                    Debug.DrawLine(intersectedEdge.A.To3D(), intersectedEdge.B.To3D(), Color.yellow, 5);
+
+                    var pointsOnEdge = new List<float2>(3);
+                    switch (GeometryUtils.Side(intersectedEdge.A, intersectedEdge.B, tr.A, borderCenter))
+                    {
+                        case 0:
+                            pointsOnEdge.Add(tr.A);
+                            break;
+                        case < 0:
+                            Debug.LogWarning($"Point {tr.A} is out of bounds");
+                            continue;
+                    }
+
+                    switch (GeometryUtils.Side(intersectedEdge.A, intersectedEdge.B, tr.B, borderCenter))
+                    {
+                        case 0:
+                            pointsOnEdge.Add(tr.B);
+                            break;
+                        case < 0:
+                            Debug.LogWarning($"Point {tr.B} is out of bounds");
+                            continue;
+                    }
+
+                    switch (GeometryUtils.Side(intersectedEdge.A, intersectedEdge.B, tr.C, borderCenter))
+                    {
+                        case 0:
+                            pointsOnEdge.Add(tr.C);
+                            break;
+                        case < 0:
+                            Debug.LogWarning($"Point {tr.C} is out of bounds");
+                            continue;
+                    }
+
+                    // Debug.DrawLine(intersectedEdge.A.To3D() + Vector3.down * 0.1f, intersectedEdge.B.To3D() + Vector3.down * 0.1f,
+                    //     Color.black, 5);
+                    // borderCenter.To3D().DrawPoint(Color.black, 5);
+
+                    if (pointsOnEdge.Count == 1)
+                    {
+                        float2 singlePoint = pointsOnEdge[0];
+
+                        // intersectedEdge.A.To3D().DrawPoint(Color.red, 5);
+                        // intersectedEdge.B.To3D().DrawPoint(Color.red, 5);
+                        // singlePoint.To3D().DrawPoint(Color.magenta, 5);
+
+                        borderEdges[intersectedEdgeIndex] = new(intersectedEdge.A, singlePoint); // reuse removed index
+                        borderEdges.Add(new(intersectedEdge.B, singlePoint));
+                    }
+                    else if (pointsOnEdge.Count == 2)
+                    {
+                        float2 pointsCloseToEdgeA = pointsOnEdge[0];
+                        float2 pointsCloseToEdgeB = pointsOnEdge[1];
+                        if (math.distancesq(intersectedEdge.A, pointsCloseToEdgeA) >
+                            math.distancesq(intersectedEdge.A, pointsCloseToEdgeB))
+                        {
+                            (pointsCloseToEdgeA, pointsCloseToEdgeB) = (pointsCloseToEdgeB, pointsCloseToEdgeA);
+                        }
+
+                        // intersectedEdge.A.To3D().DrawPoint(Color.blue, 5);
+                        // intersectedEdge.B.To3D().DrawPoint(Color.red, 5);
+                        // pointsCloseToEdgeA.To3D().DrawPoint(Color.cyan, 5);
+                        // pointsCloseToEdgeB.To3D().DrawPoint(Color.yellow, 5);
+
+                        borderEdges[intersectedEdgeIndex] = new(intersectedEdge.A, pointsCloseToEdgeA); // reuse removed index
+                        borderEdges.Add(new(intersectedEdge.B, pointsCloseToEdgeB));
+                        borderEdges.Add(new(pointsCloseToEdgeA, pointsCloseToEdgeB)); // do not add edge constraint to not break border
+
+                        // Mark edge as already added to preserve adding constraint by triangle later
+                        // var ai = AddPosition(pointsCloseToEdgeA);
+                        // var bi = AddPosition(pointsCloseToEdgeB);
+                        // edgesConstraints.Add(new(ai, bi));
+                    }
+                    else
+                    {
+                        borderEdges.RemoveAt(intersectedEdgeIndex);
+                        Debug.LogError($"Unexpected number of points outside filling area ({pointsOnEdge.Count} points outside)");
+                        continue;
+                    }
+                }
+
+                // Add nodes to navigation mesh
+                AddNode(node);
+
                 var indexA = AddPosition(tr.A);
                 var indexB = AddPosition(tr.B);
                 var indexC = AddPosition(tr.C);
@@ -380,56 +466,44 @@ namespace Navigation
                 AddConstraint(indexA, indexB);
                 AddConstraint(indexB, indexC);
                 AddConstraint(indexC, indexA);
-                
+
+                // Do not fill holes
                 holes.Add(tr.GetCenter);
             }
-            
+
             // Add border points
             for (int i = 0; i < borderEdges.Count; i++)
             {
-                var edge = borderEdges[i];
-                if (IsIntersectionWithNewTriangles(edge, out Triangle triangle))
-                {
-                    /*if (Triangle.PointInExcludingEdges(edge.A, triangle.A, triangle.B, triangle.C)
-                        || Triangle.PointInExcludingEdges(edge.B, triangle.A, triangle.B, triangle.C))
-                    {
-                        Debug.LogError($"Triangle {triangle} is outside navigation area! It intersects border edge {edge}");
-                        continue;
-                    }
-                    
-                    AddPosition(edge.A);
-                    AddPosition(edge.B);*/
-                    
-                    // TODO:
-                    // 1. add invalid edges to list,
-                    // 2. find triangles that intersects them
-                    // 3. find border base on it
-                    // 4.add border as constraint keeping existing constraints
-                }
-                else
-                {
-                    var aIndex = AddPosition(edge.A);
-                    var bIndex = AddPosition(edge.B);
-                    AddConstraint(aIndex, bIndex);   
-                }
+                EdgeKey edge = borderEdges[i];
+                var aIndex = AddPosition(edge.A);
+                var bIndex = AddPosition(edge.B);
+                AddConstraint(aIndex, bIndex);
             }
-            
-            foreach (var p in borderEdges)
-            {
-                Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta);
-                // Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta, 5);
-            }
-            
-            // foreach (var p in positions)
+
+            // Debug.Log("Border edges:");
+            // foreach (var p in borderEdges)
             // {
-            //     p.To3D().DrawPoint(Color.magenta, 10);
+            //     // Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta);
+            //     Debug.DrawLine(p.A.To3D(), p.B.To3D(), Color.magenta, 5);
+            //     Debug.Log($"{p.A} - {p.B}");
             // }
             //
-            // for (int i = 0; i < constraintEdges.Length; i+=2)
+            // Debug.Log("Positions:");
+            // foreach (var p in positions)
+            // {
+            //     // p.To3D().DrawPoint(Color.magenta);
+            //     p.To3D().DrawPoint(Color.magenta, 5);
+            //     Debug.Log(p);
+            // }
+            //
+            // Debug.Log("constraints:");
+            // for (int i = 0; i < constraintEdges.Length; i += 2)
             // {
             //     var a = positions[constraintEdges[i]];
             //     var b = positions[constraintEdges[i + 1]];
-            //     Debug.DrawLine(a.To3D(), b.To3D(), Color.red, 10);
+            //     // Debug.DrawLine(a.To3D(), b.To3D(), Color.red);
+            //     Debug.DrawLine(a.To3D() + Vector3.down * 0.1f, b.To3D() + Vector3.down * 0.1f, Color.red, 5);
+            //     Debug.Log($"{i} ({a}) - {(i + 1)} ({b})");
             // }
 
             using var triangulator = new Triangulator<float2>(Allocator.TempJob)
@@ -440,7 +514,6 @@ namespace Navigation
                     ConstraintEdges = constraintEdges.AsArray(),
                     HoleSeeds = holes.AsArray(),
                 },
-                Settings = { AutoHolesAndBoundary = true, },
             };
             triangulator.Run();
 
@@ -451,14 +524,15 @@ namespace Navigation
                 float2 a = positions[triangles[i]];
                 float2 b = positions[triangles[i + 1]];
                 float2 c = positions[triangles[i + 2]];
-                if (Triangle.Area(a, b, c) < MIN_TRIANGLE_AREA)
+                var triangle = new Triangle(a, b, c);
+                if (Triangle.Area(a, b, c) < MIN_TRIANGLE_AREA || !PolygonUtils.IsPointInPolygon(triangle.GetCenter, borderEdges))
                 {
                     continue;
                 }
 
                 AddNode(new()
                 {
-                    Triangle = new(a, b, c),
+                    Triangle = triangle,
                     ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
                 });
             }
@@ -491,23 +565,30 @@ namespace Navigation
                 constraintEdges.Add(pi);
                 constraintEdges.Add(ei);
             }
-            
-            bool IsIntersectionWithNewTriangles(EdgeKey newEdge, out Triangle triangle)
+
+            bool IntersectWithBorder(Triangle triangle, out int edgeIndex)
             {
-                for (int ti = 0; ti < nodesToAdd.Count; ti++)
+                for (edgeIndex = 0; edgeIndex < borderEdges.Count; edgeIndex++)
                 {
-                    triangle = nodesToAdd[ti].Triangle;
-                    if (Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.A, triangle.B)
-                        || Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.B, triangle.C)
-                        || Triangle.EdgesIntersectIncludeEnds(newEdge.A, newEdge.B, triangle.C, triangle.A))
+                    var edge = borderEdges[edgeIndex];
+                    if (EdgesIntersect(edge.A, edge.B, triangle.A, triangle.B)
+                        || EdgesIntersect(edge.A, edge.B, triangle.B, triangle.C)
+                        || EdgesIntersect(edge.A, edge.B, triangle.C, triangle.A))
                     {
                         return true;
                     }
                 }
 
-                triangle = default;
+                edgeIndex = -1;
                 return false;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool EdgesIntersect(float2 a1, float2 a2, float2 b1, float2 b2)
+        {
+            return !a1.Equals(b1) && !a1.Equals(b2) && !a2.Equals(b1) && !a2.Equals(b2) &&
+                   GeometryUtils.EdgesIntersectIncludeEnds(a1, a2, b1, b2);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
