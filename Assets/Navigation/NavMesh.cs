@@ -13,6 +13,9 @@ namespace Navigation
 {
     public class NavMesh : IDisposable
     {
+        private const int NODES_DEFAULT_CAPACITY = 1024;
+        private const int OBSTACLES_DEFAULT_CAPACITY = 512;
+        
         private const float CELL_SIZE = 1f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
 
@@ -27,16 +30,18 @@ namespace Navigation
         private readonly Dictionary<EdgeKey, int> _nodesEdgeLookup = new();
 
         private NativeFixedList<Obstacle> _obstacles;
+        private NativeListHash<int> _obstacleIndexesCombined;
 
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
         public IEnumerable<NavNode> GetActiveNodes => _nodes;
 
         public NavMesh(List<float2> startPoints)
         {
-            _nodes = new(1000, Allocator.Persistent);
-            _nodesPositionLookup = new(1000, Allocator.Persistent);
+            _nodes = new(NODES_DEFAULT_CAPACITY, Allocator.Persistent);
+            _nodesPositionLookup = new(NODES_DEFAULT_CAPACITY * 2, Allocator.Persistent);
 
-            _obstacles = new(1000, Allocator.Persistent);
+            _obstacles = new(OBSTACLES_DEFAULT_CAPACITY, Allocator.Persistent);
+            _obstacleIndexesCombined = new(OBSTACLES_DEFAULT_CAPACITY, Allocator.Persistent);
 
             using var positions = new NativeArray<float2>(startPoints.ToArray(), Allocator.TempJob);
             using var triangulator = new Triangulator<float2>(Allocator.TempJob)
@@ -58,7 +63,7 @@ namespace Navigation
                         positions[triangles[i + 1]],
                         positions[triangles[i + 2]]
                     ),
-                    ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
+                    ObstacleId = AddNodeRequest.NO_OBSTACLE,
                 });
             }
         }
@@ -68,6 +73,7 @@ namespace Navigation
             _nodes.Dispose();
             _nodesPositionLookup.Dispose();
             _obstacles.Dispose();
+            _obstacleIndexesCombined.Dispose();
         }
 
         public int AddObstacle(List<Triangle> parts)
@@ -101,6 +107,11 @@ namespace Navigation
                 ChunkMax = chunkMax,
             });
 
+            var obstacleIndexesArray = new NativeArray<int>(1, Allocator.Temp);
+            obstacleIndexesArray[0] = obstacleIndex;
+            var obstacleId = _obstacleIndexesCombined.AddOrGetId(obstacleIndexesArray);
+            obstacleIndexesArray.Dispose();
+
             List<AddNodeRequest> nodesToAdd = new();
 
             // Add new obstacle to nodes to add 
@@ -109,7 +120,7 @@ namespace Navigation
                 nodesToAdd.Add(new()
                 {
                     Triangle = part,
-                    ObstacleIndex = obstacleIndex,
+                    ObstacleId = obstacleId,
                 });
             }
 
@@ -124,7 +135,7 @@ namespace Navigation
                     nodesToAdd.Add(new()
                     {
                         Triangle = CreateCCW(node.CornerA, node.CornerB, node.CornerC),
-                        ObstacleIndex = node.ConfigIndex,
+                        ObstacleId = node.ConfigIndex,
                     });
                 }
             }
@@ -146,14 +157,44 @@ namespace Navigation
             List<AddNodeRequest> nodesToAdd = new();
             foreach (NavNode node in removedNodes)
             {
-                if (node.ConfigIndex >= 0 && node.ConfigIndex != id)
+                if (node.ConfigIndex < 0)
                 {
+                    // Skip fill nodes
+                    continue;
+                }
+
+                using NativeArray<int> obstacleIndexes = _obstacleIndexesCombined.GetElements(node.ConfigIndex, Allocator.Temp);
+                var removedObstacleIndex = obstacleIndexes.IndexOf(id);
+                if (removedObstacleIndex == -1)
+                {
+                    // Obstacle node does not contain removing id, add it without changes
                     nodesToAdd.Add(new()
                     {
                         Triangle = node.Triangle,
-                        ObstacleIndex = node.ConfigIndex,
+                        ObstacleId = node.ConfigIndex,
                     });
+                    continue;
                 }
+
+                if (obstacleIndexes.Length <= 1)
+                {
+                    // Do not add empty obstacle
+                    continue;
+                }
+
+                // Remove obstacle index
+                using NativeArray<int> fixedObstacleIndexes = new(obstacleIndexes.Length - 1, Allocator.Temp);
+                NativeArray<int>.Copy(obstacleIndexes, 0, fixedObstacleIndexes, 0, removedObstacleIndex);
+                if (removedObstacleIndex + 1 < fixedObstacleIndexes.Length)
+                {
+                    NativeArray<int>.Copy(obstacleIndexes, removedObstacleIndex + 1, fixedObstacleIndexes, removedObstacleIndex, obstacleIndexes.Length - removedObstacleIndex - 1);
+                }
+                var newObstacleId = _obstacleIndexesCombined.AddOrGetId(fixedObstacleIndexes);
+                nodesToAdd.Add(new()
+                {
+                    Triangle = node.Triangle,
+                    ObstacleId = newObstacleId,
+                });
             }
 
             AddAndFillEmptySpace(nodesToAdd, removedNodes);
@@ -176,7 +217,16 @@ namespace Navigation
             return false;
         }
 
-        public static void EnsureValidTriangulation(List<AddNodeRequest> nodes)
+        public IEnumerable<int> GetObstacleIndexes(int obstacleId)
+        {
+            using var indexes = _obstacleIndexesCombined.GetElements(obstacleId, Allocator.Temp);
+            foreach (var index in indexes)
+            {
+                yield return index;
+            }
+        }
+        
+        public void EnsureValidTriangulation(List<AddNodeRequest> nodes)
         {
             var tries = 1000;
             for (int i = 0; i < nodes.Count; i++)
@@ -283,7 +333,7 @@ namespace Navigation
                 output.Add(new()
                 {
                     Triangle = CreateCCW(a, b, c),
-                    ObstacleIndex = subject.ObstacleIndex,
+                    ObstacleId = subject.ObstacleId,
                 });
             }
 
@@ -305,10 +355,25 @@ namespace Navigation
             }
         }
 
-        private static void AddIntersection(AddNodeRequest n1, AddNodeRequest n2, float2[] intersection, List<AddNodeRequest> output)
+        private void AddIntersection(AddNodeRequest n1, AddNodeRequest n2, float2[] intersection, List<AddNodeRequest> output)
         {
-            using var positions = new NativeArray<float2>(intersection, Allocator.TempJob);
-            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            // Combine obstacle indexes
+            using NativeArray<int> indexes1 = _obstacleIndexesCombined.GetElements(n1.ObstacleId, Allocator.Temp);
+            using NativeArray<int> indexes2 = _obstacleIndexesCombined.GetElements(n2.ObstacleId, Allocator.Temp);
+            using NativeList<int> indexesCombined = new(Allocator.Temp);
+            indexesCombined.AddRange(indexes1);
+            foreach (int index in indexes2)
+            {
+                if (!indexesCombined.Contains(index))
+                {
+                    indexesCombined.Add(index);
+                }
+            }
+            var obstacleId = _obstacleIndexesCombined.AddOrGetId(indexesCombined.AsArray());
+            
+            // Fill intersection with triangles
+            using NativeArray<float2> positions = new(intersection, Allocator.TempJob);
+            using Triangulator<float2> triangulator = new(Allocator.TempJob)
             {
                 Input =
                 {
@@ -317,13 +382,14 @@ namespace Navigation
             };
             triangulator.Run();
 
+            // Add new obstacles
             var triangles = triangulator.Output.Triangles;
             for (int i = 0; i < triangles.Length; i += 3)
             {
                 output.Add(new()
                 {
                     Triangle = CreateCCW(positions[triangles[i]], positions[triangles[i + 1]], positions[triangles[i + 2]]),
-                    ObstacleIndex = n1.ObstacleIndex, // TODO: merge
+                    ObstacleId = obstacleId
                 });
             }
         }
@@ -528,7 +594,7 @@ namespace Navigation
                 AddNode(new()
                 {
                     Triangle = triangle,
-                    ObstacleIndex = AddNodeRequest.NO_OBSTACLE,
+                    ObstacleId = AddNodeRequest.NO_OBSTACLE,
                 });
             }
 
@@ -720,7 +786,7 @@ namespace Navigation
                 connectionAB: TryConnect(a, b, newIndex),
                 connectionAC: TryConnect(a, c, newIndex),
                 connectionBC: TryConnect(b, c, newIndex),
-                addAddNodeRequest.ObstacleIndex
+                addAddNodeRequest.ObstacleId
             );
 
             // add to array
@@ -853,9 +919,9 @@ namespace Navigation
             public const int NO_OBSTACLE = -1;
 
             public Triangle Triangle;
-            public int ObstacleIndex;
+            public int ObstacleId;
 
-            public override string ToString() => $"AddNodeRequest: {Triangle} | ObstacleIndex: {ObstacleIndex}";
+            public override string ToString() => $"AddNodeRequest: {Triangle} | ObstacleIndex: {ObstacleId}";
         }
     }
 }

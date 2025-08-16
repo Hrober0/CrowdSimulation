@@ -8,7 +8,8 @@
         "BoundfoxStudios.FluentAssertions",
         "TestsUtilities",
         "HCore",
-        "andywiecko.BurstTriangulator"
+        "andywiecko.BurstTriangulator",
+        "CustomNativeCollections"
     ],
     "includePlatforms": [
         "Editor"
