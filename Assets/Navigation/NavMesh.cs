@@ -15,7 +15,7 @@ namespace Navigation
     {
         private const int NODES_DEFAULT_CAPACITY = 1024;
         private const int OBSTACLES_DEFAULT_CAPACITY = 512;
-        
+
         private const float CELL_SIZE = 1f;
         private const float CELL_MULTIPLIER = 1f / CELL_SIZE;
 
@@ -187,8 +187,10 @@ namespace Navigation
                 NativeArray<int>.Copy(obstacleIndexes, 0, fixedObstacleIndexes, 0, removedObstacleIndex);
                 if (removedObstacleIndex + 1 < fixedObstacleIndexes.Length)
                 {
-                    NativeArray<int>.Copy(obstacleIndexes, removedObstacleIndex + 1, fixedObstacleIndexes, removedObstacleIndex, obstacleIndexes.Length - removedObstacleIndex - 1);
+                    NativeArray<int>.Copy(obstacleIndexes, removedObstacleIndex + 1, fixedObstacleIndexes, removedObstacleIndex,
+                        obstacleIndexes.Length - removedObstacleIndex - 1);
                 }
+
                 var newObstacleId = _obstacleIndexesCombined.AddOrGetId(fixedObstacleIndexes);
                 nodesToAdd.Add(new()
                 {
@@ -225,7 +227,7 @@ namespace Navigation
                 yield return index;
             }
         }
-        
+
         public void EnsureValidTriangulation(List<AddNodeRequest> nodes)
         {
             var tries = 1000;
@@ -244,7 +246,7 @@ namespace Navigation
 
                     AddNodeRequest t2 = nodes[j];
 
-                    List<float2> intersection = Triangle.PolygonIntersection(t1.Triangle.Vertices, t2.Triangle.Vertices);
+                    List<float2> intersection = PolygonUtils.PolygonIntersection(t1.Triangle.Vertices, t2.Triangle.Vertices);
 
                     if (intersection.Count < 3)
                     {
@@ -369,8 +371,9 @@ namespace Navigation
                     indexesCombined.Add(index);
                 }
             }
+
             var obstacleId = _obstacleIndexesCombined.AddOrGetId(indexesCombined.AsArray());
-            
+
             // Fill intersection with triangles
             using NativeArray<float2> positions = new(intersection, Allocator.TempJob);
             using Triangulator<float2> triangulator = new(Allocator.TempJob)

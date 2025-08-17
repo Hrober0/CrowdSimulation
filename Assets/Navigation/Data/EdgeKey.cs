@@ -30,7 +30,7 @@ namespace Navigation
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(EdgeKey other) => A.Equals(other.A) && B.Equals(other.B);
         
-        public override int GetHashCode() => A.GetHashCode() ^ B.GetHashCode(); // XOR for 
+        public override int GetHashCode() => (A.GetHashCode() * 397) ^ B.GetHashCode();
 
         public override string ToString() => $"({A.x}, {A.y})({B.x}, {B.y})";
 

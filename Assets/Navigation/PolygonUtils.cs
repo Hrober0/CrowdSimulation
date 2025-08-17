@@ -184,6 +184,78 @@ namespace Navigation
             return loop;
         }
 
+        public static List<float2> PolygonIntersection(IReadOnlyList<float2> polyA, IReadOnlyList<float2> polyB)
+        {
+            if (polyA.Count < 3 || polyB.Count < 3)
+            {
+                return new();
+            }
+
+            // Start with all vertices from polyA
+            var output = new List<float2>(polyA);
+    
+            // Clip against each edge of polyB
+            for (int i = 0; i < polyB.Count; i++)
+            {
+                float2 clipA = polyB[i];
+                float2 clipB = polyB[(i + 1) % polyB.Count];
+    
+                List<float2> input = output;
+                output = new();
+    
+                if (input.Count == 0)
+                {
+                    break;
+                }
+
+                float2 s = input[^1];
+                for (int j = 0; j < input.Count; j++)
+                {
+                    float2 e = input[j];
+    
+                    bool eInside = IsInside(clipA, clipB, e);
+                    bool sInside = IsInside(clipA, clipB, s);
+    
+                    if (eInside)
+                    {
+                        if (!sInside)
+                        {
+                            output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
+                        }
+
+                        output.Add(e);
+                    }
+                    else if (sInside)
+                    {
+                        output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
+                    }
+    
+                    s = e;
+                }
+            }
+            
+            // RemoveDuplicates
+            for (int i = 0; i < output.Count; i++)
+            {
+                float2 p = output[i];
+                for (int j = i + 1; j < output.Count; j++)
+                {
+                    if (math.lengthsq(p - output[j]) < .0001f)
+                    {
+                        output.RemoveAt(j);
+                        j--;
+                    }
+                }
+            }
+                
+            return output;
+            
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static bool IsInside(float2 a, float2 b, float2 p) =>
+                // Left-of test for AB -> point
+                GeometryUtils.Cross(b - a, p - a) >= 0f;
+        }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void AddEdge(Dictionary<EdgeKey, int> dict, EdgeKey edge)
         {
