@@ -163,6 +163,192 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.GetObstacleIndexes(merged[1].ObstacleId).Should().HaveCount(2);
         }
 
+        [Test]
+        public void Merge_ShouldReduceTwoCollinearTriangles_ToOneBiggerTriangle()
+        {
+            // Arrange: two triangles sharing edge (2,0)-(1,1)
+            var tris = new List<NavMesh.AddNodeRequest>()
+            {
+                new()
+                {
+                    Triangle = new(new(0, 0), new(2, 0), new(1, 1)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new(1, 1), new(2, 2), new(2, 0)),
+                    ObstacleId = 1
+                },
+            };
+
+            DrawOffset(tris[0].Triangle, Color.green);
+            DrawOffset(tris[1].Triangle, Color.red);
+            
+            // Act
+            NavMesh.TryMergeTriangles(tris);
+            
+            Draw(tris);
+            
+            // Assert: should now be only one triangle
+            tris.Should().HaveCount(1);
+            var result = tris[0];
+            
+            var verts = new HashSet<float2>(result.Triangle.Vertices);
+            verts.Should().BeEquivalentTo(new[]
+            {
+                new float2(0, 0),
+                new float2(2, 0),
+                new float2(2, 2)
+            });
+        }
+        
+        
+        [Test]
+        public void Merge_ShouldNotMergeTwoCollinearTriangles_WhenHaveDifferentId()
+        {
+            // Arrange: two triangles sharing edge (2,0)-(1,1)
+            var tris = new List<NavMesh.AddNodeRequest>()
+            {
+                new()
+                {
+                    Triangle = new(new(0, 0), new(2, 0), new(1, 1)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new(1, 1), new(2, 2), new(2, 0)),
+                    ObstacleId = 2
+                },
+            };
+
+            DrawOffset(tris[0].Triangle, Color.green);
+            DrawOffset(tris[1].Triangle, Color.red);
+            
+            // Act
+            NavMesh.TryMergeTriangles(tris);
+            
+            Draw(tris);
+            
+            // Assert
+            tris.Should().HaveCount(2);
+        }
+        
+        [Test]
+        public void Merge_ShouldMergeMultipleCollinearTriangles()
+        {
+            // Arrange: 3 small collinear triangles forming a big one
+            var tris = new List<NavMesh.AddNodeRequest>()
+            {
+                new()
+                {
+                    Triangle = new(new float2(0, 0), new float2(4, 0), new float2(2, 2)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new float2(2, 2), new float2(4, 2), new float2(4, 0)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new(2, 2), new(4, 2), new(3, 3)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new(3, 3), new(4, 4), new(4, 2)),
+                    ObstacleId = 1
+                },
+            };
+
+            DrawOffset(tris[0].Triangle, Color.green);
+            DrawOffset(tris[1].Triangle, Color.red);
+            DrawOffset(tris[2].Triangle, Color.magenta);
+            DrawOffset(tris[3].Triangle, Color.blue);
+            
+            // Act
+            NavMesh.TryMergeTriangles(tris);
+
+            Draw(tris);
+            
+            // Assert: should collapse into one large triangle
+            tris.Should().HaveCount(1);
+        }
+
+        [Test]
+        public void Merge_ShouldNotChange_WhenNotCollinear()
+        {
+            // Arrange: two triangles sharing edge but not collinear
+            var tris = new List<NavMesh.AddNodeRequest>()
+            {
+                new()
+                {
+                    Triangle = new(new float2(0, 0), new float2(1, 0), new float2(0, 1)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new float2(0, 1), new float2(1, 0), new float2(1, 1)),
+                    ObstacleId = 1
+                },
+            };
+
+            DrawOffset(tris[0].Triangle, Color.green);
+            DrawOffset(tris[1].Triangle, Color.red);
+            
+            // Act
+            NavMesh.TryMergeTriangles(tris);
+
+            Draw(tris);
+            
+            // Assert: still 2 triangles
+            tris.Should().HaveCount(2);
+            tris.Should().ContainEquivalentOf(tris[0]);
+            tris.Should().ContainEquivalentOf(tris[1]);
+        }
+
+        [Test]
+        public void Merge_ShouldMergeNotCollinearMultipleTriangles()
+        {
+            // Arrange: 3 small collinear triangles forming a big one
+            var tris = new List<NavMesh.AddNodeRequest>()
+            {
+                new()
+                {
+                    Triangle = new(new float2(0, 0), new float2(1, 0), new float2(0, 1)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new float2(0, 1), new float2(1, 0), new float2(2, 1)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new float2(2, 1), new float2(1, 0), new float2(3, 0)),
+                    ObstacleId = 1
+                },
+                new()
+                {
+                    Triangle = new(new float2(0, 1), new float2(2, 1), new float2(0, 3)),
+                    ObstacleId = 1
+                },
+            };
+
+            DrawOffset(tris[0].Triangle, Color.green);
+            DrawOffset(tris[1].Triangle, Color.red);
+            DrawOffset(tris[2].Triangle, Color.magenta);
+            DrawOffset(tris[3].Triangle, Color.blue);
+            
+            // Act
+            NavMesh.TryMergeTriangles(tris);
+
+            Draw(tris);
+            
+            // Assert: should collapse into one large triangle
+            tris.Should().HaveCount(1);
+        }
+
         #endregion
 
         [Test]
@@ -548,30 +734,18 @@ namespace Tests.EditorTests.NavigationTests
 
         #region Debug utils
 
-        private void DebugTrianglesList(List<Triangle> triangles)
+        private void Draw(List<Triangle> triangles)
         {
             if (!debug)
             {
                 return;
             }
 
-            var s = "";
-            foreach (var triangle in triangles)
+            foreach (var tr in triangles)
             {
-                s += $"\nnew Triangle(new {triangle.A}, new {triangle.B}, new {triangle.C}),";
+                tr.DrawBorder(Color.white, 3);
+                tr.GetCenter.To3D().DrawPoint(Color.white, 3, .1f);
             }
-
-            Debug.Log(s);
-        }
-
-        private void Draw(Triangle tr, Color color)
-        {
-            if (!debug)
-            {
-                return;
-            }
-
-            new Triangle(tr.A, tr.B, tr.C).DrawBorder(color, 5);
         }
 
         private void DrawOffset(Triangle tr, Color color)

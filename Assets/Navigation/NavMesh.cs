@@ -142,6 +142,7 @@ namespace Navigation
 
             EnsureValidTriangulation(nodesToAdd);
 
+            TryMergeTriangles(nodesToAdd);
             AddAndFillEmptySpace(nodesToAdd, removedNodes);
 
             return obstacleIndex;
@@ -199,6 +200,7 @@ namespace Navigation
                 });
             }
 
+            TryMergeTriangles(nodesToAdd);
             AddAndFillEmptySpace(nodesToAdd, removedNodes);
         }
 
@@ -394,6 +396,74 @@ namespace Navigation
                     Triangle = CreateCCW(positions[triangles[i]], positions[triangles[i + 1]], positions[triangles[i + 2]]),
                     ObstacleId = obstacleId
                 });
+            }
+        }
+
+        public static void TryMergeTriangles(List<AddNodeRequest> triangles)
+        {
+            var edgeMap = new Dictionary<EdgeKey, (int index, float2 firstThirdPoint)>(triangles.Count * 3);
+
+            bool merged;
+            do
+            {
+                merged = false;
+                edgeMap.Clear();
+
+                // Find triangles with common edge
+                for (int i = 0; i < triangles.Count; i++)
+                {
+                    Triangle t = triangles[i].Triangle;
+                    merged = AddEdge(t.A, t.B, t.C, i)
+                             || AddEdge(t.B, t.C, t.A, i)
+                             || AddEdge(t.C, t.A, t.B, i);
+
+                    if (merged)
+                    {
+                        break;
+                    }
+                }
+            } while (merged);
+
+            return;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool AddEdge(float2 v1, float2 v2, float2 thirdPoint, int index)
+            {
+                var key = new EdgeKey(v1, v2);
+
+                // when edge was already register it means that triangles have common edge
+                if (!edgeMap.TryGetValue(key, out (int index, float2 thirdPoint) first))
+                {
+                    edgeMap.Add(key, (index, thirdPoint));
+                    return false;
+                }
+
+                if (triangles[index].ObstacleId != triangles[first.index].ObstacleId)
+                {
+                    return false;
+                }
+
+                if (GeometryUtils.Collinear(thirdPoint, first.thirdPoint, v2))
+                {
+                    // merge into one triangle by v1
+                    var last = triangles[first.index];
+                    last.Triangle = new Triangle(thirdPoint, first.thirdPoint, v1);
+                    triangles[first.index] = last;
+                    triangles.RemoveAt(index);
+                    return true;
+                }
+
+                if (GeometryUtils.Collinear(thirdPoint, first.thirdPoint, v1))
+                {
+                    // merge into one triangle by v2
+                    var last = triangles[first.index];
+                    last.Triangle = new Triangle(thirdPoint, first.thirdPoint, v2);
+                    triangles[first.index] = last;
+                    triangles.RemoveAt(index);
+                    return true;
+                }
+
+                return false;
             }
         }
 
