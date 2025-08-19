@@ -8,6 +8,8 @@ namespace Navigation
 {
     public static class PolygonUtils
     {
+        private const float EPSILON = 1e-6f;
+        
         public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
         {
             int crossings = 0;
@@ -254,6 +256,48 @@ namespace Navigation
             static bool IsInside(float2 a, float2 b, float2 p) =>
                 // Left-of test for AB -> point
                 GeometryUtils.Cross(b - a, p - a) >= 0f;
+        }
+        
+        public static void CutIntersectingEdges(List<Edge> edges)
+        {
+            for (int ai = 0; ai < edges.Count; ai++)
+            {
+                for (int bi = ai + 1; bi < edges.Count; bi++)
+                {
+                    Edge a = edges[ai];
+                    Edge b = edges[bi];
+                    if (GeometryUtils.TryIntersect(a.A, a.B, b.A, b.B, out float2 p))
+                    {
+                        SplitEdge(a, p, ai);
+                        SplitEdge(b, p, bi);
+                    }
+                }
+            }
+
+            return;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void SplitEdge(Edge e, float2 p, int index)
+            {
+                if (math.distancesq(e.A, p) > EPSILON)
+                {
+                    edges[index] = new(e.A, p);
+
+                    if (math.distancesq(e.B, p) > EPSILON)
+                    {
+                        edges.Add(new(e.B, p));
+                    }
+                }
+                else
+                {
+                    edges[index] = new(e.B, p);
+
+                    if (math.distancesq(e.A, p) > EPSILON)
+                    {
+                        edges.Add(new(e.A, p));
+                    }
+                }
+            }
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

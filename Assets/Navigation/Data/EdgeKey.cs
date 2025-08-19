@@ -40,4 +40,9 @@ namespace Navigation
             yield return B;
         }
     }
+
+    public static class EdgeKeyExtensions
+    {
+        public static EdgeKey ToEdgeKey(this Edge edge) => new(edge.A, edge.B);
+    }
 }

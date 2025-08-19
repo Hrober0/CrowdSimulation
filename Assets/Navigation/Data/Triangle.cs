@@ -44,12 +44,13 @@ namespace Navigation
             yield return B;
             yield return C;
         }
+
+        public float2 Min => math.min(math.min(A, B), C);
+        public float2 Max => math.max(math.max(A, B), C);
         
         public (float2 min, float2 max) GetBounds()
         {
-            float2 min = math.min(math.min(A, B), C);
-            float2 max = math.max(math.max(A, B), C);
-            return (min, max);
+            return (Min, Max);
         }
         
         public void Deconstruct(out float2 a, out float2 b, out float2 c)

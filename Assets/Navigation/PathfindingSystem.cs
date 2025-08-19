@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -11,28 +13,36 @@ namespace Navigation
     public class PathfindingSystem : MonoBehaviour
     {
         [SerializeField] private List<Transform> _borderPoints;
+        
+        [Space]
         [SerializeField] private bool _drawConnections;
         [SerializeField] private bool _drawNodes;
-        [SerializeField] private bool _drawObstacles;
 
+        [Space]
+        [SerializeField] private bool _drawObstacleTriangle;
+        [SerializeField] private bool _drawObstacleBorder;
+        
         private NavMesh _navMesh;
+        private NavObstacles _navObstacles;
 
         private void Start()
         {
-            var startPoints = new List<float2>();
-            foreach (var pointTransform in _borderPoints)
-            {
-                startPoints.Add(pointTransform.position.To2D());
-            }
-            _navMesh = new NavMesh(startPoints);
+            _navMesh = new(1);
+            _navObstacles = new(1);
 
-            // _ = CheckInsertion();
-            _ = CheckRectangle();
+            if (_borderPoints.Count > 2)
+            {
+                AddInitNodes();
+            }
+
+            _ = CheckInsertion();
+            // _ = CheckRectangle();
         }
 
         private void OnDestroy()
         {
             _navMesh.Dispose();
+            _navObstacles.Dispose();
         }
 
         private async Awaitable WaitForClick()
@@ -45,46 +55,43 @@ namespace Navigation
         private async Awaitable CheckInsertion()
         {
             await WaitForClick();
-            var o1 = _navMesh.AddObstacle(new()
+            var o1 = _navObstacles.AddObstacle(new()
             {
                 new(new(1, 1), new(3, 1), new(3, 3))
             });
             
             await WaitForClick();
-            var o2 = _navMesh.AddObstacle(new()
-            {
-                new(new(10, 10), new(8, 8), new(10, 8))
-            });
+            var o2 = _navObstacles.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
             
             await WaitForClick();
-            _navMesh.RemoveObstacle(o1);
+            _navObstacles.RemoveObstacle(o1);
             
             await WaitForClick();
-            _navMesh.RemoveObstacle(o2);
+            _navObstacles.RemoveObstacle(o2);
         }
-        private async Awaitable CheckRectangle()
-        {
-            _navMesh.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
-            
-            float deg = 0;
-            await WaitForClick();
-            while (true)
-            {
-                var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
-                // var mpos = new float2(5, 5);
-                // mpos.DrawPoint(Color.magenta, 1);
-                // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
-                var o1 = _navMesh.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
-
-                // await WaitForClick();
-                
-                await Awaitable.NextFrameAsync();
-                _navMesh.RemoveObstacle(o1);
-                
-                deg += Time.deltaTime * 20;
-                Debug.Log(_navMesh.GetActiveNodes.Count());
-            }
-        }
+        // private async Awaitable CheckRectangle()
+        // {
+        //     _navMesh.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+        //     
+        //     float deg = 0;
+        //     await WaitForClick();
+        //     while (true)
+        //     {
+        //         var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
+        //         // var mpos = new float2(5, 5);
+        //         // mpos.DrawPoint(Color.magenta, 1);
+        //         // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
+        //         var o1 = _navMesh.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
+        //
+        //         await WaitForClick();
+        //         
+        //         await Awaitable.NextFrameAsync();
+        //         _navMesh.RemoveObstacle(o1);
+        //         
+        //         deg += Time.deltaTime * 20;
+        //         Debug.Log(_navMesh.GetActiveNodes.Count());
+        //     }
+        // }
         
         public static List<Triangle> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
         {
@@ -131,9 +138,13 @@ namespace Navigation
                 {
                     _navMesh.DrawNodes();
                 }
-                if (_drawObstacles)
+                if (_drawObstacleTriangle)
                 {
-                    _navMesh.DrawObstacles();
+                    _navObstacles.DrawLookup();
+                }
+                if (_drawObstacleBorder)
+                {
+                    _navObstacles.DrawEdges();
                 }
             }
             else if (_drawNodes)
@@ -145,6 +156,39 @@ namespace Navigation
                     startPoints.Add(pointTransform.position.To2D());
                 }
                 IOutline.DrawBorderGizmos(startPoints);
+            }
+        }
+
+        private void AddInitNodes()
+        {
+            var positions = new NativeArray<float2>(_borderPoints.Count, Allocator.TempJob);
+            for (var index = 0; index < _borderPoints.Count; index++)
+            {
+                Transform pointTransform = _borderPoints[index];
+                positions[index] = pointTransform.position.To2D();
+            }
+
+            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            {
+                Input =
+                {
+                    Positions = positions,
+                },
+            };
+            triangulator.Run();
+            positions.Dispose();
+
+            var triangles = triangulator.Output.Triangles;
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                _navMesh.AddNode(new()
+                {
+                    Triangle = new(
+                        positions[triangles[i]],
+                        positions[triangles[i + 1]],
+                        positions[triangles[i + 2]]
+                    ),
+                });
             }
         }
     }

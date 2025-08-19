@@ -5,6 +5,8 @@ namespace Navigation
 {
     public static class GeometryUtils
     {
+        private const float EPSILON = 1e-6f;
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool OnSegment(float2 a, float2 b, float2 c)
         {
@@ -52,18 +54,61 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float2 IntersectionPoint(float2 p1, float2 p2, float2 p3, float2 p4)
+        public static float2 IntersectionPoint(float2 a1, float2 a2, float2 b1, float2 b2)
         {
-            float2 r = p2 - p1;
-            float2 s = p4 - p3;
+            float2 r = a2 - a1;
+            float2 s = b2 - b1;
             float rxs = Cross(r, s);
-            if (math.abs(rxs) < 1e-8f)
+            if (math.abs(rxs) < EPSILON)
             {
-                return (p1 + p2) * 0.5f; // Lines nearly parallel
+                return (a1 + a2) * 0.5f; // Lines nearly parallel
             }
 
-            float t = Cross(p3 - p1, s) / rxs;
-            return p1 + t * r;
+            float t = Cross(b1 - a1, s) / rxs;
+            return a1 + t * r;
+        }
+        
+        /// <summary>
+        /// Ends are included
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryIntersect(float2 a1, float2 a2, float2 b1, float2 b2, out float2 intersection)
+        {
+            float2 r = a2 - a1;
+            float2 s = b2 - b1;
+
+            float rxs = Cross(r, s);
+            float qpxr = Cross(b1 - a1, r);
+
+            // Default
+            intersection = default;
+
+            // Collinear
+            if (math.abs(rxs) < EPSILON && math.abs(qpxr) < EPSILON)
+            {
+                // Overlapping collinear segments → skip (not a single intersection point)
+                return false;
+            }
+
+            // Parallel, non-intersecting
+            if (math.abs(rxs) < EPSILON)
+            {
+                return false;
+            }
+
+            float2 delta = b1 - a1;
+            float t = Cross(delta, s) / rxs;
+            float u = Cross(delta, r) / rxs;
+
+            if (t is < -EPSILON or > 1 + EPSILON ||
+                u is < -EPSILON or > 1 + EPSILON)
+            {
+                return false;
+            }
+
+            // Proper intersection
+            intersection = a1 + t * r;
+            return true;
         }
         
         /// <summary>

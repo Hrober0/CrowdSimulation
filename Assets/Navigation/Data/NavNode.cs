@@ -34,10 +34,7 @@ namespace Navigation
 
         public readonly float2 Center;
 
-        public readonly int ConfigIndex;
-
-        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionAC, int connectionBC,
-                       int configIndex)
+        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionAC, int connectionBC)
         {
             CornerA = cornerA;
             CornerB = cornerB;
@@ -53,11 +50,9 @@ namespace Navigation
             EdgeBC = math.length(cornerB - cornerC);
 
             Center = Triangle.Center(cornerA, cornerB, cornerC);
-
-            ConfigIndex = configIndex;
         }
 
-        public bool IsEmpty => EdgeAB != 0;
+        public bool IsEmpty => EdgeAB == 0;
 
         public Triangle Triangle => new(CornerA, CornerB, CornerC);
 

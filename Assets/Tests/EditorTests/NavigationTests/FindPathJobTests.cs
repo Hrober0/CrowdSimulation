@@ -65,8 +65,7 @@ namespace Tests.EditorTests.NavigationTests
                 c,
                 connectionAB: -1,
                 connectionAC: -1,
-                connectionBC: 1,
-                0
+                connectionBC: 1
             );
             nodes[1] = new NavNode(
                 b,
@@ -74,8 +73,7 @@ namespace Tests.EditorTests.NavigationTests
                 c,
                 connectionAB: -1,
                 connectionAC: 0,
-                connectionBC: -1,
-                0
+                connectionBC: -1
             );
 
             var start = new float2(0.1f, 0.1f);
@@ -128,8 +126,7 @@ namespace Tests.EditorTests.NavigationTests
                 cornerC: c,
                 connectionAB: -1,
                 connectionAC: -1,
-                connectionBC: 1,
-                0
+                connectionBC: 1
             );
             // Triangle 1: CBD
             nodes[1] = new NavNode(
@@ -138,8 +135,7 @@ namespace Tests.EditorTests.NavigationTests
                 cornerC: d,
                 connectionAB: 0,
                 connectionAC: -1,
-                connectionBC: 2,
-                0
+                connectionBC: 2
             );
             // Triangle 2: BFD
             nodes[2] = new NavNode(
@@ -148,8 +144,7 @@ namespace Tests.EditorTests.NavigationTests
                 cornerC: d,
                 connectionAB: -1,
                 connectionAC: 1,
-                connectionBC: 3,
-                0
+                connectionBC: 3
             );
             // Triangle 3: DEF
             nodes[3] = new NavNode(
@@ -158,8 +153,7 @@ namespace Tests.EditorTests.NavigationTests
                 cornerC: f,
                 connectionAB: 1,
                 connectionAC: 2,
-                connectionBC: -1,
-                0
+                connectionBC: -1
             );
 
             float2 start = nodes[0].Center;

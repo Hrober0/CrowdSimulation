@@ -1,14 +1,18 @@
 ﻿using System.Collections.Generic;
 using FluentAssertions;
+using HCore.Extensions;
 using Navigation;
 using NUnit.Framework;
 using Tests.TestsUtilities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Tests.EditorTests.NavigationTests
 {
     public class PolygonUtilsTests
     {
+        private bool debug = true;
+        
         [Test]
         public void HullEdges_CCWTriangle()
         {
@@ -166,6 +170,130 @@ namespace Tests.EditorTests.NavigationTests
             result[0].Should().BeApproximately(new float2(1, 3));
             result[1].Should().BeApproximately(new float2(1, 2));
             result[2].Should().BeApproximately(new float2(1.3333333333333f, 2));
+        }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldSplitIntoThree_WhenTwoIntersectionsOnSameEdge()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new float2(0,0), new float2(10,0)), // horizontal line
+                new Edge(new float2(3,-1), new float2(3,1)), // vertical cross at (3,0)
+                new Edge(new float2(7,-1), new float2(7,1)), // vertical cross at (7,0)
+            };
+
+            // Act
+            var result = new List<Edge>(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+            
+            Draw(result);
+
+            // Assert
+            // EXPECTED: horizontal line should be split into 3 subedges
+            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(3,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(3,0), new float2(7,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(7,0)));
+
+            // Actual: with your current implementation → only one split survives
+            result.Should().HaveCount(7, "because the current algorithm overwrites one split with another");
+        }
+        
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldHandleThreeIntersectionsOnSameEdge()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(new float2(0,0), new float2(10,0)),  // horizontal
+                new Edge(new float2(2,-1), new float2(2,1)),  // vertical at 2
+                new Edge(new float2(5,-1), new float2(5,1)),  // vertical at 5
+                new Edge(new float2(8,-1), new float2(8,1)),  // vertical at 8
+            };
+
+            var result = new List<Edge>(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+            
+            Draw(result);
+
+            // Horizontal should be split into 4 pieces
+            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(8,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(8,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(2,0), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(2,0)));
+
+            // So total should be 4 + 2 + 2 + 2 = 10 edges
+            result.Count.Should().Be(10);
+        }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldHandleMultipleIntersectionInOnePoint()
+        {
+            var edges = new List<Edge>
+            {
+                new Edge(new float2(0,0), new float2(10,0)),  // horizontal
+                new Edge(new float2(5,-1), new float2(5,1)),  // vertical at 5
+                new Edge(new float2(4,-1), new float2(6,1)),  // / at 5
+                new Edge(new float2(6,-1), new float2(4,1)),  // \ at 5
+            };
+
+            var result = new List<Edge>(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+            
+            Draw(result);
+
+            // Horizontal should be split into 4 pieces
+            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(0,0)));
+            
+            result.ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(5, 1)));
+            
+            result.ShouldContainKey(new EdgeKey(new float2(4,-1), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(6, 1)));
+            
+            result.ShouldContainKey(new EdgeKey(new float2(6,-1), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(4, 1)));
+            
+            result.Count.Should().Be(8);
+        }
+
+        [Test]
+        public void CutIntersectingEdges_ShouldCutEdge_WhenOnlyEdgeIsIntersected()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new float2(0,0), new float2(10,0)), // horizontal line
+                new Edge(new float2(5,-1), new float2(5,0)), // vertical cross at (3,0)
+            };
+
+            // Act
+            var result = new List<Edge>(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+            
+            Draw(result);
+
+            // Assert
+            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(5,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(10,0)));
+            result.ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
+            
+            result.Should().HaveCount(3);
+        }
+        
+        private void Draw(List<Edge> edges)
+        {
+            if (!debug)
+            {
+                return;
+            }
+            
+            foreach (var edge in edges)
+            {
+                Debug.DrawLine(edge.A.To3D(), edge.B.To3D(), Color.white, 5);
+                edge.Center.To3D().DrawPoint(Color.red, 5, 0.1f);
+            }
         }
     }
 }

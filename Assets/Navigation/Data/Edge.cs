@@ -12,5 +12,7 @@ namespace Navigation
             A = a;
             B = b;
         }
+        
+        public float2 Center => (A + B) / 2f;
     }
 }
