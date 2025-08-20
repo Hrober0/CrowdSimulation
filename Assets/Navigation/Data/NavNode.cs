@@ -70,6 +70,13 @@ namespace Navigation
             EdgeId.BC => new(CornerB, CornerC),
             _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
         };
+        public int GetConnectionIndex(EdgeId id) => id switch
+        {
+            EdgeId.AB => ConnectionAB,
+            EdgeId.AC => ConnectionAC,
+            EdgeId.BC => ConnectionBC,
+            _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
+        };
 
         public override string ToString() =>
             $"Node({CornerA}, {CornerB}, {CornerC}) connectionsAB: {ConnectionAB}, connectionAC: {ConnectionAC}, connectionBC: {ConnectionBC}";

@@ -29,8 +29,8 @@ namespace Navigation
             ObstacleLookup.Dispose();
             ObstacleEdges.Dispose();
         }
-
-        public int AddObstacle(List<Triangle> parts)
+        
+        public int AddObstacle(in NativeList<Triangle> parts)
         {
             // Add obstacle
             var worldMin = new float2(float.MaxValue, float.MaxValue);
@@ -54,7 +54,9 @@ namespace Navigation
             }
             
             // Add edges
-            foreach (EdgeKey edge in PolygonUtils.GetEdgesUnordered(parts))
+            using var edges = new NativeList<EdgeKey>(parts.Length, Allocator.Temp);
+            PolygonUtils.GetEdgesUnordered(in parts, edges);
+            foreach (EdgeKey edge in edges)
             {
                 ObstacleEdges.Add(newId, edge);
             }
@@ -103,6 +105,11 @@ namespace Navigation
         {
             ObstacleLookup.Map.Draw(Color.green);
         }
+
+        public string GetCapacityStats()
+        {
+            return $"obstacle: {Obstacles.Length}\nedges: {ObstacleEdges.Count()} \nobstacleLookup: {ObstacleLookup.Count}";
+        }
         
         #endregion
 
@@ -129,6 +136,19 @@ namespace Navigation
 
             public override int GetHashCode() => HashCode.Combine(Triangle, Index);
             public IEnumerable<Vector2> GetBorderPoints() => Triangle.GetBorderPoints();
+        }
+    }
+
+    public static class NavObstaclesExtension
+    {
+        public static int AddObstacle(this NavObstacles navObstacles, List<Triangle> parts)
+        {
+            using var nativeList = new NativeList<Triangle>(parts.Count, Allocator.Temp);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                nativeList.Add(parts[i]);
+            }
+            return navObstacles.AddObstacle(in nativeList);
         }
     }
 }

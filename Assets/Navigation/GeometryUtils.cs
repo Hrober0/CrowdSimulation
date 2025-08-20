@@ -228,7 +228,7 @@ namespace Navigation
         public static float Cross(float2 u, float2 v) => u.x * v.y - u.y * v.x;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool Collinear(float2 a, float2 b, float2 c, float eps = 1e-6f) => math.abs(Cross(b - a, c - a)) < eps;
+        public static bool Collinear(float2 a, float2 b, float2 c, float eps = EPSILON) => math.abs(Cross(b - a, c - a)) < eps;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AabbOverlap(float2 minA, float2 maxA, float2 minB, float2 maxB)

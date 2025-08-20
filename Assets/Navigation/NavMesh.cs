@@ -13,16 +13,16 @@ namespace Navigation
 {
     public struct NavMesh : IDisposable
     {
-        public NativeFixedList<NavNode> _nodes;
-        public NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
+        private NativeFixedList<NavNode> _nodes;
+        private NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
 
         // Edge to node index (if edge is common it points to one of two nodes)
-        public NativeHashMap<EdgeKey, int> _nodesEdgeLookup;
+        private NativeHashMap<EdgeKey, int> _nodesEdgeLookup;
 
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
         public IEnumerable<NavNode> GetActiveNodes => _nodes;
         public bool IsCreated => _nodesPositionLookup.IsCreated;
-        
+
         public NavMesh(float cellSize, int nodesInitialCapacity = 1024)
         {
             _nodes = new(nodesInitialCapacity, Allocator.Persistent);
@@ -94,7 +94,7 @@ namespace Navigation
         {
             using var indexes = new NativeList<int>(128, Allocator.Temp);
             _nodesPositionLookup.QueryAABB(min, max, indexes);
-            
+
             foreach (var nodeIndex in indexes)
             {
                 NavNode node = _nodes[nodeIndex];
@@ -110,7 +110,7 @@ namespace Navigation
 
                 _nodes[nodeIndex] = NavNode.Empty;
                 _nodes.RemoveAt(nodeIndex);
-                
+
                 Triangle nodeTr = node.Triangle;
                 removedNodes.Add(nodeTr);
 
@@ -188,6 +188,7 @@ namespace Navigation
             {
                 _nodesEdgeLookup.Capacity += 128;
             }
+
             _nodesEdgeLookup[edge] = newIndex;
             return NavNode.NULL_INDEX;
         }
@@ -243,21 +244,20 @@ namespace Navigation
             Gizmos.color = Color.yellow;
             foreach (var node in _nodes)
             {
-                if (node.ConnectionAB != NavNode.NULL_INDEX)
+                foreach (var id in EnumExtensions.GetValues<NavNode.EdgeId>())
                 {
-                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAB].Center.To3D());
-                }
-
-                if (node.ConnectionAC != NavNode.NULL_INDEX)
-                {
-                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionAC].Center.To3D());
-                }
-
-                if (node.ConnectionBC != NavNode.NULL_INDEX)
-                {
-                    Gizmos.DrawLine(node.Center.To3D(), _nodes[node.ConnectionBC].Center.To3D());
+                    var connectionIndex = node.GetConnectionIndex(id);
+                    if (connectionIndex != NavNode.NULL_INDEX)
+                    {
+                        Gizmos.DrawLine(node.Center.To3D(), node.GetEdge(id).Center.To3D());
+                    }
                 }
             }
+        }
+        
+        public string GetCapacityStats()
+        {
+            return $"nodes: {_nodes.Length} \nedgesLookup: {_nodesEdgeLookup.Count} \nposLookup: {_nodesPositionLookup.Count}";
         }
 
         #endregion

@@ -21,5 +21,7 @@ namespace HCore.Extensions
             var intE = e.FixAllFlagToInt();
             return (T)Enum.ToObject(typeof(T), intE);
         }
+
+        public static T[] GetValues<T>() where T : Enum => (T[])Enum.GetValues(typeof(T));
     }
 }

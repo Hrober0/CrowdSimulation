@@ -1,8 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace Navigation
 {
@@ -44,30 +42,9 @@ namespace Navigation
         //     return sum / (polygon.Count * 2);
         // }
         
-        public static List<EdgeKey> GetEdgesUnordered(List<Triangle> triangles)
-        {
-            var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
-
-            // Count all triangle edges
-            foreach (Triangle tr in triangles)
-            {
-                AddEdge(edgeCounts, new(tr.A, tr.B));
-                AddEdge(edgeCounts, new(tr.A, tr.C));
-                AddEdge(edgeCounts, new(tr.B, tr.C));
-            }
-
-            // Gather unique boundary points (appear only once)
-            var borderEdges = new List<EdgeKey>(edgeCounts.Count);
-            foreach (var kvp in edgeCounts)
-            {
-                if (kvp.Value == 1)
-                {
-                    borderEdges.Add(kvp.Key);
-                }
-            }
-
-            return borderEdges;
-        }
+        /// <summary>
+        /// Add to list border edges
+        /// </summary>
         public static void GetEdgesUnordered(in NativeList<Triangle> triangles, NativeList<EdgeKey> borderEdges)
         {
             var edgeCounts = new NativeHashMap<EdgeKey, int>(triangles.Length * 3, Allocator.Temp);
@@ -122,25 +99,27 @@ namespace Navigation
             edgeCounts.Dispose();
         }
         
-        public static List<float2> GetPointsCCW(List<Triangle> triangles) => GetPointsCCW(GetEdgesUnordered(triangles));
-        public static List<float2> GetPointsCCW(List<EdgeKey> edges)
+        /// <summary>
+        /// Convert border edge and add to points list in CCW ordered,
+        /// returns true if loop is closed
+        /// </summary>
+        public static bool GetPointsCCW(in NativeList<EdgeKey> edges, NativeList<float2> points)
         {
-            if (edges.Count == 0)
+            if (edges.Length == 0)
             {
-                return new();
+                return false;
             }
             
-            if (edges.Count == 1)
+            if (edges.Length == 1)
             {
-                return new()
-                {
-                    edges[0].A,
-                    edges[0].B,
-                };
+                points.Add(edges[0].A);
+                points.Add(edges[0].B);
+                return true;
             }
             
-            // Filter outer boundary edges (appear only once)
-            using var edgeMap = new NativeParallelMultiHashMap<float2, EdgeKey>(edges.Count * 2, Allocator.Temp);
+            var pointsStartIndex = points.Length; // save start index
+            
+            using var edgeMap = new NativeParallelMultiHashMap<float2, EdgeKey>(edges.Length * 2, Allocator.Temp);
             foreach (EdgeKey edge in edges)
             {
                 edgeMap.Add(edge.A, edge);
@@ -149,21 +128,19 @@ namespace Navigation
             
 
             // Reconstruct ordered boundary loop
+            bool isClosed = true;
             float2 startVert = edges[0].A;
             float2 currentVert = startVert;
             float2 nextVert = edges[0].B;
-            var loop = new List<float2>()
+            points.Add(currentVert);
+            while (!GeometryUtils.NearlyEqual(nextVert,startVert)) // until we close the loop
             {
-                currentVert
-            };
-            while (!nextVert.Equals(startVert)) // until we close the loop
-            {
-                loop.Add(nextVert);
+                points.Add(nextVert);
                 
                 EdgeKey? found = null;
                 foreach (EdgeKey candidate in edgeMap.GetValuesForKey(nextVert))
                 {
-                    if (candidate.B.Equals(currentVert) || candidate.A.Equals(currentVert))
+                    if (GeometryUtils.NearlyEqual(candidate.B, currentVert) || GeometryUtils.NearlyEqual(candidate.A, currentVert))
                     {
                         // candidate is the same edge as current
                         continue;
@@ -175,7 +152,7 @@ namespace Navigation
 
                 if (found == null)
                 {
-                    Debug.LogWarning($"{nameof(GetPointsCCW)}: Edge not found");
+                    isClosed = false;
                     break;
                 }
 
@@ -193,86 +170,62 @@ namespace Navigation
             }
             
             // Make sure that points are sorted CCW
-            if (!Triangle.IsCCW(loop[0], loop[1], loop[2]))
+            if (!Triangle.IsCCW(
+                    points[pointsStartIndex], 
+                    points[pointsStartIndex + 1], 
+                    points[pointsStartIndex + 2])
+                )
             {
-                loop.Reverse();
+                // Reverse
+                int swapMidIndex = (points.Length - pointsStartIndex) / 2 + pointsStartIndex;
+                for (int s = pointsStartIndex, e = points.Length - 1; s < swapMidIndex; s++, e--)
+                {
+                    (points[s], points[e]) = (points[e], points[s]);
+                }
             }
 
-            return loop;
+            return isClosed;
         }
 
-        // public static List<float2> PolygonIntersection(IReadOnlyList<float2> polyA, IReadOnlyList<float2> polyB)
-        // {
-        //     if (polyA.Count < 3 || polyB.Count < 3)
-        //     {
-        //         return new();
-        //     }
-        //
-        //     // Start with all vertices from polyA
-        //     var output = new List<float2>(polyA);
-        //
-        //     // Clip against each edge of polyB
-        //     for (int i = 0; i < polyB.Count; i++)
-        //     {
-        //         float2 clipA = polyB[i];
-        //         float2 clipB = polyB[(i + 1) % polyB.Count];
-        //
-        //         List<float2> input = output;
-        //         output = new();
-        //
-        //         if (input.Count == 0)
-        //         {
-        //             break;
-        //         }
-        //
-        //         float2 s = input[^1];
-        //         for (int j = 0; j < input.Count; j++)
-        //         {
-        //             float2 e = input[j];
-        //
-        //             bool eInside = IsInside(clipA, clipB, e);
-        //             bool sInside = IsInside(clipA, clipB, s);
-        //
-        //             if (eInside)
-        //             {
-        //                 if (!sInside)
-        //                 {
-        //                     output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
-        //                 }
-        //
-        //                 output.Add(e);
-        //             }
-        //             else if (sInside)
-        //             {
-        //                 output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
-        //             }
-        //
-        //             s = e;
-        //         }
-        //     }
-        //     
-        //     // RemoveDuplicates
-        //     for (int i = 0; i < output.Count; i++)
-        //     {
-        //         float2 p = output[i];
-        //         for (int j = i + 1; j < output.Count; j++)
-        //         {
-        //             if (math.lengthsq(p - output[j]) < .0001f)
-        //             {
-        //                 output.RemoveAt(j);
-        //                 j--;
-        //             }
-        //         }
-        //     }
-        //         
-        //     return output;
-        //     
-        //     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //     static bool IsInside(float2 a, float2 b, float2 p) =>
-        //         // Left-of test for AB -> point
-        //         GeometryUtils.Cross(b - a, p - a) >= 0f;
-        // }
-        
+        /// <summary>
+        /// Build polygon edges from ordered points, reducing redundant collinear vertices.
+        /// </summary>
+        /// <param name="orderedPoints">Points forming a closed loop (must be ordered CCW or CW).</param>
+        /// <param name="edges">List where reduced edges will be added.</param>
+        /// <param name="toleration"></param>
+        public static void ReduceEdges(in NativeList<float2> orderedPoints, NativeList<Edge> edges, float toleration = GeometryUtils.EPSILON)
+        {
+            if (orderedPoints.Length < 3)
+            {
+                return;
+            }
+
+            using var reduced = new NativeList<float2>(orderedPoints.Length, Allocator.Temp);
+
+            for (int i = 0; i < orderedPoints.Length; i++)
+            {
+                float2 prev = orderedPoints[(i - 1 + orderedPoints.Length) % orderedPoints.Length];
+                float2 curr = orderedPoints[i];
+                float2 next = orderedPoints[(i + 1) % orderedPoints.Length];
+
+                if (!GeometryUtils.Collinear(prev, curr, next, toleration))
+                {
+                    reduced.Add(curr);
+                }
+            }
+
+            // build edges from reduced points
+            for (int i = 0; i < reduced.Length; i++)
+            {
+                float2 a = reduced[i];
+                float2 b = reduced[(i + 1) % reduced.Length];
+                edges.Add(new Edge(a, b));
+            }
+        }
+
+        /// <summary>
+        /// Replace intersection edges (ends included) by new edges to avoid intersection
+        /// </summary>
         public static void CutIntersectingEdges(NativeList<Edge> edges)
         {
             for (int ai = 0; ai < edges.Length; ai++)
@@ -352,17 +305,76 @@ namespace Navigation
             }
         }
         
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void AddEdge(Dictionary<EdgeKey, int> dict, EdgeKey edge)
-        {
-            if (dict.TryGetValue(edge, out int count))
-            {
-                dict[edge] = count + 1;
-            }
-            else
-            {
-                dict[edge] = 1;
-            }
-        }
+        // public static List<float2> PolygonIntersection(IReadOnlyList<float2> polyA, IReadOnlyList<float2> polyB)
+        // {
+        //     if (polyA.Count < 3 || polyB.Count < 3)
+        //     {
+        //         return new();
+        //     }
+        //
+        //     // Start with all vertices from polyA
+        //     var output = new List<float2>(polyA);
+        //
+        //     // Clip against each edge of polyB
+        //     for (int i = 0; i < polyB.Count; i++)
+        //     {
+        //         float2 clipA = polyB[i];
+        //         float2 clipB = polyB[(i + 1) % polyB.Count];
+        //
+        //         List<float2> input = output;
+        //         output = new();
+        //
+        //         if (input.Count == 0)
+        //         {
+        //             break;
+        //         }
+        //
+        //         float2 s = input[^1];
+        //         for (int j = 0; j < input.Count; j++)
+        //         {
+        //             float2 e = input[j];
+        //
+        //             bool eInside = IsInside(clipA, clipB, e);
+        //             bool sInside = IsInside(clipA, clipB, s);
+        //
+        //             if (eInside)
+        //             {
+        //                 if (!sInside)
+        //                 {
+        //                     output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
+        //                 }
+        //
+        //                 output.Add(e);
+        //             }
+        //             else if (sInside)
+        //             {
+        //                 output.Add(GeometryUtils.IntersectionPoint(s, e, clipA, clipB));
+        //             }
+        //
+        //             s = e;
+        //         }
+        //     }
+        //     
+        //     // RemoveDuplicates
+        //     for (int i = 0; i < output.Count; i++)
+        //     {
+        //         float2 p = output[i];
+        //         for (int j = i + 1; j < output.Count; j++)
+        //         {
+        //             if (math.lengthsq(p - output[j]) < .0001f)
+        //             {
+        //                 output.RemoveAt(j);
+        //                 j--;
+        //             }
+        //         }
+        //     }
+        //         
+        //     return output;
+        //     
+        //     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //     static bool IsInside(float2 a, float2 b, float2 p) =>
+        //         // Left-of test for AB -> point
+        //         GeometryUtils.Cross(b - a, p - a) >= 0f;
+        // }
     }
 }

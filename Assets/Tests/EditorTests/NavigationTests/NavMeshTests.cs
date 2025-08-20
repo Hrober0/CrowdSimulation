@@ -351,20 +351,14 @@ namespace Tests.EditorTests.NavigationTests
                 {
                     continue;
                 }
-
-                if (node.ConnectionAB != NavNode.NULL_INDEX)
+                
+                foreach (var id in EnumExtensions.GetValues<NavNode.EdgeId>())
                 {
-                    Debug.DrawLine(node.Center.To3D(), nodes[node.ConnectionAB].Center.To3D(), Color.yellow, 3);
-                }
-
-                if (node.ConnectionAC != NavNode.NULL_INDEX)
-                {
-                    Debug.DrawLine(node.Center.To3D(), nodes[node.ConnectionAC].Center.To3D(), Color.yellow, 3);
-                }
-
-                if (node.ConnectionBC != NavNode.NULL_INDEX)
-                {
-                    Debug.DrawLine(node.Center.To3D(), nodes[node.ConnectionBC].Center.To3D(), Color.yellow, 3);
+                    var connectionIndex = node.GetConnectionIndex(id);
+                    if (connectionIndex != NavNode.NULL_INDEX)
+                    {
+                        Debug.DrawLine(node.Center.To3D(), node.GetEdge(id).Center.To3D(), Color.yellow, 3);
+                    }
                 }
             }
         }

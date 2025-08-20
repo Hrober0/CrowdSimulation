@@ -6,7 +6,7 @@ namespace Tests.EditorTests.NavigationTests
 {
     public static class FluentAssertionEdgeExtensions
     {
-        public static void ShouldContainKey(this IEnumerable<Edge> edges, EdgeKey key)
+        public static void Should_ContainKey(this IEnumerable<Edge> edges, EdgeKey key)
         {
             edges.Should().Contain(e => e.ToEdgeKey().Equals(key),
                 $"because edge list should contain {key}");

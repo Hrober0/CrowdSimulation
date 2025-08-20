@@ -74,18 +74,6 @@ namespace Navigation
             _navObstacles.RemoveObstacle(o2);
             RunUpdate();
         }
-
-        private void RunUpdate()
-        {
-            Debug.Log("Run");
-            new NaveMeshUpdateJob
-            {
-                NavMesh = _navMesh,
-                NavObstacles = _navObstacles,
-                UpdateMin = new float2(0, 0),
-                UpdateMax = new float2(20, 20),
-            }.Execute();
-        }
         
         private async Awaitable CheckRectangle()
         {
@@ -100,20 +88,37 @@ namespace Navigation
                 // var mpos = new float2(5, 5);
                 // mpos.DrawPoint(Color.magenta, 1);
                 // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
-                var o1 = _navObstacles.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
-                RunUpdate();
+
+                var size = 2f;
+                var addMin = new float2(mpos.x - size, mpos.y - size);
+                var addMax = new float2(mpos.x + size, mpos.y + size);
+                var o1 = _navObstacles.AddObstacle(CreateSquareAsTriangles(mpos, size / 2, deg));
+                RunUpdate(addMin, addMax);
                 
                 // await WaitForClick();
                 
                 await Awaitable.NextFrameAsync();
                 _navObstacles.RemoveObstacle(o1);
-                // RunUpdate();
+                RunUpdate(addMin, addMax);
                 
                 // await WaitForClick();
                 
                 deg += Time.deltaTime * 20;
-                Debug.Log($"nodes: {_navMesh._nodes.Length} \nedgesLookup: {_navMesh._nodesEdgeLookup.Count} \nposLookup: {_navMesh._nodesPositionLookup.Count} \nobstacle: {_navObstacles.Obstacles.Count()}\nedges: {_navObstacles.ObstacleEdges.Count()} \nobstacleLookup: {_navObstacles.ObstacleLookup.Count}");
+                Debug.Log($"{_navMesh.GetCapacityStats()}\n{_navObstacles.GetCapacityStats()}");
             }
+        }
+        
+        private void RunUpdate() => RunUpdate(new float2(0, 0), new float2(20, 20));
+        private void RunUpdate(float2 min, float2 max)
+        {
+            Debug.Log("Run");
+            new NaveMeshUpdateJob
+            {
+                NavMesh = _navMesh,
+                NavObstacles = _navObstacles,
+                UpdateMin = min,
+                UpdateMax = max,
+            }.Run();
         }
         
         public static List<Triangle> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
