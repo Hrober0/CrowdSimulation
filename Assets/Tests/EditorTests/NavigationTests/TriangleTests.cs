@@ -50,7 +50,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void PointInsideTriangle_ShouldReturnTrue()
+        public void PointIn_ShouldReturnFalse_ForPointInsideTriangle()
         {
             var a = new float2(0, 0);
             var b = new float2(1, 0);
@@ -62,7 +62,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void PointOutsideTriangle_ShouldReturnFalse()
+        public void PointIn_ShouldReturnFalse_ForPointOutsideTriangle()
         {
             var a = new float2(0, 0);
             var b = new float2(1, 0);
@@ -74,12 +74,24 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void PointOnEdge_ShouldReturnTrue()
+        public void PointIn_ShouldReturnTrue_ForPointOnEdge()
         {
             var a = new float2(0, 0);
             var b = new float2(1, 0);
             var c = new float2(0, 1);
             var p = new float2(0.5f, 0f); // On edge AB
+
+            bool inside = Triangle.PointIn(p, a, b, c);
+            inside.Should().BeTrue();
+        }
+        
+        [Test]
+        public void PointIn_ShouldReturnTrue_ForPointOnVertex()
+        {
+            var a = new float2(0, 0);
+            var b = new float2(1, 0);
+            var c = new float2(0, 1);
+            var p = new float2(0, 1f);
 
             bool inside = Triangle.PointIn(p, a, b, c);
             inside.Should().BeTrue();

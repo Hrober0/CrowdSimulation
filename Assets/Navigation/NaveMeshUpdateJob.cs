@@ -58,9 +58,16 @@ namespace Navigation
                     else if (isAInside || isBInside)
                     {
                         // Get only part of edge that is inside
-                        BorderIntersection(in edge.A, in edge.B, in borderEdges, out float2 intersectionPoint);
-                        float2 insidePoint = isAInside ? edge.A : edge.B;
-                        edges.Add(new Edge(intersectionPoint, insidePoint));
+                        if (BorderIntersection(in edge.A, in edge.B, in borderEdges, out float2 intersectionPoint))
+                        {
+                            float2 insidePoint = isAInside ? edge.A : edge.B;
+                            edges.Add(new Edge(intersectionPoint, insidePoint));
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"One of edge point is inside border but intersection point between edge {edge} and border was not found");
+                            edges.Add(new Edge(edge.A, edge.B));
+                        }
                     }
                 }
             }
@@ -70,17 +77,9 @@ namespace Navigation
             {
                 edges.Add(new Edge(edge.A, edge.B));
             }
-
-            // TODO: Check paraleral edges clip
             
             // Cut edges to avoid intersection
             PolygonUtils.CutIntersectingEdges(edges);
-
-            // foreach (var edge in edges)
-            // {
-            //     Debug.DrawLine(edge.A.To3D(), edge.B.To3D(), Color.white, 5);
-            //     edge.Center.To3D().DrawPoint(Color.red, 5, 0.1f);
-            // }
             
             // Prepare triangulation input
             using var positions = new NativeList<float2>(edges.Length * 2, Allocator.Temp);
@@ -90,15 +89,23 @@ namespace Navigation
             {
                 var ai = AddPosition(edge.A);
                 var bi = AddPosition(edge.B);
-                if (ai != bi)
+                
+                if (ai == bi)
                 {
-                    var key = new EdgeKey(ai, bi);
-                    if (constrainCheck.Add(key))
-                    {
-                        constraintEdges.Add(ai);
-                        constraintEdges.Add(bi);
-                    }
+                    // IDK why but it can happen, but it doesn't break anything
+                    // Debug.LogWarning($"Detected edge build with the same points {edge}");
+                    continue;
                 }
+                
+                var key = new EdgeKey(ai, bi);
+                if (!constrainCheck.Add(key))
+                {
+                    Debug.LogWarning($"Detected duplicated edge {edge}");
+                    continue;
+                }
+                
+                constraintEdges.Add(ai);
+                constraintEdges.Add(bi);
             }
 
             // for (var index = 0; index < constraintEdges.Length; index+=2)
@@ -178,19 +185,17 @@ namespace Navigation
         }
 
         [BurstCompile]
-        private static void BorderIntersection(in float2 a, in float2 b, in NativeList<EdgeKey> edges, out float2 intersectionPoint)
+        private static bool BorderIntersection(in float2 a, in float2 b, in NativeList<EdgeKey> edges, out float2 intersectionPoint)
         {
             foreach (EdgeKey edge in edges)
             {
                 if (GeometryUtils.TryIntersect(a, b, edge.A, edge.B, out intersectionPoint))
                 {
-                    return;
+                    return true;
                 }
             }
-
-            Debug.LogError($"Dont found intersection point between edge {a}-{b} and border");
             intersectionPoint = default;
-            return;
+            return false;
         }
     }
 }

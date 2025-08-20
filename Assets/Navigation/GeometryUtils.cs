@@ -5,14 +5,7 @@ namespace Navigation
 {
     public static class GeometryUtils
     {
-        private const float EPSILON = 1e-6f;
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool OnSegment(float2 a, float2 b, float2 c)
-        {
-            return math.min(a.x, c.x) <= b.x && b.x <= math.max(a.x, c.x) &&
-                   math.min(a.y, c.y) <= b.y && b.y <= math.max(a.y, c.y);
-        }
+        public const float EPSILON = 1e-6f;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool EdgesIntersect(float2 a1, float2 a2, float2 b1, float2 b2)
@@ -21,7 +14,7 @@ namespace Navigation
             float2 s = b2 - b1;
             float rxs = Cross(r, s);
 
-            if (math.abs(rxs) < math.E)
+            if (math.abs(rxs) < EPSILON)
             {
                 return false; // Parallel or collinear
             }
@@ -41,7 +34,7 @@ namespace Navigation
             float rxs = Cross(r, s);
             // float q_pxr = Cross(b1 - a1, r);
 
-            if (math.abs(rxs) < math.E)
+            if (math.abs(rxs) < EPSILON)
             {
                 return false; // Parallel or collinear
             }
@@ -69,8 +62,13 @@ namespace Navigation
         }
         
         /// <summary>
-        /// Ends are included
+        /// Check if two segments intersects, ends are included.
         /// </summary>
+        /// <remarks>
+        /// In case of overlapping segments there can be two intersection points,
+        /// but only one will be returned. To check full overlap use
+        /// <see cref="TryIntersectAndOverlap"/>.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryIntersect(float2 a1, float2 a2, float2 b1, float2 b2, out float2 intersection)
         {
@@ -109,6 +107,89 @@ namespace Navigation
             // Proper intersection
             intersection = a1 + t * r;
             return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryIntersectAndOverlap(float2 a1, float2 a2, float2 b1, float2 b2, out float2 intersection1, out float2 intersection2)
+        {
+            float2 r = a2 - a1;
+            float2 s = b2 - b1;
+
+            float rxs = Cross(r, s);
+            float qpxr = Cross(b1 - a1, r);
+            
+            // Collinear
+            if (math.abs(rxs) < EPSILON && math.abs(qpxr) < EPSILON)
+            {
+                if (Overlaps1D(a1.x, a2.x, b1.x, b2.x) && Overlaps1D(a1.y, a2.y, b1.y, b2.y))
+                {
+                    // Find overlap segment
+                    float2 minA = math.min(a1, a2);
+                    float2 maxA = math.max(a1, a2);
+                    float2 minB = math.min(b1, b2);
+                    float2 maxB = math.max(b1, b2);
+
+                    intersection1 = math.max(minA, minB); // start of overlap
+                    intersection2 = math.min(maxA, maxB); // end of overlap
+                    return true;
+                }
+            }
+            
+            // Parallel, non-intersecting
+            if (math.abs(rxs) < EPSILON)
+            {
+                intersection1 = default;
+                intersection2 = default;
+                return false;
+            }
+
+            float2 delta = b1 - a1;
+            float t = Cross(delta, s) / rxs;
+            float u = Cross(delta, r) / rxs;
+
+            if (t is < -EPSILON or > 1 + EPSILON ||
+                u is < -EPSILON or > 1 + EPSILON)
+            {
+                intersection1 = default;
+                intersection2 = default;
+                return false;
+            }
+
+            // Proper intersection
+            intersection1 = intersection2 = a1 + t * r;
+            return true;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetFarthestPointsOnLine(float2 a, float2 b, float2 c, float2 d, out float2 p1, out float2 p2)
+        {
+            // Pick a direction vector from first two points
+            float2 dir = math.normalize(b - a);
+
+            // Project points onto line
+            float pa = math.dot(a, dir);
+
+            // Find min and max projection
+            float minProj = pa;
+            float maxProj = pa;
+            float2 minP = a;
+            float2 maxP = a;
+
+            Check(b);
+            Check(c);
+            Check(d);
+            
+            p1 = minP;
+            p2 = maxP;
+            return;
+            
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void Check(float2 point)
+            {
+                float proj = math.dot(point, dir);
+                if (proj < minProj) { minProj = proj; minP = point; }
+                if (proj > maxProj) { maxProj = proj; maxP = point; }
+            }
         }
         
         /// <summary>
@@ -155,6 +236,23 @@ namespace Navigation
             return !(maxA.x < minB.x || minA.x > maxB.x ||
                      maxA.y < minB.y || minA.y > maxB.y);
         }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool Overlaps1D(float a1, float a2, float b1, float b2)
+        {
+            if (a1 > a2) (a1, a2) = (a2, a1);
+            if (b1 > b2) (b1, b2) = (b2, b1);
+            return a1 <= b2 && b1 <= a2;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool SegmentsEqual(float2 a1, float2 a2, float2 b1, float2 b2)
+        {
+            return (NearlyEqual(a1, b1) && NearlyEqual(a2, b2)) || (NearlyEqual(a1, b2) && NearlyEqual(a2, b1));
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool NearlyEqual(float2 u, float2 v, float eps = EPSILON) => math.distancesq(u, v) < eps;
     }
 
 }

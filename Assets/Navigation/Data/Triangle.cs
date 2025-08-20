@@ -91,8 +91,8 @@ namespace Navigation
             float d2 = Sign(p, b, c);
             float d3 = Sign(p, c, a);
 
-            bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-            bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+            bool hasNeg = (d1 < -GeometryUtils.EPSILON) || (d2 < -GeometryUtils.EPSILON) || (d3 < -GeometryUtils.EPSILON);
+            bool hasPos = (d1 > GeometryUtils.EPSILON)  || (d2 > GeometryUtils.EPSILON)  || (d3 > GeometryUtils.EPSILON);
 
             return !(hasNeg && hasPos);
         }
@@ -104,8 +104,8 @@ namespace Navigation
             float d2 = Sign(p, b, c);
             float d3 = Sign(p, c, a);
 
-            bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-            bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+            bool hasNeg = (d1 < -GeometryUtils.EPSILON) || (d2 < -GeometryUtils.EPSILON) || (d3 < -GeometryUtils.EPSILON);
+            bool hasPos = (d1 > GeometryUtils.EPSILON)  || (d2 > GeometryUtils.EPSILON)  || (d3 > GeometryUtils.EPSILON);
 
             // Exclude edge cases (d1, d2, d3 == 0)
             return !(hasNeg && hasPos) && d1 != 0f && d2 != 0f && d3 != 0f;
