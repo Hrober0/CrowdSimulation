@@ -4,6 +4,7 @@ using HCore.Extensions;
 using Navigation;
 using NUnit.Framework;
 using Tests.TestsUtilities;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -184,19 +185,19 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            var result = new List<Edge>(edges);
+            var result = ToNative(edges);
             PolygonUtils.CutIntersectingEdges(result);
             
             Draw(result);
 
             // Assert
             // EXPECTED: horizontal line should be split into 3 subedges
-            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(3,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(3,0), new float2(7,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(7,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(0,0), new float2(3,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(3,0), new float2(7,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(10,0), new float2(7,0)));
 
             // Actual: with your current implementation → only one split survives
-            result.Should().HaveCount(7, "because the current algorithm overwrites one split with another");
+            result.AsArray().Should().HaveCount(7, "because the current algorithm overwrites one split with another");
         }
         
         
@@ -211,19 +212,19 @@ namespace Tests.EditorTests.NavigationTests
                 new Edge(new float2(8,-1), new float2(8,1)),  // vertical at 8
             };
 
-            var result = new List<Edge>(edges);
+            using var result = ToNative(edges);
             PolygonUtils.CutIntersectingEdges(result);
             
             Draw(result);
 
             // Horizontal should be split into 4 pieces
-            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(8,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(8,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(2,0), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(2,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(10,0), new float2(8,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(8,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(2,0), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(0,0), new float2(2,0)));
 
             // So total should be 4 + 2 + 2 + 2 = 10 edges
-            result.Count.Should().Be(10);
+            result.Length.Should().Be(10);
         }
         
         [Test]
@@ -237,25 +238,25 @@ namespace Tests.EditorTests.NavigationTests
                 new Edge(new float2(6,-1), new float2(4,1)),  // \ at 5
             };
 
-            var result = new List<Edge>(edges);
+            using var result = ToNative(edges);
             PolygonUtils.CutIntersectingEdges(result);
             
             Draw(result);
 
             // Horizontal should be split into 4 pieces
-            result.ShouldContainKey(new EdgeKey(new float2(10,0), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(0,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(0,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(10,0), new float2(5,0)));
             
-            result.ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(5, 1)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(5, 1)));
             
-            result.ShouldContainKey(new EdgeKey(new float2(4,-1), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(6, 1)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(4,-1), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(6, 1)));
             
-            result.ShouldContainKey(new EdgeKey(new float2(6,-1), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(4, 1)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(6,-1), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(4, 1)));
             
-            result.Count.Should().Be(8);
+            result.Length.Should().Be(8);
         }
 
         [Test]
@@ -269,20 +270,20 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            var result = new List<Edge>(edges);
+            using var result = ToNative(edges);
             PolygonUtils.CutIntersectingEdges(result);
             
             Draw(result);
 
             // Assert
-            result.ShouldContainKey(new EdgeKey(new float2(0,0), new float2(5,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,0), new float2(10,0)));
-            result.ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(0,0), new float2(5,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,0), new float2(10,0)));
+            result.AsArray().ShouldContainKey(new EdgeKey(new float2(5,-1), new float2(5,0)));
             
-            result.Should().HaveCount(3);
+            result.AsArray().Should().HaveCount(3);
         }
         
-        private void Draw(List<Edge> edges)
+        private void Draw(in NativeList<Edge> edges)
         {
             if (!debug)
             {
@@ -294,6 +295,16 @@ namespace Tests.EditorTests.NavigationTests
                 Debug.DrawLine(edge.A.To3D(), edge.B.To3D(), Color.white, 5);
                 edge.Center.To3D().DrawPoint(Color.red, 5, 0.1f);
             }
+        }
+
+        private NativeList<T> ToNative<T>(List<T> list) where T : unmanaged
+        {
+            var result = new NativeList<T>(list.Count, Allocator.Temp);
+            for (int i = 0; i < list.Count; i++)
+            {
+                result.Add(list[i]);
+            }
+            return result;
         }
     }
 }

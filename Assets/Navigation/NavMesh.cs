@@ -11,21 +11,23 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public class NavMesh : IDisposable
+    public struct NavMesh : IDisposable
     {
-        private NativeFixedList<NavNode> _nodes;
-        private NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
+        public NativeFixedList<NavNode> _nodes;
+        public NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
 
         // Edge to node index (if edge is common it points to one of two nodes)
-        private readonly Dictionary<EdgeKey, int> _nodesEdgeLookup = new();
+        public NativeHashMap<EdgeKey, int> _nodesEdgeLookup;
 
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
         public IEnumerable<NavNode> GetActiveNodes => _nodes;
-
+        public bool IsCreated => _nodesPositionLookup.IsCreated;
+        
         public NavMesh(float cellSize, int nodesInitialCapacity = 1024)
         {
             _nodes = new(nodesInitialCapacity, Allocator.Persistent);
             _nodesPositionLookup = new(nodesInitialCapacity * 2, cellSize, Allocator.Persistent);
+            _nodesEdgeLookup = new(nodesInitialCapacity * 3, Allocator.Persistent);
         }
 
         public void Dispose()
@@ -80,19 +82,19 @@ namespace Navigation
 
             return newIndex;
         }
-        
+
         /// <summary>
         /// Removes and disconnects nodes on given area
         /// </summary>
         /// <param name="min">left bottom area point</param>
         /// <param name="max">right top area point</param>
+        /// <param name="removedNodes"></param>
         /// <returns>Removed nodes</returns>
-        public List<Triangle> RemoveNodes(float2 min, float2 max)
+        public void RemoveNodes(float2 min, float2 max, NativeList<Triangle> removedNodes)
         {
             using var indexes = new NativeList<int>(128, Allocator.Temp);
             _nodesPositionLookup.QueryAABB(min, max, indexes);
-
-            var removedNodes = new List<Triangle>();
+            
             foreach (var nodeIndex in indexes)
             {
                 NavNode node = _nodes[nodeIndex];
@@ -108,7 +110,9 @@ namespace Navigation
 
                 _nodes[nodeIndex] = NavNode.Empty;
                 _nodes.RemoveAt(nodeIndex);
-                removedNodes.Add(node.Triangle);
+                
+                Triangle nodeTr = node.Triangle;
+                removedNodes.Add(nodeTr);
 
                 // disconnect AB
                 {
@@ -159,10 +163,8 @@ namespace Navigation
                 }
 
                 // remove from lookup
-                _nodesPositionLookup.RemovePoint(node.Center, nodeIndex);
+                _nodesPositionLookup.RemoveAABB(nodeTr.Min, nodeTr.Max, nodeIndex);
             }
-
-            return removedNodes;
         }
 
         /// <summary>
@@ -182,6 +184,10 @@ namespace Navigation
             }
 
             // Debug.Log($"Not found edge: {edge} for {newIndex}");
+            if (_nodesEdgeLookup.Capacity <= _nodesEdgeLookup.Count + 1)
+            {
+                _nodesEdgeLookup.Capacity += 128;
+            }
             _nodesEdgeLookup[edge] = newIndex;
             return NavNode.NULL_INDEX;
         }

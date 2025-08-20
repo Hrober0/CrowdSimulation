@@ -4,14 +4,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Burst;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace CustomNativeCollections
 {
     /// <summary>
     /// List keep fixed index of items in it
     /// </summary>
-    [NativeContainer]
     [DebuggerDisplay("Length = {Length}")]
     public struct NativeFixedList<T> : IEnumerable<T>, IDisposable where T : unmanaged
     {

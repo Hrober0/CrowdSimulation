@@ -865,7 +865,7 @@ MonoBehaviour:
   - {fileID: 116136378}
   _drawConnections: 1
   _drawNodes: 1
-  _drawObstacleTriangle: 1
+  _drawObstacleTriangle: 0
   _drawObstacleBorder: 1
 --- !u!1 &1641171585
 GameObject:

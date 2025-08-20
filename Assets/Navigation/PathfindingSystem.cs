@@ -5,6 +5,7 @@ using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -35,8 +36,8 @@ namespace Navigation
                 AddInitNodes();
             }
 
-            _ = CheckInsertion();
-            // _ = CheckRectangle();
+            // _ = CheckInsertion();
+            _ = CheckRectangle();
         }
 
         private void OnDestroy()
@@ -59,39 +60,61 @@ namespace Navigation
             {
                 new(new(1, 1), new(3, 1), new(3, 3))
             });
+            RunUpdate();
             
             await WaitForClick();
             var o2 = _navObstacles.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+            RunUpdate();
             
             await WaitForClick();
             _navObstacles.RemoveObstacle(o1);
+            RunUpdate();
             
             await WaitForClick();
             _navObstacles.RemoveObstacle(o2);
+            RunUpdate();
         }
-        // private async Awaitable CheckRectangle()
-        // {
-        //     _navMesh.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
-        //     
-        //     float deg = 0;
-        //     await WaitForClick();
-        //     while (true)
-        //     {
-        //         var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
-        //         // var mpos = new float2(5, 5);
-        //         // mpos.DrawPoint(Color.magenta, 1);
-        //         // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
-        //         var o1 = _navMesh.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
-        //
-        //         await WaitForClick();
-        //         
-        //         await Awaitable.NextFrameAsync();
-        //         _navMesh.RemoveObstacle(o1);
-        //         
-        //         deg += Time.deltaTime * 20;
-        //         Debug.Log(_navMesh.GetActiveNodes.Count());
-        //     }
-        // }
+
+        private void RunUpdate()
+        {
+            Debug.Log("Run");
+            new NaveMeshUpdateJob
+            {
+                NavMesh = _navMesh,
+                NavObstacles = _navObstacles,
+                UpdateMin = new float2(0, 0),
+                UpdateMax = new float2(20, 20),
+            }.Execute();
+        }
+        
+        private async Awaitable CheckRectangle()
+        {
+            _navObstacles.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+            RunUpdate();
+            
+            float deg = 0;
+            await WaitForClick();
+            while (true)
+            {
+                var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
+                // var mpos = new float2(5, 5);
+                // mpos.DrawPoint(Color.magenta, 1);
+                // Debug.Log($"{mpos} {deg} {CreateSquareAsTriangles(mpos, 1, deg).ElementsString()}");
+                var o1 = _navObstacles.AddObstacle(CreateSquareAsTriangles(mpos, 1, deg));
+                RunUpdate();
+                
+                // await WaitForClick();
+                
+                await Awaitable.NextFrameAsync();
+                _navObstacles.RemoveObstacle(o1);
+                // RunUpdate();
+                
+                // await WaitForClick();
+                
+                deg += Time.deltaTime * 20;
+                Debug.Log($"nodes: {_navMesh._nodes.Length} \nedgesLookup: {_navMesh._nodesEdgeLookup.Count} \nposLookup: {_navMesh._nodesPositionLookup.Count} \nobstacle: {_navObstacles.Obstacles.Count()}\nedges: {_navObstacles.ObstacleEdges.Count()} \nobstacleLookup: {_navObstacles.ObstacleLookup.Count}");
+            }
+        }
         
         public static List<Triangle> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
         {
@@ -128,7 +151,7 @@ namespace Navigation
         
         private void OnDrawGizmos()
         {
-            if (_navMesh != null)
+            if (_navMesh.IsCreated)
             {
                 if (_drawConnections)
                 {
@@ -176,7 +199,6 @@ namespace Navigation
                 },
             };
             triangulator.Run();
-            positions.Dispose();
 
             var triangles = triangulator.Output.Triangles;
             for (int i = 0; i < triangles.Length; i += 3)
@@ -190,6 +212,8 @@ namespace Navigation
                     ),
                 });
             }
+            
+            positions.Dispose();
         }
     }
 }

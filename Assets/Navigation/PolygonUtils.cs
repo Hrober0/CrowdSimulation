@@ -46,30 +46,6 @@ namespace Navigation
             return sum / (polygon.Count * 2);
         }
         
-        public static List<EdgeKey> GetEdgesUnordered(List<NavNode> triangles)
-        {
-            var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
-
-            // Count all triangle edges
-            foreach (NavNode tr in triangles)
-            {
-                AddEdge(edgeCounts, new(tr.CornerA, tr.CornerB));
-                AddEdge(edgeCounts, new(tr.CornerA, tr.CornerC));
-                AddEdge(edgeCounts, new(tr.CornerB, tr.CornerC));
-            }
-
-            // Gather unique boundary points (appear only once)
-            var borderEdges = new List<EdgeKey>(edgeCounts.Count);
-            foreach (var kvp in edgeCounts)
-            {
-                if (kvp.Value == 1)
-                {
-                    borderEdges.Add(kvp.Key);
-                }
-            }
-
-            return borderEdges;
-        }
         public static List<EdgeKey> GetEdgesUnordered(List<Triangle> triangles)
         {
             var edgeCounts = new Dictionary<EdgeKey, int>(triangles.Count * 3);
@@ -94,18 +70,59 @@ namespace Navigation
 
             return borderEdges;
         }
-        
-        // public static List<float2> GetPointsUnordered(List<EdgeKey> edges)
-        // {
-        //     var points = new List<float2>();
-        //     foreach (EdgeKey edge in edges)
-        //     {
-        //         AddPoint(points, edge.A);
-        //         AddPoint(points, edge.B);
-        //     }
-        //
-        //     return points;
-        // }
+        public static void GetEdgesUnordered(in NativeList<Triangle> triangles, NativeList<EdgeKey> borderEdges)
+        {
+            var edgeCounts = new NativeHashMap<EdgeKey, int>(triangles.Length * 3, Allocator.Temp);
+
+            // Count all triangle edges
+            foreach (Triangle tr in triangles)
+            {
+                {
+                    var edge = new EdgeKey(tr.A, tr.B);
+                    if (edgeCounts.TryGetValue(edge, out int count))
+                    {
+                        edgeCounts[edge] = count + 1;
+                    }
+                    else
+                    {
+                        edgeCounts[edge] = 1;
+                    }
+                }
+                {
+                    var edge = new EdgeKey(tr.B, tr.C);
+                    if (edgeCounts.TryGetValue(edge, out int count))
+                    {
+                        edgeCounts[edge] = count + 1;
+                    }
+                    else
+                    {
+                        edgeCounts[edge] = 1;
+                    }
+                }
+                {
+                    var edge = new EdgeKey(tr.C, tr.A);
+                    if (edgeCounts.TryGetValue(edge, out int count))
+                    {
+                        edgeCounts[edge] = count + 1;
+                    }
+                    else
+                    {
+                        edgeCounts[edge] = 1;
+                    }
+                }
+            }
+
+            // Gather unique boundary points (appear only once)
+            foreach (var kvp in edgeCounts)
+            {
+                if (kvp.Value == 1)
+                {
+                    borderEdges.Add(kvp.Key);
+                }
+            }
+            
+            edgeCounts.Dispose();
+        }
         
         public static List<float2> GetPointsCCW(List<Triangle> triangles) => GetPointsCCW(GetEdgesUnordered(triangles));
         public static List<float2> GetPointsCCW(List<EdgeKey> edges)
@@ -258,11 +275,11 @@ namespace Navigation
                 GeometryUtils.Cross(b - a, p - a) >= 0f;
         }
         
-        public static void CutIntersectingEdges(List<Edge> edges)
+        public static void CutIntersectingEdges(NativeList<Edge> edges)
         {
-            for (int ai = 0; ai < edges.Count; ai++)
+            for (int ai = 0; ai < edges.Length; ai++)
             {
-                for (int bi = ai + 1; bi < edges.Count; bi++)
+                for (int bi = ai + 1; bi < edges.Length; bi++)
                 {
                     Edge a = edges[ai];
                     Edge b = edges[bi];

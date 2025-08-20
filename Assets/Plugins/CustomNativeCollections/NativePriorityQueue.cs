@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace CustomNativeCollections
 {
@@ -11,8 +10,7 @@ namespace CustomNativeCollections
     /// Priority Queue implementation with item data stored in native containers. This version uses an IComparer<T> instead of relying on IComparable<T> being implemented by the stored type.
     /// </summary>
     /// <typeparam name="T"></typeparam>
-
-    [NativeContainer]
+    
     [DebuggerDisplay("Length = {Count}")]
     public struct NativePriorityQueue<T> : IDisposable where T : struct, IComparable<T>
     {

@@ -223,13 +223,14 @@ namespace Tests.EditorTests.NavigationTests
             DrawOffset(_navMesh.Nodes);
 
             // Act
-            var result = _navMesh.RemoveNodes(new(-10, -10), new(20, 20));
+            using var result = new NativeList<Triangle>(16, Allocator.Temp);
+            _navMesh.RemoveNodes(new(-10, -10), new(20, 20), result);
 
             Draw(_navMesh.Nodes);
 
             // Assert
             _navMesh.GetActiveNodes.Should().HaveCount(0);
-            result.Should().ContainSingle().Which.Should().Be(triangle);
+            result.AsArray().Should().ContainSingle().Which.Should().Be(triangle);
         }
 
         [Test]
@@ -238,7 +239,8 @@ namespace Tests.EditorTests.NavigationTests
             DrawOffset(_navMesh.Nodes);
 
             // Act
-            _navMesh.RemoveNodes(new(5, 5), new(5, 5));
+            using var result = new NativeList<Triangle>(16, Allocator.Temp);
+            _navMesh.RemoveNodes(new(5, 5), new(5, 5), result);
 
             Draw(_navMesh.Nodes);
 
@@ -260,13 +262,14 @@ namespace Tests.EditorTests.NavigationTests
             DrawOffset(_navMesh.Nodes);
 
             // Act
-            var result = _navMesh.RemoveNodes(new(-10, -10), new(20, 20));
+            using var result = new NativeList<Triangle>(16, Allocator.Temp);
+            _navMesh.RemoveNodes(new(-10, -10), new(20, 20), result);
 
             Draw(_navMesh.Nodes);
 
             // Assert
             _navMesh.GetActiveNodes.Should().HaveCount(0);
-            result.Should().HaveCount(4);
+            result.AsArray().Should().HaveCount(4);
         }
 
         [Test]
@@ -284,9 +287,11 @@ namespace Tests.EditorTests.NavigationTests
             DrawOffset(_navMesh.Nodes);
 
             // Act: remove left node
-            _navMesh.RemoveNodes(new(-5, 5), new(-5, 2));
+            using var result = new NativeList<Triangle>(16, Allocator.Temp);
+            _navMesh.RemoveNodes(new(-5, 5), new(-5, 2), result);
 
             Draw(_navMesh.Nodes);
+            
             // Assert
             _navMesh.GetActiveNodes.Should().HaveCount(3);
             var centerNode = _navMesh.Nodes[connectId];
@@ -310,15 +315,16 @@ namespace Tests.EditorTests.NavigationTests
             DrawOffset(_navMesh.Nodes);
 
             // Act: remove on connection (0,0)-(10,0)
-            var result = _navMesh.RemoveNodes(new(-5, 12), new(20, 12));
+            using var result = new NativeList<Triangle>(16, Allocator.Temp);
+            _navMesh.RemoveNodes(new(-5, 12), new(20, 12), result);
 
             Draw(_navMesh.Nodes);
 
             // Assert
             _navMesh.GetActiveNodes.Should().HaveCount(2);
-            result.Should().HaveCount(2);
-            result.Should().Contain(new Triangle(new(5, 10), new(15, 15), new(10, 0)));
-            result.Should().Contain(new Triangle(new(-5, 15), new(0, 0), new(5, 10)));
+            result.AsArray().Should().HaveCount(2);
+            result.AsArray().Should().Contain(new Triangle(new(5, 10), new(15, 15), new(10, 0)));
+            result.AsArray().Should().Contain(new Triangle(new(-5, 15), new(0, 0), new(5, 10)));
         }
 
         private void Draw(NativeArray<NavNode> nodes)
