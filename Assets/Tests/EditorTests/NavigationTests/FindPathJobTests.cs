@@ -64,16 +64,16 @@ namespace Tests.EditorTests.NavigationTests
                 b,
                 c,
                 connectionAB: -1,
-                connectionAC: -1,
-                connectionBC: 1
+                connectionBC: 1,
+                connectionCA: -1
             );
             nodes[1] = new NavNode(
                 b,
                 d,
                 c,
                 connectionAB: -1,
-                connectionAC: 0,
-                connectionBC: -1
+                connectionBC: -1,
+                connectionCA: 0
             );
 
             var start = new float2(0.1f, 0.1f);
@@ -125,8 +125,8 @@ namespace Tests.EditorTests.NavigationTests
                 cornerB: b,
                 cornerC: c,
                 connectionAB: -1,
-                connectionAC: -1,
-                connectionBC: 1
+                connectionBC: 1,
+                connectionCA: -1
             );
             // Triangle 1: CBD
             nodes[1] = new NavNode(
@@ -134,8 +134,8 @@ namespace Tests.EditorTests.NavigationTests
                 cornerB: b,
                 cornerC: d,
                 connectionAB: 0,
-                connectionAC: -1,
-                connectionBC: 2
+                connectionBC: 2,
+                connectionCA: -1
             );
             // Triangle 2: BFD
             nodes[2] = new NavNode(
@@ -143,8 +143,8 @@ namespace Tests.EditorTests.NavigationTests
                 cornerB: f,
                 cornerC: d,
                 connectionAB: -1,
-                connectionAC: 1,
-                connectionBC: 3
+                connectionBC: 3,
+                connectionCA: 1
             );
             // Triangle 3: DEF
             nodes[3] = new NavNode(
@@ -152,8 +152,8 @@ namespace Tests.EditorTests.NavigationTests
                 cornerB: e,
                 cornerC: f,
                 connectionAB: 1,
-                connectionAC: 2,
-                connectionBC: -1
+                connectionBC: -1,
+                connectionCA: 2
             );
 
             float2 start = nodes[0].Center;

@@ -62,8 +62,8 @@ namespace Navigation
                 b,
                 c,
                 connectionAB: TryConnect(a, b, newIndex),
-                connectionAC: TryConnect(a, c, newIndex),
-                connectionBC: TryConnect(b, c, newIndex)
+                connectionBC: TryConnect(b, c, newIndex),
+                connectionCA: TryConnect(c, a, newIndex)
             );
 
             // add to array
@@ -122,9 +122,9 @@ namespace Navigation
                 // disconnect AC
                 {
                     var edge = new EdgeKey(node.CornerA, node.CornerC);
-                    if (node.ConnectionAC != NavNode.NULL_INDEX)
+                    if (node.ConnectionCA != NavNode.NULL_INDEX)
                     {
-                        SetConnectionWithEdge(node.ConnectionAC, edge, NavNode.NULL_INDEX);
+                        SetConnectionWithEdge(node.ConnectionCA, edge, NavNode.NULL_INDEX);
                     }
                 }
 
@@ -177,7 +177,7 @@ namespace Navigation
             }
             else if (IsSameEdge(edge, node.CornerA, node.CornerC))
             {
-                node.ConnectionAC = targetIndex;
+                node.ConnectionCA = targetIndex;
             }
             else if (IsSameEdge(edge, node.CornerB, node.CornerC))
             {

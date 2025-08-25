@@ -11,8 +11,8 @@ namespace Navigation
         public enum EdgeId
         {
             AB,
-            AC,
             BC,
+            CA,
         }
 
         public const int NULL_INDEX = -1;
@@ -24,35 +24,29 @@ namespace Navigation
         public readonly float2 CornerC;
 
         public int ConnectionAB;
-        public readonly float EdgeAB;
-
-        public int ConnectionAC;
-        public readonly float EdgeAC;
-
         public int ConnectionBC;
-        public readonly float EdgeBC;
+        public int ConnectionCA;
 
         public readonly float2 Center;
 
-        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionAC, int connectionBC)
+        private readonly bool _wasSet;
+
+        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionBC, int connectionCA)
         {
             CornerA = cornerA;
             CornerB = cornerB;
             CornerC = cornerC;
 
             ConnectionAB = connectionAB;
-            EdgeAB = math.length(cornerA - cornerB);
-
-            ConnectionAC = connectionAC;
-            EdgeAC = math.length(cornerA - cornerC);
-
             ConnectionBC = connectionBC;
-            EdgeBC = math.length(cornerB - cornerC);
+            ConnectionCA = connectionCA;
 
             Center = Triangle.Center(cornerA, cornerB, cornerC);
+
+            _wasSet = true;
         }
 
-        public bool IsEmpty => EdgeAB == 0;
+        public bool IsEmpty => !_wasSet;
 
         public Triangle Triangle => new(CornerA, CornerB, CornerC);
 
@@ -66,19 +60,19 @@ namespace Navigation
         public Edge GetEdge(EdgeId id) => id switch
         {
             EdgeId.AB => new(CornerA, CornerB),
-            EdgeId.AC => new(CornerA, CornerC),
             EdgeId.BC => new(CornerB, CornerC),
+            EdgeId.CA => new(CornerC, CornerA),
             _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
         };
         public int GetConnectionIndex(EdgeId id) => id switch
         {
             EdgeId.AB => ConnectionAB,
-            EdgeId.AC => ConnectionAC,
             EdgeId.BC => ConnectionBC,
+            EdgeId.CA => ConnectionCA,
             _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
         };
 
         public override string ToString() =>
-            $"Node({CornerA}, {CornerB}, {CornerC}) connectionsAB: {ConnectionAB}, connectionAC: {ConnectionAC}, connectionBC: {ConnectionBC}";
+            $"Node({CornerA}, {CornerB}, {CornerC}) connectionsAB: {ConnectionAB}, connectionBC: {ConnectionBC}, connectionCA: {ConnectionCA}";
     }
 }

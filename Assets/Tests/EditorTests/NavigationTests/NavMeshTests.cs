@@ -88,7 +88,7 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.GetActiveNodes.Should().HaveCount(2);
             var node = _navMesh.Nodes[newId];
             node.ConnectionAB.Should().Be(connectId);
-            node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+            node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
             node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
         }
 
@@ -107,7 +107,7 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.GetActiveNodes.Should().HaveCount(2);
             var node = _navMesh.Nodes[newId];
             node.ConnectionAB.Should().Be(connectId);
-            node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+            node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
             node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
         }
 
@@ -133,7 +133,7 @@ namespace Tests.EditorTests.NavigationTests
             {
                 var node = _navMesh.Nodes[id];
                 node.ConnectionAB.Should().Be(connectId);
-                node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+                node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
                 node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
             }
         }
@@ -159,19 +159,19 @@ namespace Tests.EditorTests.NavigationTests
             {
                 var node = _navMesh.Nodes[newIds[0]];
                 node.ConnectionAB.Should().Be(connectId);
-                node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+                node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
                 node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
             }
             {
                 var node = _navMesh.Nodes[newIds[1]];
                 node.ConnectionAB.Should().Be(NavNode.NULL_INDEX);
-                node.ConnectionAC.Should().Be(connectId);
+                node.ConnectionCA.Should().Be(connectId);
                 node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
             }
             {
                 var node = _navMesh.Nodes[newIds[2]];
                 node.ConnectionAB.Should().Be(NavNode.NULL_INDEX);
-                node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+                node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
                 node.ConnectionBC.Should().Be(connectId);
             }
         }
@@ -196,19 +196,19 @@ namespace Tests.EditorTests.NavigationTests
             {
                 var node = _navMesh.Nodes[connectId];
                 node.ConnectionAB.Should().Be(NavNode.NULL_INDEX);
-                node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+                node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
                 node.ConnectionBC.Should().Be(rightId);
             }
             {
                 var node = _navMesh.Nodes[rightId];
                 node.ConnectionAB.Should().Be(topId);
-                node.ConnectionAC.Should().Be(connectId);
+                node.ConnectionCA.Should().Be(connectId);
                 node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
             }
             {
                 var node = _navMesh.Nodes[topId];
                 node.ConnectionAB.Should().Be(rightId);
-                node.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+                node.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
                 node.ConnectionBC.Should().Be(NavNode.NULL_INDEX);
             }
         }
@@ -297,7 +297,7 @@ namespace Tests.EditorTests.NavigationTests
             var centerNode = _navMesh.Nodes[connectId];
             Debug.Log(centerNode);
             centerNode.ConnectionAB.Should().Be(newIds[0]);
-            centerNode.ConnectionAC.Should().Be(NavNode.NULL_INDEX);
+            centerNode.ConnectionCA.Should().Be(NavNode.NULL_INDEX);
             centerNode.ConnectionBC.Should().Be(newIds[2]);
         }
 
