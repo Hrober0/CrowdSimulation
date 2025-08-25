@@ -13,7 +13,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [SetUp]
         public void Setup()
         {
-            _hash = new(capacity: 2, cellSize: 1f, allocator: Allocator.Persistent, capacityAddition: 2);
+            _hash = new(capacity: 2, chunkSize: 1f, allocator: Allocator.Persistent, capacityAddition: 2);
         }
 
         [TearDown]

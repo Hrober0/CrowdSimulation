@@ -254,10 +254,6 @@ namespace Navigation
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool NearlyEqual(float2 u, float2 v, float eps = EPSILON) => math.distancesq(u, v) < eps;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float2 Align(float2 p, float alignment) =>
-            new float2(math.floor(p.x / alignment) * alignment, math.floor(p.y / alignment) * alignment);
     }
 
 }

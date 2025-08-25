@@ -1,10 +1,7 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace CustomNativeCollections
 {
@@ -14,7 +11,6 @@ namespace CustomNativeCollections
     [BurstCompile]
     public struct NativeSpatialHash<T> : System.IDisposable where T : unmanaged, System.IEquatable<T>
     {
-        public float CellSize;
         public NativeParallelMultiHashMap<int, T> Map;
 
         private readonly float _invCell;
@@ -25,17 +21,20 @@ namespace CustomNativeCollections
         public int Capacity => Map.Capacity;
         public int Count => Map.Count();
 
-        public NativeSpatialHash(int capacity, float cellSize, Allocator allocator, int capacityAddition = 100)
+        public NativeSpatialHash(int capacity, float chunkSize, Allocator allocator, int capacityAddition = 100)
         {
-            CellSize = math.max(1e-6f, cellSize);
-            _invCell = 1f / CellSize;
+            chunkSize = math.max(1e-6f, chunkSize);
+            _invCell = 1f / chunkSize;
             _capacityAddition = capacityAddition;
             Map = new(math.max(1, capacity), allocator);
         }
 
         public void Dispose()
         {
-            if (Map.IsCreated) Map.Dispose();
+            if (Map.IsCreated)
+            {
+                Map.Dispose();
+            }
         }
 
         #region Modification

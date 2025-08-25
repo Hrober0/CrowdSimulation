@@ -1,6 +1,8 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using andywiecko.BurstTriangulator;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
+using CustomNativeCollections;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -37,13 +39,13 @@ namespace Navigation
             }
 
             // Get removed area border
-            using var borderEdges = new NativeList<EdgeKey>(DEFAULT_CAPACITY, Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(in removedNodes, borderEdges, tolerance: MIN_POINT_DISTANCE);
-            using var borderPoints = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
-            var isLoopClose = PolygonUtils.GetPointsCCW(in borderEdges, borderPoints, false);
-            if (borderPoints.Length < borderEdges.Length - 1)
+            using var unorderedBorderEdges = new NativeList<EdgeKey>(DEFAULT_CAPACITY, Allocator.Temp);
+            PolygonUtils.GetEdgesUnordered(in removedNodes, unorderedBorderEdges, tolerance: MIN_POINT_DISTANCE);
+            using var borderPointsCCW = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
+            var isLoopClose = PolygonUtils.GetPointsCCW(in unorderedBorderEdges, borderPointsCCW);
+            if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
             {
-                Debug.LogWarning($"Border points count is less than border points {borderPoints.Length} < {borderEdges.Length}");
+                Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {unorderedBorderEdges.Length}");
                 ReAddNodesOnError(NavMesh, in removedNodes);
                 return;
             }
@@ -54,8 +56,8 @@ namespace Navigation
                 return;
             }
             
-            using var fixedBorderEdges = new NativeList<Edge>(borderEdges.Length, Allocator.Temp);
-            PolygonUtils.ReduceEdges(in borderPoints, fixedBorderEdges, toleration: MIN_POINT_DISTANCE);
+            using var borderEdgesCCW = new NativeList<Edge>(unorderedBorderEdges.Length, Allocator.Temp);
+            PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, toleration: MIN_POINT_DISTANCE);
             
             // fixedBorderEdges.Clear();
             // foreach (var edge in borderEdges)
@@ -73,37 +75,61 @@ namespace Navigation
             }
             
             // Inside edges should reflect obstacle and border at removed area
-            var expectedInsideEdgesCapacity = obstacleIndexes.Count * AVERAGE_OBSTACLE_VERTICES_CAPACITY + fixedBorderEdges.Length;
+            var expectedInsideEdgesCapacity = obstacleIndexes.Count * AVERAGE_OBSTACLE_VERTICES_CAPACITY + borderEdgesCCW.Length;
             using var insideEdges = new NativeList<Edge>(expectedInsideEdgesCapacity, Allocator.Temp);
             
             // Add borderEdges to insideEdges
-            insideEdges.CopyFrom(in fixedBorderEdges);
+            insideEdges.CopyFrom(in borderEdgesCCW);
             
             // Add obstacle edges to insideEdges
+            using var intersectionBuffer = new NativeList<float2>(borderEdgesCCW.Length, Allocator.Temp);
             foreach (var obstacleIndex in obstacleIndexes)
             {
-                foreach (Edge edge in NavObstacles.ObstacleEdges.GetValuesForKey(obstacleIndex))
+                foreach (Edge obstacleEdge in NavObstacles.ObstacleEdges.GetValuesForKey(obstacleIndex))
                 {
-                    bool isAInside = IsPointInPolygon(in edge.A, in removedNodes);
-                    bool isBInside = IsPointInPolygon(in edge.B, in removedNodes);
+                    bool isAInside = IsPointInPolygon(in obstacleEdge.A, in removedNodes);
+                    bool isBInside = IsPointInPolygon(in obstacleEdge.B, in removedNodes);
 
                     if (isAInside && isBInside)
                     {
-                        insideEdges.Add(new Edge(edge.A, edge.B));
+                        // Inside polygon
+                        insideEdges.Add(new Edge(obstacleEdge.A, obstacleEdge.B));
+                        continue;
                     }
-                    else if (isAInside || isBInside)
+
+                    if (!isAInside && !isBInside)
                     {
-                        // Get only part of edge that is inside
-                        if (BorderIntersection(in edge.A, in edge.B, in fixedBorderEdges, out float2 intersectionPoint))
+                        // Outside polygon
+                        continue;
+                    }
+                    
+                    intersectionBuffer.Clear();
+                    foreach (Edge borderEdge in borderEdgesCCW)
+                    {
+                        if (GeometryUtils.TryIntersect(borderEdge.A, borderEdge.B, obstacleEdge.A, obstacleEdge.B, out float2 intersectionPoint))
                         {
-                            float2 insidePoint = isAInside ? edge.A : edge.B;
-                            insideEdges.Add(new Edge(intersectionPoint, insidePoint));
+                            intersectionBuffer.Add(intersectionPoint);
                         }
-                        else
-                        {
-                            Debug.LogWarning($"One of edge point is inside border but intersection point between edge {edge} and border was not found");
-                            insideEdges.Add(new Edge(edge.A, edge.B));
-                        }
+                    }
+
+                    if (intersectionBuffer.Length == 0)
+                    {
+                        Debug.LogWarning($"{obstacleEdge} {isAInside} {isBInside} should intersect border!");
+                        continue;
+                    }
+
+                    var insidePoint = isAInside ? obstacleEdge.A : obstacleEdge.B;
+                    if (intersectionBuffer.Length == 1)
+                    {
+                        insideEdges.Add(new Edge(intersectionBuffer[0], insidePoint));
+                        continue;
+                    }
+                    
+                    intersectionBuffer.Add(insidePoint);
+                    intersectionBuffer.Sort(new PointComparer{Reference = insidePoint});
+                    for (int i = 0; i < intersectionBuffer.Length - 1; i++)
+                    {
+                        insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
                     }
                 }
             }
@@ -115,7 +141,7 @@ namespace Navigation
             using var positions = new NativeList<float2>(insideEdges.Length * 2, Allocator.Temp);
             using var constraintEdges = new NativeList<int>(insideEdges.Length * 4, Allocator.Temp);
             using var constrainCheck = new NativeHashSet<EdgeKey>(insideEdges.Length, Allocator.Temp);
-            foreach (var edge in fixedBorderEdges)
+            foreach (var edge in borderEdgesCCW)
             {
                 // First add border points to make sure that they will not be aligned to other points
                 AddPosition(edge.A);
@@ -220,7 +246,7 @@ namespace Navigation
                 // triangle.GetCenter.To3D().DrawPoint(Color.green, 5, .1f);
 
                 // Do not add triangles outside border
-                if (!PolygonUtils.IsPointInPolygon(triangle.GetCenter, in borderEdges))
+                if (!PolygonUtils.IsPointInPolygon(triangle.GetCenter, in unorderedBorderEdges))
                 {
                     // triangle.GetCenter.To3D().DrawPoint(Color.red, 2, .5f);
                     continue;
@@ -268,20 +294,6 @@ namespace Navigation
 
             return false;
         }
-        
-        private static bool BorderIntersection(in float2 a, in float2 b, in NativeList<Edge> edges, out float2 intersectionPoint)
-        {
-            foreach (Edge edge in edges)
-            {
-                if (GeometryUtils.TryIntersect(a, b, edge.A, edge.B, out intersectionPoint))
-                {
-                    return true;
-                }
-            }
-            intersectionPoint = default;
-            return false;
-        }
-        
         private static void ReAddNodesOnError(NavMesh navMesh, in NativeList<Triangle> removedNodes)
         {
             foreach (var triangle in removedNodes)
@@ -290,6 +302,18 @@ namespace Navigation
                 {
                     Triangle = triangle,
                 });
+            }
+        }
+        
+        private struct PointComparer : IComparer<float2>
+        {
+            public float2 Reference;
+
+            public int Compare(float2 a, float2 b)
+            {
+                float da = math.lengthsq(a - Reference);
+                float db = math.lengthsq(b - Reference);
+                return da.CompareTo(db); // ascending order
             }
         }
     }

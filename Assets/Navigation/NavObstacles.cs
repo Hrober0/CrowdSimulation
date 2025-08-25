@@ -33,6 +33,12 @@ namespace Navigation
         
         public int AddObstacle(in NativeList<float2> border)
         {
+            if (border.Length < 2)
+            {
+                Debug.LogWarning("Attempted to obstacle with border containing less then one edge!");
+                return -1;
+            }
+            
             // Add obstacle
             var worldMin = new float2(float.MaxValue, float.MaxValue);
             var worldMax = new float2(float.MinValue, float.MinValue);
@@ -174,6 +180,15 @@ namespace Navigation
         {
             using var nativeList = new NativeList<float2>(border.Count, Allocator.Temp);
             for (int i = 0; i < border.Count; i++)
+            {
+                nativeList.Add(border[i]);
+            }
+            return navObstacles.AddObstacle(in nativeList);
+        }
+        public static int AddObstacle(this NavObstacles navObstacles, params float2[] border)
+        {
+            using var nativeList = new NativeList<float2>(border.Length, Allocator.Temp);
+            for (int i = 0; i < border.Length; i++)
             {
                 nativeList.Add(border[i]);
             }

@@ -23,5 +23,7 @@ namespace Navigation
             yield return A;
             yield return B;
         }
+
+        public override string ToString() => $"({A}, {B})";
     }
 }
