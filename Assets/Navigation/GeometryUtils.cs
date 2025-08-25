@@ -5,7 +5,7 @@ namespace Navigation
 {
     public static class GeometryUtils
     {
-        public const float EPSILON = 1e-6f;
+        public const float EPSILON = 1e-5f;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool EdgesIntersect(float2 a1, float2 a2, float2 b1, float2 b2)
@@ -110,7 +110,7 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryIntersectAndOverlap(float2 a1, float2 a2, float2 b1, float2 b2, out float2 intersection1, out float2 intersection2)
+        public static bool TryIntersectAndOverlap(float2 a1, float2 a2, float2 b1, float2 b2, out float2 intersection1, out float2 intersection2, float tolerance = EPSILON)
         {
             float2 r = a2 - a1;
             float2 s = b2 - b1;
@@ -119,7 +119,7 @@ namespace Navigation
             float qpxr = Cross(b1 - a1, r);
             
             // Collinear
-            if (math.abs(rxs) < EPSILON && math.abs(qpxr) < EPSILON)
+            if (math.abs(rxs) < tolerance && math.abs(qpxr) < tolerance)
             {
                 if (Overlaps1D(a1.x, a2.x, b1.x, b2.x) && Overlaps1D(a1.y, a2.y, b1.y, b2.y))
                 {
@@ -136,7 +136,7 @@ namespace Navigation
             }
             
             // Parallel, non-intersecting
-            if (math.abs(rxs) < EPSILON)
+            if (math.abs(rxs) < tolerance)
             {
                 intersection1 = default;
                 intersection2 = default;
@@ -147,8 +147,8 @@ namespace Navigation
             float t = Cross(delta, s) / rxs;
             float u = Cross(delta, r) / rxs;
 
-            if (t is < -EPSILON or > 1 + EPSILON ||
-                u is < -EPSILON or > 1 + EPSILON)
+            if (t < -tolerance || t > 1 + tolerance ||
+                u < -tolerance || u > 1 + tolerance)
             {
                 intersection1 = default;
                 intersection2 = default;
@@ -246,13 +246,18 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool SegmentsEqual(float2 a1, float2 a2, float2 b1, float2 b2)
+        public static bool SegmentsEqual(float2 a1, float2 a2, float2 b1, float2 b2, float tolerance = EPSILON)
         {
-            return (NearlyEqual(a1, b1) && NearlyEqual(a2, b2)) || (NearlyEqual(a1, b2) && NearlyEqual(a2, b1));
+            return (NearlyEqual(a1, b1, tolerance) && NearlyEqual(a2, b2, tolerance))
+                   || (NearlyEqual(a1, b2, tolerance) && NearlyEqual(a2, b1, tolerance));
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool NearlyEqual(float2 u, float2 v, float eps = EPSILON) => math.distancesq(u, v) < eps;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float2 Align(float2 p, float alignment) =>
+            new float2(math.floor(p.x / alignment) * alignment, math.floor(p.y / alignment) * alignment);
     }
 
 }

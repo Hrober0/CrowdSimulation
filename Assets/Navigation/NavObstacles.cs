@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using andywiecko.BurstTriangulator.LowLevel.Unsafe;
 using CustomNativeCollections;
 using HCore;
 using HCore.Extensions;
@@ -14,12 +15,12 @@ namespace Navigation
     {
         public NativeFixedList<Obstacle> Obstacles;
         public NativeSpatialHash<IndexedTriangle> ObstacleLookup;
-        public NativeParallelMultiHashMap<int, EdgeKey> ObstacleEdges;
+        public NativeParallelMultiHashMap<int, Edge> ObstacleEdges;
 
-        public NavObstacles(float cellSize, int obstacleInitialCapacity = 512, int averageVerticesPerObstacle = 4)
+        public NavObstacles(float chunkSize, int obstacleInitialCapacity = 512, int averageVerticesPerObstacle = 4)
         {
             Obstacles = new(obstacleInitialCapacity, Allocator.Persistent);
-            ObstacleLookup = new(obstacleInitialCapacity, cellSize, Allocator.Persistent);
+            ObstacleLookup = new(obstacleInitialCapacity, chunkSize, Allocator.Persistent);
             ObstacleEdges = new(obstacleInitialCapacity * averageVerticesPerObstacle, Allocator.Persistent);
         }
 
@@ -30,15 +31,15 @@ namespace Navigation
             ObstacleEdges.Dispose();
         }
         
-        public int AddObstacle(in NativeList<Triangle> parts)
+        public int AddObstacle(in NativeList<float2> border)
         {
             // Add obstacle
             var worldMin = new float2(float.MaxValue, float.MaxValue);
             var worldMax = new float2(float.MinValue, float.MinValue);
-            foreach (var part in parts)
+            foreach (var p in border)
             {
-                worldMin = math.min(math.min(part.A, part.B), math.min(part.C, worldMin));
-                worldMax = math.max(math.max(part.A, part.B), math.max(part.C, worldMax));
+                worldMin = math.min(p, worldMin);
+                worldMax = math.max(p, worldMax);
             }
             var obstacle = new Obstacle
             {
@@ -46,21 +47,49 @@ namespace Navigation
                 Max = worldMax,
             };
             int newId = Obstacles.Add(obstacle);
-            
-            // Add triangle spatial hash
-            foreach (var triangle in parts)
+
+            // Add edges
+            var constraintEdges = new NativeArray<int>(border.Length * 2, Allocator.Temp);
+            ObstacleEdges.Add(newId, new Edge(border[^1], border[0]));
+            constraintEdges[0] = border.Length - 1;
+            constraintEdges[1] = 0;
+            for (int i = 1; i < border.Length; i++)
             {
+                ObstacleEdges.Add(newId, new Edge(border[i - 1], border[i]));
+                constraintEdges[i * 2] = i - 1;
+                constraintEdges[i * 2 + 1] = i;
+            }
+
+            // Add triangle spatial hash
+            using var outputTriangles = new NativeList<int>(border.Length * 3, Allocator.Temp);
+            new UnsafeTriangulator<float2>().Triangulate(
+                input: new()
+                {
+                    Positions = border.AsArray(),
+                    ConstraintEdges = constraintEdges,
+                },
+                output: new()
+                {
+                    Triangles = outputTriangles,
+                },
+                args: Args.Default(
+                    restoreBoundary: true
+                ), 
+                allocator: Allocator.Temp
+            );
+
+            for (var index = 0; index < outputTriangles.Length; index += 3)
+            {
+                var triangle = new Triangle(
+                    border[outputTriangles[index]],
+                    border[outputTriangles[index + 1]],
+                    border[outputTriangles[index + 2]]
+                    );
                 ObstacleLookup.AddAABB(triangle.Min, triangle.Max, new IndexedTriangle(triangle, newId));
             }
             
-            // Add edges
-            using var edges = new NativeList<EdgeKey>(parts.Length, Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(in parts, edges);
-            foreach (EdgeKey edge in edges)
-            {
-                ObstacleEdges.Add(newId, edge);
-            }
-            
+            constraintEdges.Dispose();
+
             return newId;
         }
 
@@ -141,12 +170,12 @@ namespace Navigation
 
     public static class NavObstaclesExtension
     {
-        public static int AddObstacle(this NavObstacles navObstacles, List<Triangle> parts)
+        public static int AddObstacle(this NavObstacles navObstacles, List<float2> border)
         {
-            using var nativeList = new NativeList<Triangle>(parts.Count, Allocator.Temp);
-            for (int i = 0; i < parts.Count; i++)
+            using var nativeList = new NativeList<float2>(border.Count, Allocator.Temp);
+            for (int i = 0; i < border.Count; i++)
             {
-                nativeList.Add(parts[i]);
+                nativeList.Add(border[i]);
             }
             return navObstacles.AddObstacle(in nativeList);
         }

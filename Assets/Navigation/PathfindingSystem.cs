@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;
@@ -58,7 +56,7 @@ namespace Navigation
             await WaitForClick();
             var o1 = _navObstacles.AddObstacle(new()
             {
-                new(new(1, 1), new(3, 1), new(3, 3))
+                new(1, 1), new(3, 1), new(3, 3),
             });
             RunUpdate();
             
@@ -111,7 +109,7 @@ namespace Navigation
         private void RunUpdate() => RunUpdate(new float2(0, 0), new float2(20, 20));
         private void RunUpdate(float2 min, float2 max)
         {
-            Debug.Log("Run");
+            // Debug.Log("Run");
             new NaveMeshUpdateJob
             {
                 NavMesh = _navMesh,
@@ -121,7 +119,7 @@ namespace Navigation
             }.Run();
         }
         
-        public static List<Triangle> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
+        private static List<float2> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
         {
             float halfSize = size / 2f;
             float radians = math.radians(rotationDegrees);
@@ -140,18 +138,13 @@ namespace Navigation
                 new float2(math.sin(radians),  math.cos(radians))
             );
 
-            float2[] worldCorners = new float2[4];
+            var worldCorners = new List<float2>(4);
             for (int i = 0; i < 4; i++)
             {
-                worldCorners[i] = math.mul(rotationMatrix, localCorners[i]) + center;
+                worldCorners.Add(math.mul(rotationMatrix, localCorners[i]) + center);
             }
 
-            // Create two triangles
-            return new List<Triangle>
-            {
-                new Triangle(worldCorners[0], worldCorners[1], worldCorners[2]),
-                new Triangle(worldCorners[0], worldCorners[2], worldCorners[3])
-            };
+            return worldCorners;
         }
         
         private void OnDrawGizmos()

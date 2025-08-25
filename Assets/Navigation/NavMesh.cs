@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using andywiecko.BurstTriangulator;
 using CustomNativeCollections;
 using HCore.Extensions;
 using HCore.Shapes;
@@ -16,9 +15,6 @@ namespace Navigation
         private NativeFixedList<NavNode> _nodes;
         private NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
 
-        // Edge to node index (if edge is common it points to one of two nodes)
-        private NativeHashMap<EdgeKey, int> _nodesEdgeLookup;
-
         public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
         public IEnumerable<NavNode> GetActiveNodes => _nodes;
         public bool IsCreated => _nodesPositionLookup.IsCreated;
@@ -27,7 +23,6 @@ namespace Navigation
         {
             _nodes = new(nodesInitialCapacity, Allocator.Persistent);
             _nodesPositionLookup = new(nodesInitialCapacity * 2, cellSize, Allocator.Persistent);
-            _nodesEdgeLookup = new(nodesInitialCapacity * 3, Allocator.Persistent);
         }
 
         public void Dispose()
@@ -92,11 +87,12 @@ namespace Navigation
         /// <returns>Removed nodes</returns>
         public void RemoveNodes(float2 min, float2 max, NativeList<Triangle> removedNodes)
         {
-            using var indexes = new NativeList<int>(128, Allocator.Temp);
-            _nodesPositionLookup.QueryAABB(min, max, indexes);
+            using var nodeIndexes = new NativeList<int>(128, Allocator.Temp);
+            _nodesPositionLookup.QueryAABB(min, max, nodeIndexes);
 
-            foreach (var nodeIndex in indexes)
+            for (var index = 0; index < nodeIndexes.Length; index++)
             {
+                int nodeIndex = nodeIndexes[index];
                 NavNode node = _nodes[nodeIndex];
 
                 if (node.IsEmpty)
@@ -117,15 +113,8 @@ namespace Navigation
                 // disconnect AB
                 {
                     var edge = new EdgeKey(node.CornerA, node.CornerB);
-                    if (node.ConnectionAB == NavNode.NULL_INDEX)
+                    if (node.ConnectionAB != NavNode.NULL_INDEX)
                     {
-                        // this edge has to be removed from lookup
-                        _nodesEdgeLookup.Remove(edge);
-                    }
-                    else
-                    {
-                        // other node contains this edge so it need to make sure that lookup point to that node
-                        _nodesEdgeLookup[edge] = node.ConnectionAB;
                         SetConnectionWithEdge(node.ConnectionAB, edge, NavNode.NULL_INDEX);
                     }
                 }
@@ -133,15 +122,8 @@ namespace Navigation
                 // disconnect AC
                 {
                     var edge = new EdgeKey(node.CornerA, node.CornerC);
-                    if (node.ConnectionAC == NavNode.NULL_INDEX)
+                    if (node.ConnectionAC != NavNode.NULL_INDEX)
                     {
-                        // this edge has to be removed from lookup
-                        _nodesEdgeLookup.Remove(edge);
-                    }
-                    else
-                    {
-                        // other node contains this edge so it need to make sure that lookup point to that node
-                        _nodesEdgeLookup[edge] = node.ConnectionAC;
                         SetConnectionWithEdge(node.ConnectionAC, edge, NavNode.NULL_INDEX);
                     }
                 }
@@ -149,15 +131,8 @@ namespace Navigation
                 // disconnect BC
                 {
                     var edge = new EdgeKey(node.CornerB, node.CornerC);
-                    if (node.ConnectionBC == NavNode.NULL_INDEX)
+                    if (node.ConnectionBC != NavNode.NULL_INDEX)
                     {
-                        // this edge has to be removed from lookup
-                        _nodesEdgeLookup.Remove(edge);
-                    }
-                    else
-                    {
-                        // other node contains this edge so it need to make sure that lookup point to that node
-                        _nodesEdgeLookup[edge] = node.ConnectionBC;
                         SetConnectionWithEdge(node.ConnectionBC, edge, NavNode.NULL_INDEX);
                     }
                 }
@@ -177,23 +152,22 @@ namespace Navigation
         private int TryConnect(float2 a, float2 b, int newIndex)
         {
             var edge = new EdgeKey(a, b);
-            if (_nodesEdgeLookup.TryGetValue(edge, out int otherIndex))
-            {
-                SetConnectionWithEdge(otherIndex, edge, newIndex);
-                return otherIndex;
-            }
+            
+            using var nodeIndexes = new NativeList<int>(16, Allocator.Temp);
+            _nodesPositionLookup.QueryAABB(a, b, nodeIndexes);
 
-            // Debug.Log($"Not found edge: {edge} for {newIndex}");
-            if (_nodesEdgeLookup.Capacity <= _nodesEdgeLookup.Count + 1)
+            foreach (var targetIndex in nodeIndexes)
             {
-                _nodesEdgeLookup.Capacity += 128;
+                if (TrySetConnectionWithEdge(targetIndex, edge, newIndex))
+                {
+                    return targetIndex;
+                }
             }
-
-            _nodesEdgeLookup[edge] = newIndex;
+            
             return NavNode.NULL_INDEX;
         }
 
-        private void SetConnectionWithEdge(int nodeIndex, EdgeKey edge, int targetIndex)
+        private bool TrySetConnectionWithEdge(int nodeIndex, EdgeKey edge, int targetIndex)
         {
             NavNode node = _nodes[nodeIndex];
 
@@ -211,13 +185,22 @@ namespace Navigation
             }
             else
             {
-                Debug.LogWarning($"Edge {edge} not found in node {nodeIndex}");
-                return;
+                return false;
             }
 
             // Debug.Log($"Connect {nodeIndex} with {targetIndex} on {edge}");
 
             _nodes[nodeIndex] = node;
+            return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetConnectionWithEdge(int nodeIndex, EdgeKey edge, int targetIndex)
+        {
+            if (!TrySetConnectionWithEdge(nodeIndex, edge, targetIndex))
+            {
+                Debug.LogWarning($"Edge {edge} not found in node {nodeIndex}");
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -257,7 +240,7 @@ namespace Navigation
         
         public string GetCapacityStats()
         {
-            return $"nodes: {_nodes.Length} \nedgesLookup: {_nodesEdgeLookup.Count} \nposLookup: {_nodesPositionLookup.Count}";
+            return $"nodes: {_nodes.Length} \nposLookup: {_nodesPositionLookup.Count}";
         }
 
         #endregion

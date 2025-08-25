@@ -28,7 +28,7 @@ namespace Navigation
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Equals(EdgeKey other) => A.Equals(other.A) && B.Equals(other.B);
+        public bool Equals(EdgeKey other) => GeometryUtils.NearlyEqual(A,other.A) && GeometryUtils.NearlyEqual(B, other.B);
         
         public override int GetHashCode() => (A.GetHashCode() * 397) ^ B.GetHashCode();
 

@@ -1,35 +1,38 @@
 ﻿using System.Runtime.CompilerServices;
+using HCore.Extensions;
+using HCore.Shapes;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Navigation
 {
     public static class PolygonUtils
     {
-        // public static bool IsPointInPolygon(float2 point, List<EdgeKey> polygon)
-        // {
-        //     int crossings = 0;
-        //
-        //     for (int i = 0; i < polygon.Count; i++)
-        //     {
-        //         float2 a = polygon[i].A;
-        //         float2 b = polygon[i].B;
-        //
-        //         // Check if point.x is between a.x and b.x (ray could intersect this edge)
-        //         if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
-        //         {
-        //             // Compute y intersection of vertical ray at point.x with edge (a → b)
-        //             float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
-        //
-        //             if (point.y < yIntersection)
-        //             {
-        //                 crossings++;
-        //             }
-        //         }
-        //     }
-        //
-        //     return (crossings % 2) == 1;
-        // }
+        public static bool IsPointInPolygon(float2 point, in NativeList<EdgeKey> polygon)
+        {
+            int crossings = 0;
+        
+            for (int i = 0; i < polygon.Length; i++)
+            {
+                float2 a = polygon[i].A;
+                float2 b = polygon[i].B;
+        
+                // Check if point.x is between a.x and b.x (ray could intersect this edge)
+                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
+                {
+                    // Compute y intersection of vertical ray at point.x with edge (a → b)
+                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
+        
+                    if (point.y < yIntersection)
+                    {
+                        crossings++;
+                    }
+                }
+            }
+        
+            return (crossings % 2) == 1;
+        }
         //
         // public static float2 PolygonCenter(List<EdgeKey> polygon)
         // {
@@ -45,46 +48,18 @@ namespace Navigation
         /// <summary>
         /// Add to list border edges
         /// </summary>
-        public static void GetEdgesUnordered(in NativeList<Triangle> triangles, NativeList<EdgeKey> borderEdges)
+        public static void GetEdgesUnordered(in NativeList<Triangle> triangles, NativeList<EdgeKey> borderEdges, float tolerance = GeometryUtils.EPSILON)
         {
+            var points = new NativeList<float2>(triangles.Length * 3, Allocator.Temp);
             var edgeCounts = new NativeHashMap<EdgeKey, int>(triangles.Length * 3, Allocator.Temp);
 
             // Count all triangle edges
             foreach (Triangle tr in triangles)
             {
-                {
-                    var edge = new EdgeKey(tr.A, tr.B);
-                    if (edgeCounts.TryGetValue(edge, out int count))
-                    {
-                        edgeCounts[edge] = count + 1;
-                    }
-                    else
-                    {
-                        edgeCounts[edge] = 1;
-                    }
-                }
-                {
-                    var edge = new EdgeKey(tr.B, tr.C);
-                    if (edgeCounts.TryGetValue(edge, out int count))
-                    {
-                        edgeCounts[edge] = count + 1;
-                    }
-                    else
-                    {
-                        edgeCounts[edge] = 1;
-                    }
-                }
-                {
-                    var edge = new EdgeKey(tr.C, tr.A);
-                    if (edgeCounts.TryGetValue(edge, out int count))
-                    {
-                        edgeCounts[edge] = count + 1;
-                    }
-                    else
-                    {
-                        edgeCounts[edge] = 1;
-                    }
-                }
+                AddEdge(tr.A, tr.B);
+                AddEdge(tr.B, tr.C);
+                AddEdge(tr.C, tr.A);
+                // tr.GetCenter.To3D().DrawPoint(Color.cyan, size: 0.3f);
             }
 
             // Gather unique boundary points (appear only once)
@@ -94,17 +69,56 @@ namespace Navigation
                 {
                     borderEdges.Add(kvp.Key);
                 }
+
+                // var c = kvp.Value == 1 ? Color.green : Color.magenta;
+                // Debug.DrawLine(math.float3(kvp.Key.A, 0), math.float3(kvp.Key.B, 0), c);
             }
             
             edgeCounts.Dispose();
+            return;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void AddEdge(float2 a, float2 b)
+            {
+                AlignPoint(ref a);
+                AlignPoint(ref b);
+                var edge = new EdgeKey(a, b);
+                if (edgeCounts.TryGetValue(edge, out int count))
+                {
+                    edgeCounts[edge] = count + 1;
+                }
+                else
+                {
+                    edgeCounts[edge] = 1;
+                }
+            }
+            
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void AlignPoint(ref float2 p)
+            {
+                for (int i = 0; i < points.Length; i++)
+                {
+                    if (math.lengthsq(p - points[i]) < tolerance)
+                    {
+                        p = points[i];
+                        return;
+                    }
+                }
+                points.Add(p);
+            }
         }
         
         /// <summary>
         /// Convert border edge and add to points list in CCW ordered,
         /// returns true if loop is closed
         /// </summary>
-        public static bool GetPointsCCW(in NativeList<EdgeKey> edges, NativeList<float2> points)
+        public static bool GetPointsCCW(in NativeList<EdgeKey> edges, NativeList<float2> points, bool ensureCCW = true)
         {
+            // foreach (var p in edges)
+            // {
+            //     Debug.DrawLine(math.float3(p.A, 0), math.float3(p.B, 0), Color.magenta, 2);
+            // }
+            
             if (edges.Length == 0)
             {
                 return false;
@@ -133,7 +147,7 @@ namespace Navigation
             float2 currentVert = startVert;
             float2 nextVert = edges[0].B;
             points.Add(currentVert);
-            while (!GeometryUtils.NearlyEqual(nextVert,startVert)) // until we close the loop
+            for (int i = 0; i < edges.Length; i++)
             {
                 points.Add(nextVert);
                 
@@ -157,7 +171,7 @@ namespace Navigation
                 }
 
                 EdgeKey edge = found.Value;
-                if (edge.A.Equals(nextVert))
+                if (GeometryUtils.NearlyEqual(edge.A, nextVert))
                 {
                     currentVert = edge.A;
                     nextVert = edge.B;
@@ -167,17 +181,29 @@ namespace Navigation
                     currentVert = edge.B;
                     nextVert = edge.A;
                 }
+                
+                if (GeometryUtils.NearlyEqual(nextVert, startVert))
+                {
+                    break;
+                }
+            }
+
+            var addedPoints = points.Length - pointsStartIndex;
+            if (addedPoints < edges.Length)
+            {
+                Debug.LogWarning($"Added points: {addedPoints} is less than edges: {edges.Length}.");
+                return false;
             }
             
             // Make sure that points are sorted CCW
-            if (!Triangle.IsCCW(
+            if (ensureCCW && pointsStartIndex + 3 < points.Length && !Triangle.IsCCW(
                     points[pointsStartIndex], 
                     points[pointsStartIndex + 1], 
                     points[pointsStartIndex + 2])
                 )
             {
                 // Reverse
-                int swapMidIndex = (points.Length - pointsStartIndex) / 2 + pointsStartIndex;
+                int swapMidIndex = addedPoints / 2 + pointsStartIndex;
                 for (int s = pointsStartIndex, e = points.Length - 1; s < swapMidIndex; s++, e--)
                 {
                     (points[s], points[e]) = (points[e], points[s]);
@@ -202,11 +228,12 @@ namespace Navigation
 
             using var reduced = new NativeList<float2>(orderedPoints.Length, Allocator.Temp);
 
-            for (int i = 0; i < orderedPoints.Length; i++)
+            var l = orderedPoints.Length;
+            for (int i = 0; i < l; i++)
             {
-                float2 prev = orderedPoints[(i - 1 + orderedPoints.Length) % orderedPoints.Length];
+                float2 prev = orderedPoints[(i - 1 + l) % l];
                 float2 curr = orderedPoints[i];
-                float2 next = orderedPoints[(i + 1) % orderedPoints.Length];
+                float2 next = orderedPoints[(i + 1) % l];
 
                 if (!GeometryUtils.Collinear(prev, curr, next, toleration))
                 {
@@ -221,12 +248,23 @@ namespace Navigation
                 float2 b = reduced[(i + 1) % reduced.Length];
                 edges.Add(new Edge(a, b));
             }
+            
+            // foreach (var p in edges)
+            // {
+            //     Debug.DrawLine(math.float3(p.A, 0), math.float3(p.B, 0), Color.magenta, 2);
+            //     p.Center.To3D().DrawPoint(Color.green,2, 0.3f);
+            // }
+
+            // foreach (var p in orderedPoints)
+            // {
+            //     p.To3D().DrawPoint(Color.blue, 2, 0.3f);
+            // }
         }
 
         /// <summary>
         /// Replace intersection edges (ends included) by new edges to avoid intersection
         /// </summary>
-        public static void CutIntersectingEdges(NativeList<Edge> edges)
+        public static void CutIntersectingEdges(NativeList<Edge> edges, float tolerance = GeometryUtils.EPSILON)
         {
             for (int ai = 0; ai < edges.Length; ai++)
             {
@@ -234,12 +272,12 @@ namespace Navigation
                 {
                     Edge a = edges[ai];
                     Edge b = edges[bi];
-                    if (!GeometryUtils.TryIntersectAndOverlap(a.A, a.B, b.A, b.B, out float2 intersection1, out float2 intersection2))
+                    if (!GeometryUtils.TryIntersectAndOverlap(a.A, a.B, b.A, b.B, out float2 intersection1, out float2 intersection2, tolerance))
                     {
                         continue;
                     }
 
-                    if (GeometryUtils.NearlyEqual(intersection1, intersection2))
+                    if (GeometryUtils.NearlyEqual(intersection1, intersection2, tolerance))
                     {
                         // Edges not overlap
                         SplitEdge(a, intersection1, ai);
@@ -247,7 +285,7 @@ namespace Navigation
                         continue;
                     }
 
-                    if (GeometryUtils.SegmentsEqual(a.A, a.B, b.A, b.B))
+                    if (GeometryUtils.SegmentsEqual(a.A, a.B, b.A, b.B, tolerance))
                     {
                         // Do not change edge a
                         // edges[ai] = a;
@@ -284,11 +322,11 @@ namespace Navigation
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void SplitEdge(Edge e, float2 p, int index)
             {
-                if (!GeometryUtils.NearlyEqual(e.A, p))
+                if (!GeometryUtils.NearlyEqual(e.A, p, tolerance))
                 {
                     edges[index] = new(e.A, p);
 
-                    if (!GeometryUtils.NearlyEqual(e.B, p))
+                    if (!GeometryUtils.NearlyEqual(e.B, p, tolerance))
                     {
                         edges.Add(new(e.B, p));
                     }
@@ -297,7 +335,7 @@ namespace Navigation
                 {
                     edges[index] = new(e.B, p);
 
-                    if (!GeometryUtils.NearlyEqual(e.A, p))
+                    if (!GeometryUtils.NearlyEqual(e.A, p, tolerance))
                     {
                         edges.Add(new(e.A, p));
                     }

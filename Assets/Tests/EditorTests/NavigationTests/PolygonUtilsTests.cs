@@ -190,6 +190,31 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
+        public void GetPointsCCW_ShouldAddPointsToListWithElement()
+        {
+            // Arrange CW square
+            using var edges = new NativeList<EdgeKey>(Allocator.Temp)
+            {
+                new(new(0, 0), new(0, 1)),
+                new(new(0, 1), new(1, 1)),
+                new(new(1, 1), new(1, 0)),
+                new(new(1, 0), new(0, 0)),
+            };
+
+            // Act
+            using var points = new NativeList<float2>(Allocator.Temp)
+            {
+                new(-1, 1),
+                new(-1, 2),
+                new(-1, 3),
+            };
+            PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
+
+            // Assert
+            points.AsArray().Should_ContainInOrder(new(-1, 1), new(-1, 2), new(-1, 3), new(1, 0), new(1, 1), new(0, 1), new(0, 0));
+        }
+
+        [Test]
         public void ReduceEdges_ShouldPreserveSquare()
         {
             using var points = new NativeList<float2>(Allocator.Temp)
@@ -215,18 +240,18 @@ namespace Tests.EditorTests.NavigationTests
         {
             using var points = new NativeList<float2>(Allocator.Temp)
             {
-                new (0, 0),
-                new (0.5f, 0), // collinear, redundant
-                new (1, 0),
-                new (1, 1),
-                new (0, 1)
+                new(0, 0),
+                new(0.5f, 0), // collinear, redundant
+                new(1, 0),
+                new(1, 1),
+                new(0, 1)
             };
             using var edges = new NativeList<Edge>(Allocator.Temp);
 
             PolygonUtils.ReduceEdges(points, edges);
 
             edges.Length.Should().Be(4, "collinear point should be removed");
-            edges.AsArray().Should_ContainKey(new(new (0, 0), new (1, 0)));
+            edges.AsArray().Should_ContainKey(new(new(0, 0), new(1, 0)));
         }
 
         [Test]
@@ -234,20 +259,20 @@ namespace Tests.EditorTests.NavigationTests
         {
             using var points = new NativeList<float2>(Allocator.Temp)
             {
-                new (0, 0),
-                new (0.25f, 0),
-                new (0.5f, 0),
-                new (0.75f, 0),
-                new (1, 0),
-                new (1, 1),
-                new (0, 1)
+                new(0, 0),
+                new(0.25f, 0),
+                new(0.5f, 0),
+                new(0.75f, 0),
+                new(1, 0),
+                new(1, 1),
+                new(0, 1)
             };
             using var edges = new NativeList<Edge>(Allocator.Temp);
 
             PolygonUtils.ReduceEdges(points, edges);
 
             edges.Length.Should().Be(4, "all redundant collinear points should be removed");
-            edges.AsArray().Should_ContainKey(new(new (0, 0), new (1, 0)));
+            edges.AsArray().Should_ContainKey(new(new(0, 0), new(1, 0)));
         }
 
         [Test]
@@ -255,8 +280,8 @@ namespace Tests.EditorTests.NavigationTests
         {
             using var points = new NativeList<float2>(Allocator.Temp)
             {
-                new (0, 0),
-                new (1, 0)
+                new(0, 0),
+                new(1, 0)
             };
             using var edges = new NativeList<Edge>(Allocator.Temp);
 
@@ -442,6 +467,46 @@ namespace Tests.EditorTests.NavigationTests
             result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(10, 0)));
 
             result.AsArray().Should().HaveCount(1);
+        }
+
+        [Test]
+        public void CutIntersectingEdges_ShouldNotDetectedCutWithLowTolerance()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new(0, 0), new(0.000550436613f, 4.59566927f)),
+                new Edge(new(0.000403523445f, 3.36886024f), new(0.0248594582f, 3.33806086f)),
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result, tolerance: 0);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should().HaveCount(2);
+        }
+
+        [Test]
+        public void CutIntersectingEdges_ShouldDetectedCutWithHighTolerance()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new(0, 0), new(0.000550436613f, 4.59566927f)),
+                new Edge(new(0.000403523445f, 3.36886024f), new(0.0248594582f, 3.33806086f)),
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result, tolerance: 0.001f);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should().HaveCount(3);
         }
 
         // [Test]
