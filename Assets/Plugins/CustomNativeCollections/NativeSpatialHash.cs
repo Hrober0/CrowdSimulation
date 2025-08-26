@@ -80,13 +80,13 @@ namespace CustomNativeCollections
 
         #region Query
 
-        public void QueryPoint(float2 p, NativeList<T> results)
+        public readonly void QueryPoint(float2 p, NativeList<T> results)
         {
             int2 cell = CellOf(p, _invCell);
             QueryCell(cell, results);
         }
 
-        public void QueryAABB(float2 min, float2 max, NativeList<T> results)
+        public readonly void QueryAABB(float2 min, float2 max, NativeList<T> results)
         {
             (int2 cMin, int2 cMax) = ToMinMax(min, max, _invCell);
             for (int cy = cMin.y; cy <= cMax.y; cy++)
@@ -97,7 +97,7 @@ namespace CustomNativeCollections
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void QueryCell(int2 cell, NativeList<T> results)
+        public readonly void QueryCell(int2 cell, NativeList<T> results)
         {
             int key = Hash(cell);
             NativeParallelMultiHashMapIterator<int> it;

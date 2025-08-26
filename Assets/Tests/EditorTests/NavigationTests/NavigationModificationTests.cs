@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using HCore;
 using HCore.Extensions;
 using Navigation;
 using NUnit.Framework;
@@ -8,6 +9,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using HCore.Shapes;
+using Tests.TestsUtilities;
 using Unity.Jobs;
 using Triangle = Navigation.Triangle;
 
@@ -17,299 +19,8 @@ namespace Tests.EditorTests.NavigationTests
     {
         private bool debug = true;
 
-        // [Test]
-        // public void EnsureValidTriangulation_ShouldNotChange_WhenNoIntersection()
-        // {
-        //     var nodes = new List<NavMesh.AddNodeRequest>
-        //     {
-        //         new() { Triangle = new(new(0, 0), new(2, 0), new(1, 2)), ObstacleId = 0 },
-        //         new() { Triangle = new(new(2, 0), new(4, 0), new(3, 2)), ObstacleId = 1 },
-        //         new() { Triangle = new(new(2, 0), new(3, 2), new(1, 2)), ObstacleId = 2 },
-        //     };
-        //
-        //     var result = new List<NavMesh.AddNodeRequest>(nodes);
-        //     _navMesh.EnsureValidTriangulation(result);
-        //
-        //     DrawOffset(nodes[0].Triangle, Color.green);
-        //     DrawOffset(nodes[1].Triangle, Color.green);
-        //     DrawOffset(nodes[2].Triangle, Color.red);
-        //     Draw(result);
-        //
-        //     result.Should().BeEquivalentTo(nodes);
-        // }
-        //
-        // [Test]
-        // public void EnsureValidTriangulation_ShouldMergeOverlappingTriangles()
-        // {
-        //     //    Y
-        //     //    ▲       (1,2)  (2,2)
-        //     //  2 |        *    * 
-        //     //    |       / \  / \
-        //     //    |      /   \/   \
-        //     //    |     /    /\    \
-        //     //    |    /    /  \    \
-        //     //  0 |   *----*----*-----*
-        //     //    |  (0,0)    (2,0)   (3,0)
-        //     //    |
-        //     //    |
-        //     //    └──────────────────────────────▶ X
-        //     //       0     1     2     3
-        //
-        //     var nodes = new List<NavMesh.AddNodeRequest>
-        //     {
-        //         new() { Triangle = new(new(0, 0), new(2, 0), new(1, 2)), ObstacleId = RegisterEmptyObstacle() },
-        //         new() { Triangle = new(new(1, 0), new(3, 0), new(2, 2)), ObstacleId = RegisterEmptyObstacle() },
-        //     };
-        //
-        //     var result = new List<NavMesh.AddNodeRequest>(nodes);
-        //     _navMesh.EnsureValidTriangulation(result);
-        //
-        //     DrawOffset(nodes[0].Triangle, Color.green);
-        //     DrawOffset(nodes[1].Triangle, Color.red);
-        //     Draw(result);
-        //
-        //     result.Should().HaveCount(5);
-        //     result.Where(n => n.ObstacleId == nodes[0].ObstacleId).Should().HaveCount(2);
-        //     result.Where(n => n.ObstacleId == nodes[1].ObstacleId).Should().HaveCount(2);
-        //
-        //     var merged = result.Where(n => n.ObstacleId != nodes[0].ObstacleId && n.ObstacleId != nodes[1].ObstacleId).ToArray();
-        //     merged.Should().HaveCount(1);
-        //     _navMesh.GetObstacleIndexes(merged.First().ObstacleId).Should().Contain(
-        //         _navMesh.GetObstacleIndexes(nodes[0].ObstacleId)
-        //                 .Union(_navMesh.GetObstacleIndexes(nodes[1].ObstacleId)));
-        // }
-        //
-        // [Test]
-        // public void EnsureValidTriangulation_ShouldMergeOverlappingTriangles_MultipleTimes()
-        // {
-        //     //    Y                    /
-        //     //    ▲      (1,2) (2,2)  /      |
-        //     //  2 |        *    *    /       |
-        //     //    |       / \  / \  /        |
-        //     //    |      /   \/   \/         |
-        //     //    |     /    /\ *--\---------*
-        //     //    |    /    /  \    \
-        //     //  0 |   *----*----*-----*
-        //     //    |  (0,0)    (2,0)   (3,0)
-        //     //    └──────────────────────────────▶ X
-        //     //       0     1     2     3     4
-        //
-        //     var nodes = new List<NavMesh.AddNodeRequest>
-        //     {
-        //         new() { Triangle = new(new(0, 0), new(2, 0), new(1, 2)), ObstacleId = RegisterEmptyObstacle() },
-        //         new() { Triangle = new(new(1, 0), new(3, 0), new(2, 2)), ObstacleId = RegisterEmptyObstacle() },
-        //         new() { Triangle = new(new(2, 1), new(4, 1), new(4, 4)), ObstacleId = RegisterEmptyObstacle() },
-        //     };
-        //
-        //     var result = new List<NavMesh.AddNodeRequest>(nodes);
-        //     _navMesh.EnsureValidTriangulation(result);
-        //
-        //     DrawOffset(nodes[0].Triangle, Color.green);
-        //     DrawOffset(nodes[1].Triangle, Color.red);
-        //     DrawOffset(nodes[2].Triangle, Color.magenta);
-        //     Draw(result);
-        //
-        //     result.Should().HaveCount(11);
-        //     result.Where(n => n.ObstacleId == nodes[0].ObstacleId).Should().HaveCount(2);
-        //     result.Where(n => n.ObstacleId == nodes[1].ObstacleId).Should().HaveCount(5);
-        //     result.Where(n => n.ObstacleId == nodes[2].ObstacleId).Should().HaveCount(2);
-        //
-        //     var merged = result.Where(n =>
-        //                            n.ObstacleId != nodes[0].ObstacleId && n.ObstacleId != nodes[1].ObstacleId &&
-        //                            n.ObstacleId != nodes[2].ObstacleId)
-        //                        .ToArray();
-        //     merged.Should().HaveCount(2);
-        //     _navMesh.GetObstacleIndexes(merged[0].ObstacleId).Should().HaveCount(2);
-        //     _navMesh.GetObstacleIndexes(merged[1].ObstacleId).Should().HaveCount(2);
-        // }
-
-        // [Test]
-        // public void Merge_ShouldReduceTwoCollinearTriangles_ToOneBiggerTriangle()
-        // {
-        //     // Arrange: two triangles sharing edge (2,0)-(1,1)
-        //     var tris = new List<NavMesh.AddNodeRequest>()
-        //     {
-        //         new()
-        //         {
-        //             Triangle = new(new(0, 0), new(2, 0), new(1, 1)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new(1, 1), new(2, 2), new(2, 0)),
-        //             ObstacleId = 1
-        //         },
-        //     };
-        //
-        //     DrawOffset(tris[0].Triangle, Color.green);
-        //     DrawOffset(tris[1].Triangle, Color.red);
-        //     
-        //     // Act
-        //     NavMesh.TryMergeTriangles(tris);
-        //     
-        //     Draw(tris);
-        //     
-        //     // Assert: should now be only one triangle
-        //     tris.Should().HaveCount(1);
-        //     var result = tris[0];
-        //     
-        //     var verts = new HashSet<float2>(result.Triangle.Vertices);
-        //     verts.Should().BeEquivalentTo(new[]
-        //     {
-        //         new float2(0, 0),
-        //         new float2(2, 0),
-        //         new float2(2, 2)
-        //     });
-        // }
-        //
-        // [Test]
-        // public void Merge_ShouldNotMergeTwoCollinearTriangles_WhenHaveDifferentId()
-        // {
-        //     // Arrange: two triangles sharing edge (2,0)-(1,1)
-        //     var tris = new List<NavMesh.AddNodeRequest>()
-        //     {
-        //         new()
-        //         {
-        //             Triangle = new(new(0, 0), new(2, 0), new(1, 1)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new(1, 1), new(2, 2), new(2, 0)),
-        //             ObstacleId = 2
-        //         },
-        //     };
-        //
-        //     DrawOffset(tris[0].Triangle, Color.green);
-        //     DrawOffset(tris[1].Triangle, Color.red);
-        //     
-        //     // Act
-        //     NavMesh.TryMergeTriangles(tris);
-        //     
-        //     Draw(tris);
-        //     
-        //     // Assert
-        //     tris.Should().HaveCount(2);
-        // }
-        //
-        // [Test]
-        // public void Merge_ShouldMergeMultipleCollinearTriangles()
-        // {
-        //     // Arrange: 3 small collinear triangles forming a big one
-        //     var tris = new List<NavMesh.AddNodeRequest>()
-        //     {
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 0), new float2(4, 0), new float2(2, 2)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new float2(2, 2), new float2(4, 2), new float2(4, 0)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new(2, 2), new(4, 2), new(3, 3)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new(3, 3), new(4, 4), new(4, 2)),
-        //             ObstacleId = 1
-        //         },
-        //     };
-        //
-        //     DrawOffset(tris[0].Triangle, Color.green);
-        //     DrawOffset(tris[1].Triangle, Color.red);
-        //     DrawOffset(tris[2].Triangle, Color.magenta);
-        //     DrawOffset(tris[3].Triangle, Color.blue);
-        //     
-        //     // Act
-        //     NavMesh.TryMergeTriangles(tris);
-        //
-        //     Draw(tris);
-        //     
-        //     // Assert: should collapse into one large triangle
-        //     tris.Should().HaveCount(1);
-        // }
-        //
-        // [Test]
-        // public void Merge_ShouldNotChange_WhenNotCollinear()
-        // {
-        //     // Arrange: two triangles sharing edge but not collinear
-        //     var tris = new List<NavMesh.AddNodeRequest>()
-        //     {
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 0), new float2(1, 0), new float2(0, 1)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 1), new float2(1, 0), new float2(1, 1)),
-        //             ObstacleId = 1
-        //         },
-        //     };
-        //
-        //     DrawOffset(tris[0].Triangle, Color.green);
-        //     DrawOffset(tris[1].Triangle, Color.red);
-        //     
-        //     // Act
-        //     NavMesh.TryMergeTriangles(tris);
-        //
-        //     Draw(tris);
-        //     
-        //     // Assert: still 2 triangles
-        //     tris.Should().HaveCount(2);
-        //     tris.Should().ContainEquivalentOf(tris[0]);
-        //     tris.Should().ContainEquivalentOf(tris[1]);
-        // }
-        //
-        // [Test]
-        // public void Merge_ShouldMergeNotCollinearMultipleTriangles()
-        // {
-        //     // Arrange: 3 small collinear triangles forming a big one
-        //     var tris = new List<NavMesh.AddNodeRequest>()
-        //     {
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 0), new float2(1, 0), new float2(0, 1)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 1), new float2(1, 0), new float2(2, 1)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new float2(2, 1), new float2(1, 0), new float2(3, 0)),
-        //             ObstacleId = 1
-        //         },
-        //         new()
-        //         {
-        //             Triangle = new(new float2(0, 1), new float2(2, 1), new float2(0, 3)),
-        //             ObstacleId = 1
-        //         },
-        //     };
-        //
-        //     DrawOffset(tris[0].Triangle, Color.green);
-        //     DrawOffset(tris[1].Triangle, Color.red);
-        //     DrawOffset(tris[2].Triangle, Color.magenta);
-        //     DrawOffset(tris[3].Triangle, Color.blue);
-        //     
-        //     // Act
-        //     NavMesh.TryMergeTriangles(tris);
-        //
-        //     Draw(tris);
-        //     
-        //     // Assert: should collapse into one large triangle
-        //     tris.Should().HaveCount(1);
-        // }
-
-        private NavMesh _navMesh;
-        private NavObstacles _navObstacles;
+        private NavMesh<IdAttribute> _navMesh;
+        private NavObstacles<IdAttribute> _navObstacles;
 
         [SetUp]
         public void SetUp()
@@ -331,11 +42,11 @@ namespace Tests.EditorTests.NavigationTests
             //    └─────────────────────────────────────▶ X
             //          0  1  2  3  4  5  6  7  8  9 10
 
-            _navMesh = new NavMesh(1);
+            _navMesh = new(1);
             _navMesh.AddNode(NodeFromTriangle(new(0, 0), new(10, 0), new(0, 10)));
             _navMesh.AddNode(NodeFromTriangle(new(0, 10), new(10, 10), new(10, 0)));
 
-            _navObstacles = new NavObstacles(1);
+            _navObstacles = new(1);
         }
 
         [TearDown]
@@ -349,7 +60,7 @@ namespace Tests.EditorTests.NavigationTests
         public void AddObstacle_ShouldRemoveOriginalTriangle()
         {
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new float2(2, 1), new float2(4, 1), new float2(3, 3));
+            _navObstacles.AddObstacle(new(13), new float2(2, 1), new float2(4, 1), new float2(3, 3));
 
             // Act
             RunUpdate();
@@ -359,8 +70,8 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(3, 2), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
-            // _navMesh.Nodes.Where(node => node.CombinedId == obstacleId).Should().HaveCount(1);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(13);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(13)).Should().HaveCount(1);
             _navMesh.GetActiveNodes.Should().HaveCount(8);
         }
 
@@ -382,7 +93,7 @@ namespace Tests.EditorTests.NavigationTests
             //           6     7     8
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(6, 2), new(7, 4), new(8, 2), new(7, 1));
+            _navObstacles.AddObstacle(new(1), new(6, 2), new(7, 4), new(8, 2), new(7, 1));
 
             // Act
             RunUpdate();
@@ -392,8 +103,8 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(7, 2), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
-            // _navMesh.Nodes.Where(node => node.CombinedId == obstacleId).Should().HaveCount(2);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(2);
             _navMesh.GetActiveNodes.Should().HaveCount(10);
         }
 
@@ -405,9 +116,9 @@ namespace Tests.EditorTests.NavigationTests
             //  4 |            * (7,4)
             //    |           / \
             //  3 |          /   \
-            //    |         /     \
+            //    |         /  t1 \
             //  2 |  (6,2) *-------* (8,2)
-            //    |         \     /
+            //    |         \  t2 /
             //    |          \   /
             //    |           \ /
             //  1 |            * (7,1)
@@ -415,8 +126,8 @@ namespace Tests.EditorTests.NavigationTests
             //           6     7     8
 
             // Arrange
-            int obstacle1Id = _navObstacles.AddObstacle(new(6, 2), new(8, 2), new(7, 4));
-            int obstacle2Id = _navObstacles.AddObstacle(new(6, 2), new(7, 1), new(8, 2));
+            _navObstacles.AddObstacle(new(1), new(6, 2), new(8, 2), new(7, 4));
+            _navObstacles.AddObstacle(new(2), new(6, 2), new(7, 1), new(8, 2));
 
             // Act
             RunUpdate();
@@ -424,10 +135,16 @@ namespace Tests.EditorTests.NavigationTests
             Draw(_navMesh.Nodes);
 
             // Assert
-            bool found = _navMesh.TryGetNodeIndex(new float2(7, 2), out int index);
-            found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
-            // _navMesh.Nodes.Where(node => node.CombinedId == obstacleId).Should().HaveCount(2);
+            _navMesh.TryGetNodeIndex(new float2(7, 3), out int index).Should().BeTrue();
+            ;
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(1);
+
+            _navMesh.TryGetNodeIndex(new float2(7, 2), out int index2).Should().BeTrue();
+            ;
+            _navMesh.Nodes[index2].Attributes.GetIds().Should().ContainOnly(2);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(1);
+
             _navMesh.GetActiveNodes.Should().HaveCount(10);
         }
 
@@ -445,7 +162,7 @@ namespace Tests.EditorTests.NavigationTests
             //           6     7     8
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(6, 2), new(7, 0), new(8, 2));
+            _navObstacles.AddObstacle(new(1), new(6, 2), new(7, 0), new(8, 2));
 
             // Act
             RunUpdate();
@@ -455,8 +172,8 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(7, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
-            // _navMesh.Nodes.Where(node => node.CombinedId == obstacleId).Should().HaveCount(1);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(1);
             _navMesh.GetActiveNodes.Should().HaveCount(7);
         }
 
@@ -474,7 +191,7 @@ namespace Tests.EditorTests.NavigationTests
             //             6   7   8
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(6, 0), new(8, 0), new(7, 2));
+            int obstacleId = _navObstacles.AddObstacle(new(1), new(6, 0), new(8, 0), new(7, 2));
 
             // Act
             RunUpdate();
@@ -484,8 +201,8 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(7, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
-            // _navMesh.Nodes.Where(node => node.CombinedId == obstacleId).Should().HaveCount(1);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(1);
             _navMesh.GetActiveNodes.Should().HaveCount(6);
         }
 
@@ -503,7 +220,7 @@ namespace Tests.EditorTests.NavigationTests
             //           6     7     8
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(6, 2), new(7, -2), new(8, 2));
+            _navObstacles.AddObstacle(new(1), new(6, 2), new(7, -2), new(8, 2));
 
             // Act
             RunUpdate();
@@ -513,7 +230,7 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(7, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
             _navMesh.GetActiveNodes.Should().HaveCount(8);
         }
 
@@ -531,7 +248,7 @@ namespace Tests.EditorTests.NavigationTests
             //            6    7   8
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(6, -2), new(8, -2), new(7, 2));
+            _navObstacles.AddObstacle(new(1), new(6, -2), new(8, -2), new(7, 2));
 
             // Act
             RunUpdate();
@@ -541,8 +258,9 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(7, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
             _navMesh.GetActiveNodes.Should().HaveCount(6);
+            _navMesh.TryGetNodeIndex(new float2(7, -1), out int _).Should().BeFalse();
         }
 
         [Test]
@@ -561,7 +279,7 @@ namespace Tests.EditorTests.NavigationTests
             //            -4   0   4
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(-4, -1), new(4, -1), new(4, 3));
+            _navObstacles.AddObstacle(new(1), new(-4, -1), new(4, -1), new(4, 3));
 
             // Act
             RunUpdate();
@@ -572,7 +290,8 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(1, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(2);
             _navMesh.GetActiveNodes.Should().HaveCount(6);
         }
 
@@ -590,7 +309,7 @@ namespace Tests.EditorTests.NavigationTests
             //            -2   0   4
 
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new(-2, -2), new(4, -2), new(0, 4));
+            _navObstacles.AddObstacle(new(1), new(-2, -2), new(4, -2), new(0, 4));
 
             // Act
             RunUpdate();
@@ -601,7 +320,7 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(1, 1), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
             _navMesh.GetActiveNodes.Should().HaveCount(4);
         }
 
@@ -609,7 +328,7 @@ namespace Tests.EditorTests.NavigationTests
         public void RemoveObstacle_RevertsObstacleRegion()
         {
             // Arrange
-            int obstacleId = _navObstacles.AddObstacle(new float2(2, 1), new float2(4, 1), new float2(3, 3));
+            int obstacleId = _navObstacles.AddObstacle(new(1), new float2(2, 1), new float2(4, 1), new float2(3, 3));
             RunUpdate();
 
             // Act
@@ -621,7 +340,7 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             bool found = _navMesh.TryGetNodeIndex(new float2(3, 2), out int index);
             found.Should().BeTrue();
-            // _navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[index].Attributes.Entries.Should().Be(0);
             _navMesh.GetActiveNodes.Should().HaveCount(2);
         }
 
@@ -659,18 +378,18 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.AddNode(NodeFromTriangle(new(0, -10), new(10, 0), new(0, 0))); // t1
             _navMesh.AddNode(NodeFromTriangle(new(0, -10), new(18, -10), new(10, 0))); // t2
             _navMesh.AddNode(NodeFromTriangle(new(18, -10), new(10, 10), new(10, 0))); // t3
-            
+
             // Act Add
-            int obstacleId = _navObstacles.AddObstacle(new float2(15, -9), new float2(15, -4), new float2(17, -8)); // obst
+            int obstacleId = _navObstacles.AddObstacle(new(1), new float2(15, -9), new float2(15, -4), new float2(17, -8)); // obst
             RunUpdate(new(15, -9), new(17, -4));
-            
+
             Draw(_navMesh.Nodes, 15);
-            
+
             // Assert Add
             {
                 bool found = _navMesh.TryGetNodeIndex(new float2(16, -8), out int index);
                 found.Should().BeTrue();
-                // _navMesh.Nodes[index].CombinedId.Should().Be(obstacleId);
+                _navMesh.Nodes[index].Attributes.GetIds().Should().ContainOnly(1);
                 _navMesh.GetActiveNodes.Should().HaveCount(11);
             }
 
@@ -679,12 +398,12 @@ namespace Tests.EditorTests.NavigationTests
             RunUpdate(new(15, -9), new(17, -4));
 
             Draw(_navMesh.Nodes);
-            
+
             // Assert remove
             {
                 bool found = _navMesh.TryGetNodeIndex(new float2(16, -8), out int index);
                 found.Should().BeTrue();
-                // navMesh.Nodes[index].CombinedId.Should().Be(NavNode.NULL_INDEX);
+                _navMesh.Nodes[index].Attributes.Entries.Should().Be(0);
                 _navMesh.GetActiveNodes.Should().HaveCount(5);
             }
         }
@@ -710,21 +429,18 @@ namespace Tests.EditorTests.NavigationTests
             //          1     2     3     4     5     6     7     8
 
             // Act: add both obstacles
-            int id1 = _navObstacles.AddObstacle(new(1, 1), new(3, 1), new(2, 3));
-            int id2 = _navObstacles.AddObstacle(new(6, 2), new(7, 0), new(8, 2), new(7, 4));
+            int id1 = _navObstacles.AddObstacle(new(1), new(1, 1), new(3, 1), new(2, 3));
+            int id2 = _navObstacles.AddObstacle(new(2), new(6, 2), new(7, 0), new(8, 2), new(7, 4));
             RunUpdate();
-            
+
             Draw(_navMesh.Nodes, 15);
-            
-            id1.Should().Be(0);
-            id2.Should().Be(1);
 
             // Assert: check a point inside each obstacle returns the correct ID
             _navMesh.TryGetNodeIndex(new float2(2, 2), out int index1).Should().BeTrue();
-            // _navMesh.Nodes[index1].CombinedId.Should().Be(id1);
+            _navMesh.Nodes[index1].Attributes.GetIds().Should().ContainOnly(1);
 
             _navMesh.TryGetNodeIndex(new float2(7, 1), out int index2).Should().BeTrue();
-            // _navMesh.Nodes[index2].CombinedId.Should().Be(id2);
+            _navMesh.Nodes[index2].Attributes.GetIds().Should().ContainOnly(2);
 
             // Act: remove the second obstacle
             _navObstacles.RemoveObstacle(id2);
@@ -736,12 +452,78 @@ namespace Tests.EditorTests.NavigationTests
             // - id2 area is restored (no obstacle there)
             // - id1 area is untouched
             _navMesh.TryGetNodeIndex(new float2(7, 1), out int restoredIndex).Should().BeTrue();
-            // _navMesh.Nodes[restoredIndex].CombinedId.Should().Be(NavNode.NULL_INDEX);
+            _navMesh.Nodes[restoredIndex].Attributes.Entries.Should().Be(0);
 
             _navMesh.TryGetNodeIndex(new float2(2, 2), out int stillBlockedIndex).Should().BeTrue();
-            // _navMesh.Nodes[stillBlockedIndex].CombinedId.Should().Be(id1);
+            _navMesh.Nodes[stillBlockedIndex].Attributes.GetIds().Should().ContainOnly(1);
 
             _navMesh.GetActiveNodes.Should().HaveCount(8);
+        }
+
+        [Test]
+        public void Update_ShouldMergeOverlappingObstacleAttributes()
+        {
+            //    Y
+            //    ▲       (1,2)  (2,2)
+            //  2 |        *    * 
+            //    |       / \  / \
+            //    |      /   \/   \
+            //    |     /    /\    \
+            //    |    /    /  \    \
+            //  0 |   *----*----*-----*
+            //    |  (0,0)    (2,0)   (3,0)
+            //    |
+            //    |
+            //    └──────────────────────────────▶ X
+            //       0     1     2     3
+
+            // Act
+            _navObstacles.AddObstacle(new(1), new(0, 0), new(2, 0), new(1, 2));
+            _navObstacles.AddObstacle(new(2), new(1, 0), new(3, 0), new(2, 2));
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1) && node.Attributes.GetIds().Contains(2))
+                    .Should().HaveCount(1);
+            _navMesh.GetActiveNodes.Should().HaveCount(11);
+        }
+
+        [Test]
+        public void EnsureValidTriangulation_ShouldMergeOverlappingTriangles_MultipleTimes()
+        {
+            //    Y                    /
+            //    ▲      (1,2) (2,2)  /      |
+            //  2 |        *    *    /       |
+            //    |       / \  / \  /        |
+            //    |      /   \/   \/         |
+            //    |     /    /\ *--\---------*
+            //    |    /    /  \    \
+            //  0 |   *----*----*-----*
+            //    |  (0,0)    (2,0)   (3,0)
+            //    └──────────────────────────────▶ X
+            //       0     1     2     3     4
+
+            // Act
+            _navObstacles.AddObstacle(new(1), new(0, 0), new(2, 0), new(1, 2));
+            _navObstacles.AddObstacle(new(2), new(1, 0), new(3, 0), new(2, 2));
+            _navObstacles.AddObstacle(new(3), new(2, 1), new(4, 1), new(4, 4));
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(7);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1) && node.Attributes.GetIds().Contains(2))
+                    .Should().HaveCount(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2) && node.Attributes.GetIds().Contains(3))
+                    .Should().HaveCount(1);
+            _navMesh.GetActiveNodes.Should().HaveCount(21);
         }
 
         #region Helpers
@@ -760,19 +542,9 @@ namespace Tests.EditorTests.NavigationTests
             }
         }
 
-        private void DrawOffset(Triangle tr, Color color)
-        {
-            if (!debug)
-            {
-                return;
-            }
+        private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float offsetX) => Draw(nodes, new float2(offsetX, 0));
 
-            float2 offset = new float2(10, 0);
-            new Triangle(tr.A + offset, tr.B + offset, tr.C + offset).DrawBorder(color, 5);
-        }
-
-        private void Draw(NativeArray<NavNode> nodes, float offsetX) => Draw(nodes, new float2(offsetX, 0));
-        private void Draw(NativeArray<NavNode> nodes, float2 offset = default)
+        private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float2 offset = default)
         {
             if (!debug)
             {
@@ -782,42 +554,20 @@ namespace Tests.EditorTests.NavigationTests
             foreach (var node in nodes)
             {
                 new Triangle(node.Triangle.A + offset, node.Triangle.B + offset, node.Triangle.C + offset).DrawBorder(Color.white, 3);
-                (node.Center + offset).To3D().DrawPoint(Color.red, 3, .1f);
+                var color = node.Attributes.Entries > 0 ? ColorUtils.GetColor(node.Attributes.Entries) : Color.gray;
+                (node.Center + offset).To3D().DrawPoint(color, 3, .1f);
             }
         }
 
-        private void Draw(List<NavMesh.AddNodeRequest> nodes)
-        {
-            if (!debug)
-            {
-                return;
-            }
-
-            Debug.Log($"Nodes: {nodes.Count}");
-            foreach (var node in nodes)
-            {
-                node.Triangle.DrawBorder(Color.white, 3);
-                node.Triangle.GetCenter.To3D().DrawPoint(Color.red, 3, .1f);
-                Debug.Log(node);
-                Debug.Log($"Center {node.Triangle.GetCenter}");
-            }
-
-            foreach (var node in nodes)
-            {
-                Debug.DrawLine(node.Triangle.GetCenter.To3D(), node.Triangle.A.To3D(), Color.yellow, 3);
-                Debug.DrawLine(node.Triangle.GetCenter.To3D(), node.Triangle.B.To3D(), Color.yellow, 3);
-                Debug.DrawLine(node.Triangle.GetCenter.To3D(), node.Triangle.C.To3D(), Color.yellow, 3);
-            }
-        }
-
-        private static NavMesh.AddNodeRequest NodeFromTriangle(float2 a, float2 b, float2 c) =>
-            new NavMesh.AddNodeRequest { Triangle = new(a, b, c) };
+        private static NavMesh<IdAttribute>.AddNodeRequest
+            NodeFromTriangle(float2 a, float2 b, float2 c, IdAttribute attribute = default) =>
+            new(new(a, b, c), attribute);
 
         private void RunUpdate() => RunUpdate(new float2(-20, -20), new float2(20, 20));
 
         private void RunUpdate(float2 min, float2 max)
         {
-            new NaveMeshUpdateJob
+            new NaveMeshUpdateJob<IdAttribute>
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,

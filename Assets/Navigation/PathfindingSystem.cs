@@ -21,8 +21,8 @@ namespace Navigation
         [SerializeField] private bool _drawObstacleTriangle;
         [SerializeField] private bool _drawObstacleBorder;
         
-        private NavMesh _navMesh;
-        private NavObstacles _navObstacles;
+        private NavMesh<IdAttribute> _navMesh;
+        private NavObstacles<IdAttribute> _navObstacles;
 
         private void Start()
         {
@@ -54,14 +54,11 @@ namespace Navigation
         private async Awaitable CheckInsertion()
         {
             await WaitForClick();
-            var o1 = _navObstacles.AddObstacle(new()
-            {
-                new(1, 1), new(3, 1), new(3, 3),
-            });
+            var o1 = _navObstacles.AddObstacle(new(1), new(1, 1), new(3, 1), new(3, 3));
             RunUpdate();
             
             await WaitForClick();
-            var o2 = _navObstacles.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+            var o2 = _navObstacles.AddObstacle(new(2),CreateSquareAsTriangles( new float2(10, 6), 3, 30));
             RunUpdate();
             
             await WaitForClick();
@@ -75,7 +72,7 @@ namespace Navigation
         
         private async Awaitable CheckRectangle()
         {
-            _navObstacles.AddObstacle(CreateSquareAsTriangles( new float2(10, 6), 3, 30));
+            _navObstacles.AddObstacle(new(1),CreateSquareAsTriangles( new float2(10, 6), 3, 30));
             RunUpdate();
             
             float deg = 0;
@@ -90,7 +87,7 @@ namespace Navigation
                 var size = 2f;
                 var addMin = new float2(mpos.x - size, mpos.y - size);
                 var addMax = new float2(mpos.x + size, mpos.y + size);
-                var o1 = _navObstacles.AddObstacle(CreateSquareAsTriangles(mpos, size / 2, deg));
+                var o1 = _navObstacles.AddObstacle(new(2),CreateSquareAsTriangles(mpos, size / 2, deg));
                 RunUpdate(addMin, addMax);
                 
                 // await WaitForClick();
@@ -110,7 +107,7 @@ namespace Navigation
         private void RunUpdate(float2 min, float2 max)
         {
             // Debug.Log("Run");
-            new NaveMeshUpdateJob
+            new NaveMeshUpdateJob<IdAttribute>
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,
@@ -201,14 +198,12 @@ namespace Navigation
             var triangles = triangulator.Output.Triangles;
             for (int i = 0; i < triangles.Length; i += 3)
             {
-                _navMesh.AddNode(new()
-                {
-                    Triangle = new(
-                        positions[triangles[i]],
-                        positions[triangles[i + 1]],
-                        positions[triangles[i + 2]]
-                    ),
-                });
+                var triangle = new Triangle(
+                    positions[triangles[i]],
+                    positions[triangles[i + 1]],
+                    positions[triangles[i + 2]]
+                );
+                _navMesh.AddNode(new(triangle, new()));
             }
             
             positions.Dispose();

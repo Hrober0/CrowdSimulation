@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public struct NavObstacles : IDisposable
+    public struct NavObstacles<T> : IDisposable where T : unmanaged, INodeAttributes<T>
     {
         public NativeFixedList<Obstacle> Obstacles;
         public NativeSpatialHash<IndexedTriangle> ObstacleLookup;
@@ -31,7 +31,7 @@ namespace Navigation
             ObstacleEdges.Dispose();
         }
         
-        public int AddObstacle(in NativeList<float2> border)
+        public int AddObstacle(in NativeList<float2> border, T attributes)
         {
             if (border.Length < 2)
             {
@@ -47,11 +47,8 @@ namespace Navigation
                 worldMin = math.min(p, worldMin);
                 worldMax = math.max(p, worldMax);
             }
-            var obstacle = new Obstacle
-            {
-                Min = worldMin,
-                Max = worldMax,
-            };
+
+            var obstacle = new Obstacle(worldMin, worldMax, attributes);
             int newId = Obstacles.Add(obstacle);
 
             // Add edges
@@ -148,16 +145,24 @@ namespace Navigation
         
         #endregion
 
-        public struct Obstacle
+        public readonly struct Obstacle
         {
-            public float2 Min;
-            public float2 Max;
+            public readonly float2 Min;
+            public readonly float2 Max;
+            public readonly T Attributes;
+
+            public Obstacle(float2 min, float2 max, T attributes)
+            {
+                Min = min;
+                Max = max;
+                Attributes = attributes;
+            }
         }
 
-        public struct IndexedTriangle : IEquatable<IndexedTriangle>, IOutline
+        public readonly struct IndexedTriangle : IEquatable<IndexedTriangle>, IOutline
         {
-            public Triangle Triangle;
-            public int Index;
+            public readonly Triangle Triangle;
+            public readonly int Index;
 
             public IndexedTriangle(Triangle triangle, int index)
             {
@@ -176,23 +181,23 @@ namespace Navigation
 
     public static class NavObstaclesExtension
     {
-        public static int AddObstacle(this NavObstacles navObstacles, List<float2> border)
+        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, List<float2> border) where T : unmanaged, INodeAttributes<T>
         {
             using var nativeList = new NativeList<float2>(border.Count, Allocator.Temp);
             for (int i = 0; i < border.Count; i++)
             {
                 nativeList.Add(border[i]);
             }
-            return navObstacles.AddObstacle(in nativeList);
+            return navObstacles.AddObstacle(in nativeList, attributes);
         }
-        public static int AddObstacle(this NavObstacles navObstacles, params float2[] border)
+        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, params float2[] border) where T : unmanaged, INodeAttributes<T>
         {
             using var nativeList = new NativeList<float2>(border.Length, Allocator.Temp);
             for (int i = 0; i < border.Length; i++)
             {
                 nativeList.Add(border[i]);
             }
-            return navObstacles.AddObstacle(in nativeList);
+            return navObstacles.AddObstacle(in nativeList, attributes);
         }
     }
 }

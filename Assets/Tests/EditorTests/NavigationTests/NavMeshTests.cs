@@ -15,7 +15,7 @@ namespace Tests.EditorTests.NavigationTests
     {
         private bool _debug = true;
 
-        private NavMesh _navMesh;
+        private NavMesh<IdAttribute> _navMesh;
 
         [SetUp]
         public void SetUp()
@@ -35,8 +35,8 @@ namespace Tests.EditorTests.NavigationTests
             //  0 | *─────────────────────────────*
             //    └───────────────────────────────▶ X
             //      0  1  2  3  4  5  6  7  8  9 10
-            
-            _navMesh = new NavMesh(1);
+
+            _navMesh = new(1);
             _navMesh.AddNode(NodeFromTriangle(new(0, 0), new(10, 0), new(5, 10)));
         }
 
@@ -175,7 +175,7 @@ namespace Tests.EditorTests.NavigationTests
                 node.ConnectionBC.Should().Be(connectId);
             }
         }
-        
+
         [Test]
         public void AddNode_ShouldConnectTwoExistingNodes()
         {
@@ -185,7 +185,7 @@ namespace Tests.EditorTests.NavigationTests
             var topId = _navMesh.AddNode(NodeFromTriangle(new(5, 10), new(15, 5), new(10, 15))); // top
 
             DrawOffset(_navMesh.Nodes);
-            
+
             // Act
             var rightId = _navMesh.AddNode(NodeFromTriangle(new(5, 10), new(15, 5), new(10, 0))); // right
 
@@ -291,7 +291,7 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.RemoveNodes(new(-5, 5), new(-5, 2), result);
 
             Draw(_navMesh.Nodes);
-            
+
             // Assert
             _navMesh.GetActiveNodes.Should().HaveCount(3);
             var centerNode = _navMesh.Nodes[connectId];
@@ -327,7 +327,7 @@ namespace Tests.EditorTests.NavigationTests
             result.AsArray().Should().Contain(new Triangle(new(-5, 15), new(0, 0), new(5, 10)));
         }
 
-        private void Draw(NativeArray<NavNode> nodes)
+        private void Draw(NativeArray<NavNode<IdAttribute>> nodes)
         {
             if (!_debug)
             {
@@ -342,7 +342,7 @@ namespace Tests.EditorTests.NavigationTests
                 }
 
                 node.Triangle.DrawBorder(Color.white, 3);
-                node.Center.To3D().DrawPoint(Color.red, 3, .1f);
+                node.Center.To3D().DrawPoint(node.Attributes.Entries > 0 ? Color.red : Color.gray, 3, .1f);
             }
 
             foreach (var node in nodes)
@@ -351,7 +351,7 @@ namespace Tests.EditorTests.NavigationTests
                 {
                     continue;
                 }
-                
+
                 foreach (var id in EnumExtensions.GetValues<NavNode.EdgeId>())
                 {
                     var connectionIndex = node.GetConnectionIndex(id);
@@ -363,7 +363,7 @@ namespace Tests.EditorTests.NavigationTests
             }
         }
 
-        private void DrawOffset(NativeArray<NavNode> nodes)
+        private void DrawOffset(NativeArray<NavNode<IdAttribute>> nodes)
         {
             if (!_debug)
             {
@@ -379,11 +379,11 @@ namespace Tests.EditorTests.NavigationTests
                 }
 
                 new Triangle(node.Triangle.A + offset, node.Triangle.B + offset, node.Triangle.C + offset).DrawBorder(Color.white, 3);
-                (node.Center + offset).To3D().DrawPoint(Color.red, 3, .1f);
+                (node.Center + offset).To3D().DrawPoint(node.Attributes.Entries > 0 ? Color.red : Color.gray, 3, .1f);
             }
         }
 
-        private static NavMesh.AddNodeRequest NodeFromTriangle(float2 a, float2 b, float2 c) =>
-            new NavMesh.AddNodeRequest { Triangle = new(a, b, c) };
+        private static NavMesh<IdAttribute>.AddNodeRequest NodeFromTriangle(float2 a, float2 b, float2 c, IdAttribute attribute = default) =>
+            new(new(a, b, c), attribute);
     }
 }

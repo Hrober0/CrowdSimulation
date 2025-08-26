@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
@@ -12,14 +11,14 @@ using EdgeId = Navigation.NavNode.EdgeId;
 namespace Navigation
 {
     [BurstCompile]
-    public struct FindPathJob : IJob
+    public struct FindPathJob<T> : IJob where T : unmanaged, INodeAttributes<T>
     {
         [ReadOnly] public PathSeekerData SeekerData;
         [ReadOnly] public float2 StartPos;
         [ReadOnly] public int StartNodeIndex;
         [ReadOnly] public float2 TargetPos;
         [ReadOnly] public int TargetNodeIndex;
-        [ReadOnly] public NativeArray<NavNode> Nodes;
+        [ReadOnly] public NativeArray<NavNode<T>> Nodes;
 
         public NativeList<float2> ResultPath;
 
@@ -53,11 +52,11 @@ namespace Navigation
 
                 closedSet.Add(current.Index);
 
-                NavNode node = Nodes[current.Index];
+                NavNode<T> node = Nodes[current.Index];
                 foreach (EdgeId edgeId in edgesIds)
                 {
                     var connectedIndex = node.GetConnectionIndex(edgeId);
-                    
+
                     if (connectedIndex == NavNode.NULL_INDEX)
                     {
                         continue;
@@ -68,13 +67,13 @@ namespace Navigation
                         continue;
                     }
 
-                    NavNode neighbor = Nodes[connectedIndex];
+                    NavNode<T> neighbor = Nodes[connectedIndex];
                     float g = current.GCost + math.distance(node.Center, neighbor.Center);
                     if (cameFrom.TryGetValue(connectedIndex, out AStarNode existing) && g >= existing.GCost)
                     {
                         continue;
                     }
-            
+
                     float h = math.distance(neighbor.Center, TargetPos);
 
                     var newNode = new AStarNode(
@@ -114,7 +113,7 @@ namespace Navigation
                 // Determine left/right ordering
                 portals[i] = CreatePortal(edge.A, edge.B, portals[i - 1]);
             }
-            
+
             // Create final path
             FunnelPath.FromPortals(portals, ResultPath);
 
@@ -133,7 +132,7 @@ namespace Navigation
                 : new(p2, p1);
             return portal;
         }
-        
+
         private readonly struct AStarNode : IComparable<AStarNode>
         {
             public readonly int Index;

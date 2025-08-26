@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using HCore.Shapes;
 using Unity.Mathematics;
 using UnityEngine;
+using EdgeId = Navigation.NavNode.EdgeId;
 
 namespace Navigation
 {
-    public struct NavNode : IOutline
+    public struct NavNode
     {
         public enum EdgeId
         {
@@ -16,8 +17,11 @@ namespace Navigation
         }
 
         public const int NULL_INDEX = -1;
+    }
 
-        public static readonly NavNode Empty = new NavNode();
+    public struct NavNode<T> : IOutline where T : unmanaged, INodeAttributes<T>
+    {
+        public static readonly NavNode<T> Empty = new();
 
         public readonly float2 CornerA;
         public readonly float2 CornerB;
@@ -29,9 +33,10 @@ namespace Navigation
 
         public readonly float2 Center;
 
+        public readonly T Attributes;
         private readonly bool _wasSet;
 
-        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionBC, int connectionCA)
+        public NavNode(float2 cornerA, float2 cornerB, float2 cornerC, int connectionAB, int connectionBC, int connectionCA, T attributes)
         {
             CornerA = cornerA;
             CornerB = cornerB;
@@ -40,6 +45,7 @@ namespace Navigation
             ConnectionAB = connectionAB;
             ConnectionBC = connectionBC;
             ConnectionCA = connectionCA;
+            Attributes = attributes;
 
             Center = Triangle.Center(cornerA, cornerB, cornerC);
 
@@ -64,6 +70,7 @@ namespace Navigation
             EdgeId.CA => new(CornerC, CornerA),
             _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
         };
+
         public int GetConnectionIndex(EdgeId id) => id switch
         {
             EdgeId.AB => ConnectionAB,

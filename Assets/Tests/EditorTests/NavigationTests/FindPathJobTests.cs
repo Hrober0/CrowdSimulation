@@ -15,7 +15,7 @@ namespace Tests.EditorTests.NavigationTests
             var left = new float2(2, 0);
             var right = new float2(1, -2);
 
-            var portal = FindPathJob.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
+            var portal = FindPathJob<IdAttribute>.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(left);
             portal.Right.Should().BeApproximately(right);
@@ -27,7 +27,7 @@ namespace Tests.EditorTests.NavigationTests
             var notRight = new float2(2, 0);
             var notLeft = new float2(1, -2);
 
-            var portal = FindPathJob.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
+            var portal = FindPathJob<IdAttribute>.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(notRight);
             portal.Right.Should().BeApproximately(notLeft);
@@ -52,28 +52,30 @@ namespace Tests.EditorTests.NavigationTests
 
                 Path should go from t0 (0.1, 0.1) to t1 (0.9, 0.9)
             */
-            
+
             var a = new float2(0, 0);
             var b = new float2(1, 0);
             var c = new float2(0, 1);
             var d = new float2(1, 1);
 
-            var nodes = new NativeArray<NavNode>(2, Allocator.Temp);
-            nodes[0] = new NavNode(
+            var nodes = new NativeArray<NavNode<IdAttribute>>(2, Allocator.Temp);
+            nodes[0] = new(
                 a,
                 b,
                 c,
                 connectionAB: -1,
                 connectionBC: 1,
-                connectionCA: -1
+                connectionCA: -1,
+                new()
             );
-            nodes[1] = new NavNode(
+            nodes[1] = new(
                 b,
                 d,
                 c,
                 connectionAB: -1,
                 connectionBC: -1,
-                connectionCA: 0
+                connectionCA: 0,
+                new()
             );
 
             var start = new float2(0.1f, 0.1f);
@@ -117,43 +119,47 @@ namespace Tests.EditorTests.NavigationTests
             float2 e = new(2.5f, 1);
             float2 f = new(2f, 0);
 
-            var nodes = new NativeArray<NavNode>(4, Allocator.Temp);
+            var nodes = new NativeArray<NavNode<IdAttribute>>(4, Allocator.Temp);
 
             // Triangle 0: ABC
-            nodes[0] = new NavNode(
+            nodes[0] = new(
                 cornerA: a,
                 cornerB: b,
                 cornerC: c,
                 connectionAB: -1,
                 connectionBC: 1,
-                connectionCA: -1
+                connectionCA: -1,
+                new()
             );
             // Triangle 1: CBD
-            nodes[1] = new NavNode(
+            nodes[1] = new(
                 cornerA: c,
                 cornerB: b,
                 cornerC: d,
                 connectionAB: 0,
                 connectionBC: 2,
-                connectionCA: -1
+                connectionCA: -1,
+                new()
             );
             // Triangle 2: BFD
-            nodes[2] = new NavNode(
+            nodes[2] = new(
                 cornerA: b,
                 cornerB: f,
                 cornerC: d,
                 connectionAB: -1,
                 connectionBC: 3,
-                connectionCA: 1
+                connectionCA: 1,
+                new()
             );
             // Triangle 3: DEF
-            nodes[3] = new NavNode(
+            nodes[3] = new(
                 cornerA: d,
                 cornerB: e,
                 cornerC: f,
                 connectionAB: 1,
                 connectionBC: -1,
-                connectionCA: 2
+                connectionCA: 2,
+                new()
             );
 
             float2 start = nodes[0].Center;
@@ -178,10 +184,10 @@ namespace Tests.EditorTests.NavigationTests
             resultPath.Dispose();
         }
 
-        private static NativeList<float2> ExecuteJob(float2 start, float2 end, NativeArray<NavNode> nodes)
+        private static NativeList<float2> ExecuteJob(float2 start, float2 end, NativeArray<NavNode<IdAttribute>> nodes)
         {
             const float CELL_SIZE = 1f;
-            
+
             using var lookup = new NativeParallelMultiHashMap<int2, int>(2, Allocator.Temp);
             var resultPath = new NativeList<float2>(Allocator.Temp);
 
@@ -191,7 +197,7 @@ namespace Tests.EditorTests.NavigationTests
                 lookup.Add(cell, i);
             }
 
-            var job = new FindPathJob
+            var job = new FindPathJob<IdAttribute>
             {
                 StartPos = start,
                 StartNodeIndex = GetCellFromWorldPosition(start),
@@ -205,13 +211,13 @@ namespace Tests.EditorTests.NavigationTests
             job.Execute();
 
             return resultPath;
-            
+
             int GetCellFromWorldPosition(float2 position)
             {
                 var cell = (int2)(position / CELL_SIZE);
                 foreach (var index in lookup.GetValuesForKey(cell))
                 {
-                    NavNode node = nodes[index];
+                    NavNode<IdAttribute> node = nodes[index];
                     if (Triangle.PointIn(position, node.CornerA, node.CornerB, node.CornerC))
                     {
                         return index;

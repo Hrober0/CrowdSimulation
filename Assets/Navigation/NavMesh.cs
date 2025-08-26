@@ -10,13 +10,13 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public struct NavMesh : IDisposable
+    public struct NavMesh<T> : IDisposable where T : unmanaged, INodeAttributes<T>
     {
-        private NativeFixedList<NavNode> _nodes;
+        private NativeFixedList<NavNode<T>> _nodes;
         private NativeSpatialHash<int> _nodesPositionLookup; // cell position to node index
 
-        public NativeArray<NavNode> Nodes => _nodes.DirtyList.AsArray();
-        public IEnumerable<NavNode> GetActiveNodes => _nodes;
+        public NativeArray<NavNode<T>> Nodes => _nodes.DirtyList.AsArray();
+        public IEnumerable<NavNode<T>> GetActiveNodes => _nodes;
         public bool IsCreated => _nodesPositionLookup.IsCreated;
 
         public NavMesh(float chunkSize, int nodesInitialCapacity = 1024)
@@ -37,7 +37,7 @@ namespace Navigation
             _nodesPositionLookup.QueryPoint(position, indexes);
             foreach (var index in indexes)
             {
-                NavNode node = _nodes[index];
+                NavNode<T> node = _nodes[index];
                 if (Triangle.PointIn(position, node.CornerA, node.CornerB, node.CornerC))
                 {
                     nodeIndex = index;
@@ -57,13 +57,14 @@ namespace Navigation
             // create node
             var newIndex = _nodes.FreeIndex;
             (float2 a, float2 b, float2 c) = addAddNodeRequest.Triangle;
-            var newNode = new NavNode(
+            var newNode = new NavNode<T>(
                 a,
                 b,
                 c,
                 connectionAB: TryConnect(a, b, newIndex),
                 connectionBC: TryConnect(b, c, newIndex),
-                connectionCA: TryConnect(c, a, newIndex)
+                connectionCA: TryConnect(c, a, newIndex),
+                addAddNodeRequest.Attributes
             );
 
             // add to array
@@ -93,7 +94,7 @@ namespace Navigation
             for (var index = 0; index < nodeIndexes.Length; index++)
             {
                 int nodeIndex = nodeIndexes[index];
-                NavNode node = _nodes[nodeIndex];
+                NavNode<T> node = _nodes[nodeIndex];
 
                 if (node.IsEmpty)
                 {
@@ -104,7 +105,7 @@ namespace Navigation
                 // node.DrawBorder(Color.red, 1);
                 // DebugCell(cell);
 
-                _nodes[nodeIndex] = NavNode.Empty;
+                _nodes[nodeIndex] = NavNode<T>.Empty;
                 _nodes.RemoveAt(nodeIndex);
 
                 Triangle nodeTr = node.Triangle;
@@ -169,7 +170,7 @@ namespace Navigation
 
         private bool TrySetConnectionWithEdge(int nodeIndex, EdgeKey edge, int targetIndex)
         {
-            NavNode node = _nodes[nodeIndex];
+            NavNode<T> node = _nodes[nodeIndex];
 
             if (IsSameEdge(edge, node.CornerA, node.CornerB))
             {
@@ -245,9 +246,16 @@ namespace Navigation
 
         #endregion
 
-        public struct AddNodeRequest
+        public readonly struct AddNodeRequest
         {
-            public Triangle Triangle;
+            public readonly Triangle Triangle;
+            public readonly T Attributes;
+
+            public AddNodeRequest(Triangle triangle, T attributes)
+            {
+                Triangle = triangle;
+                Attributes = attributes;
+            }
 
             public override string ToString() => $"AddNodeRequest: {Triangle}";
         }

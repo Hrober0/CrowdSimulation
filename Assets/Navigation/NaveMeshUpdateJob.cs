@@ -12,7 +12,7 @@ using UnityEngine;
 namespace Navigation
 {
     [BurstCompile]
-    public struct NaveMeshUpdateJob : IJob
+    public struct NaveMeshUpdateJob<T> : IJob  where T : unmanaged, INodeAttributes<T>
     {
         private const float MIN_POINT_DISTANCE = .001f;
         private const int DEFAULT_CAPACITY = 128;
@@ -21,10 +21,10 @@ namespace Navigation
         public float2 UpdateMin;
         public float2 UpdateMax;
 
-        public NavMesh NavMesh;
+        public NavMesh<T> NavMesh;
 
         [ReadOnly]
-        public NavObstacles NavObstacles;
+        public NavObstacles<T> NavObstacles;
         
         public void Execute()
         {
@@ -46,13 +46,13 @@ namespace Navigation
             if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
             {
                 Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {unorderedBorderEdges.Length}");
-                ReAddNodesOnError(NavMesh, in removedNodes);
+                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
                 return;
             }
             if (!isLoopClose)
             {
                 Debug.LogWarning("Loop is not closed");
-                ReAddNodesOnError(NavMesh, in removedNodes);
+                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
                 return;
             }
             
@@ -66,7 +66,7 @@ namespace Navigation
             // }
             
             // Get obstacle inside border
-            using var obstaclesParts = new NativeList<NavObstacles.IndexedTriangle>(DEFAULT_CAPACITY, Allocator.Temp);
+            using var obstaclesParts = new NativeList<NavObstacles<T>.IndexedTriangle>(DEFAULT_CAPACITY, Allocator.Temp);
             NavObstacles.ObstacleLookup.QueryAABB(UpdateMin, UpdateMax, obstaclesParts);
             using var obstacleIndexes = new NativeHashSet<int>(obstaclesParts.Length, Allocator.Temp);
             foreach (var indexedTriangle in obstaclesParts)
@@ -223,18 +223,20 @@ namespace Navigation
                 // }
                 // Debug.Log($"Constrains: \n{cons}");
 
-                ReAddNodesOnError(NavMesh, in removedNodes);
+                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
                 return;
             }
 
             if (outputTriangles.Length == 0)
             {
                 Debug.LogWarning($"Triangulation returned no triangles");
-                ReAddNodesOnError(NavMesh, in removedNodes);
+                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
                 return;
             }
             
             // Create nodes
+            using var obstaclesAtNode = new NativeList<NavObstacles<T>.IndexedTriangle>(16,Allocator.Temp);
+            var nodeConstructor = new T();
             for (int i = 0; i < outputTriangles.Length; i += 3)
             {
                 var triangle = new Triangle(
@@ -251,11 +253,20 @@ namespace Navigation
                     // triangle.GetCenter.To3D().DrawPoint(Color.red, 2, .5f);
                     continue;
                 }
-                
-                NavMesh.AddNode(new NavMesh.AddNodeRequest
+
+                T attributes = nodeConstructor.Empty();
+                obstaclesAtNode.Clear();
+                float2 center = triangle.GetCenter;
+                NavObstacles.ObstacleLookup.QueryPoint(center, obstaclesAtNode);
+                foreach (var indexed in obstaclesAtNode)
                 {
-                    Triangle = triangle,
-                });
+                    if (Triangle.PointIn(center, indexed.Triangle.A, indexed.Triangle.B, indexed.Triangle.C))
+                    {
+                        attributes.Merge(NavObstacles.Obstacles[indexed.Index].Attributes);
+                    }
+                }
+                
+                NavMesh.AddNode(new(triangle, attributes));
             }
             
             // Debug
@@ -294,14 +305,26 @@ namespace Navigation
 
             return false;
         }
-        private static void ReAddNodesOnError(NavMesh navMesh, in NativeList<Triangle> removedNodes)
+        
+        private static void ReAddNodesOnError(NavMesh<T> navMesh, in NativeList<Triangle> removedNodes, in NavObstacles<T> navObstacles)
         {
+            using var obstaclesAtNode = new NativeList<NavObstacles<T>.IndexedTriangle>(16,Allocator.Temp);
+            var nodeConstructor = new T();
             foreach (var triangle in removedNodes)
             {
-                navMesh.AddNode(new NavMesh.AddNodeRequest
+                T attributes = nodeConstructor.Empty();
+                obstaclesAtNode.Clear();
+                float2 center = triangle.GetCenter;
+                navObstacles.ObstacleLookup.QueryPoint(center, obstaclesAtNode);
+                foreach (var indexed in obstaclesAtNode)
                 {
-                    Triangle = triangle,
-                });
+                    if (Triangle.PointIn(center, indexed.Triangle.A, indexed.Triangle.B, indexed.Triangle.C))
+                    {
+                        attributes.Merge(navObstacles.Obstacles[indexed.Index].Attributes);
+                    }
+                }
+                
+                navMesh.AddNode(new(triangle, attributes));
             }
         }
         

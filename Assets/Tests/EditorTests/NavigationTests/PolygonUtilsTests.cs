@@ -108,7 +108,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeFalse();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(0, 0), new(1, 0), new(2, 1), new(3, 1));
+            points.AsArray().Should().ContainInOrderLooped(new(0, 0), new(1, 0), new(2, 1), new(3, 1));
         }
 
         [Test]
@@ -127,7 +127,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(0, 0), new(1, 0), new(.5f, 1));
+            points.AsArray().Should().ContainInOrderLooped(new(0, 0), new(1, 0), new(.5f, 1));
         }
 
         [Test]
@@ -146,7 +146,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(1, 0), new(0.5f, 1), new(0, 0));
+            points.AsArray().Should().ContainInOrderLooped(new(1, 0), new(0.5f, 1), new(0, 0));
         }
 
         [Test]
@@ -166,7 +166,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(0, 0), new(1, 0), new(1, 1), new(0, 1));
+            points.AsArray().Should().ContainInOrderLooped(new(0, 0), new(1, 0), new(1, 1), new(0, 1));
         }
 
         [Test]
@@ -186,7 +186,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(0, 0), new(1, 0), new(1, 1), new(0, 1));
+            points.AsArray().Should().ContainInOrderLooped(new(0, 0), new(1, 0), new(1, 1), new(0, 1));
         }
 
         [Test]
@@ -211,7 +211,7 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.GetPointsCCW(in edges, points).Should().BeTrue();
 
             // Assert
-            points.AsArray().Should_ContainInOrder(new(-1, 1), new(-1, 2), new(-1, 3), new(1, 0), new(1, 1), new(0, 1), new(0, 0));
+            points.AsArray().Should().ContainInOrderLooped(new(-1, 1), new(-1, 2), new(-1, 3), new(1, 0), new(1, 1), new(0, 1), new(0, 0));
         }
 
         [Test]
