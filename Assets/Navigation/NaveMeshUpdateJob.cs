@@ -46,13 +46,13 @@ namespace Navigation
             if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
             {
                 Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {unorderedBorderEdges.Length}");
-                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
+                AddNodes(in removedNodes);
                 return;
             }
             if (!isLoopClose)
             {
                 Debug.LogWarning("Loop is not closed");
-                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
+                AddNodes(in removedNodes);
                 return;
             }
             
@@ -223,20 +223,19 @@ namespace Navigation
                 // }
                 // Debug.Log($"Constrains: \n{cons}");
 
-                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
+                AddNodes(in removedNodes);
                 return;
             }
 
             if (outputTriangles.Length == 0)
             {
                 Debug.LogWarning($"Triangulation returned no triangles");
-                ReAddNodesOnError(NavMesh, in removedNodes, in NavObstacles);
+                AddNodes(in removedNodes);
                 return;
             }
             
             // Create nodes
-            using var obstaclesAtNode = new NativeList<NavObstacles<T>.IndexedTriangle>(16,Allocator.Temp);
-            var nodeConstructor = new T();
+            using var newNodes = new NativeList<Triangle>(outputTriangles.Length / 3,Allocator.Temp);
             for (int i = 0; i < outputTriangles.Length; i += 3)
             {
                 var triangle = new Triangle(
@@ -254,20 +253,9 @@ namespace Navigation
                     continue;
                 }
 
-                T attributes = nodeConstructor.Empty();
-                obstaclesAtNode.Clear();
-                float2 center = triangle.GetCenter;
-                NavObstacles.ObstacleLookup.QueryPoint(center, obstaclesAtNode);
-                foreach (var indexed in obstaclesAtNode)
-                {
-                    if (Triangle.PointIn(center, indexed.Triangle.A, indexed.Triangle.B, indexed.Triangle.C))
-                    {
-                        attributes.Merge(NavObstacles.Obstacles[indexed.Index].Attributes);
-                    }
-                }
-                
-                NavMesh.AddNode(new(triangle, attributes));
+                newNodes.Add(triangle);
             }
+            AddNodes(in newNodes);
             
             // Debug
             // foreach (var e in borderEdges)
@@ -306,25 +294,25 @@ namespace Navigation
             return false;
         }
         
-        private static void ReAddNodesOnError(NavMesh<T> navMesh, in NativeList<Triangle> removedNodes, in NavObstacles<T> navObstacles)
+        private void AddNodes(in NativeList<Triangle> newNodes)
         {
             using var obstaclesAtNode = new NativeList<NavObstacles<T>.IndexedTriangle>(16,Allocator.Temp);
             var nodeConstructor = new T();
-            foreach (var triangle in removedNodes)
+            foreach (var triangle in newNodes)
             {
                 T attributes = nodeConstructor.Empty();
                 obstaclesAtNode.Clear();
                 float2 center = triangle.GetCenter;
-                navObstacles.ObstacleLookup.QueryPoint(center, obstaclesAtNode);
+                NavObstacles.ObstacleLookup.QueryPoint(center, obstaclesAtNode);
                 foreach (var indexed in obstaclesAtNode)
                 {
                     if (Triangle.PointIn(center, indexed.Triangle.A, indexed.Triangle.B, indexed.Triangle.C))
                     {
-                        attributes.Merge(navObstacles.Obstacles[indexed.Index].Attributes);
+                        attributes.Merge(NavObstacles.Obstacles[indexed.Index].Attributes);
                     }
                 }
                 
-                navMesh.AddNode(new(triangle, attributes));
+                NavMesh.AddNode(new(triangle, attributes));
             }
         }
         
