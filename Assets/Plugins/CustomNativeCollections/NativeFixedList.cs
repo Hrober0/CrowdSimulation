@@ -59,9 +59,14 @@ namespace CustomNativeCollections
         }
 
         [BurstCompile]
-        public void RemoveAt(int index)
+        public bool RemoveAt(int index)
         {
+            if (_freeIndexes.Contains(index))
+            {
+                return false;
+            }
             _freeIndexes.Add(index);
+            return true;
         }
         
         public T this[int index]

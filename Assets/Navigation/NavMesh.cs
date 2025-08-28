@@ -213,13 +213,16 @@ namespace Navigation
 
         #region Debug
 
-        public void DrawNodes()
+        public void DrawNodes(bool drawCenter)
         {
             Gizmos.color = Color.white;
             foreach (var node in _nodes)
             {
                 node.DrawBorderGizmos();
-                node.Triangle.GetCenter.To3D().DrawPoint(Color.gray, duration: null, size: 0.1f);
+                if (drawCenter)
+                {
+                    node.Triangle.GetCenter.To3D().DrawPoint(Color.gray, duration: null, size: 0.1f);
+                }
             }
         }
 

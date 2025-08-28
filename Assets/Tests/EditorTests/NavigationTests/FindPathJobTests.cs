@@ -211,7 +211,7 @@ namespace Tests.EditorTests.NavigationTests
 
             job.Execute();
             
-            FunnelPath.FromPortals(portals.AsArray(), resultPath);
+            FunnelPath.FromPortals(start, end, portals.AsArray(), resultPath);
 
             return resultPath;
 

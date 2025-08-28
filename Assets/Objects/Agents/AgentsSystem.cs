@@ -55,6 +55,7 @@ namespace Objects.Agents
             _objectsSystem.OnObjectsCapacityChanged -= UpdateQueriesCapacity;
             
             StopAllCoroutines();
+            AgentLookup.Dispose();
         }
 
         public void FindAgentsInRangeRect(SimpleRect range, List<IObject> results)

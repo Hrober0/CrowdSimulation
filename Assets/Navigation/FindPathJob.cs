@@ -40,15 +40,26 @@ namespace Navigation
                 gCost: 0,
                 fCost: math.distance(Nodes[StartNodeIndex].Center, TargetPos),
                 cameFromIndex: -1));
+            
+            bool foundTargetNode = false;
+            int triesAfterFoundTargetNode = 10;
 
             // Find path to target node
             while (openSet.Count > 0)
             {
                 AStarNode current = openSet.Dequeue();
-                if (current.Index == TargetNodeIndex)
+
+                if (foundTargetNode)
                 {
-                    // Found end node
-                    break;
+                    triesAfterFoundTargetNode--;
+                    if (triesAfterFoundTargetNode < 1)
+                    {
+                        break;
+                    }
+                }
+                else if (current.Index == TargetNodeIndex)
+                {
+                    foundTargetNode = true;
                 }
 
                 closedSet.Add(current.Index);
@@ -70,17 +81,17 @@ namespace Navigation
 
                     NavNode<TAttribute> neighbor = Nodes[connectedIndex];
                     float g = current.GCost + math.distance(node.Center, neighbor.Center) * Seeker.CalculateMultiplier(neighbor.Attributes);
-                    if (cameFrom.TryGetValue(connectedIndex, out AStarNode existing) && g >= existing.GCost)
+                    float h = math.distance(neighbor.Center, TargetPos);
+                    float f = g + h;
+                    if (cameFrom.TryGetValue(connectedIndex, out AStarNode existing) && f >= existing.FCost)
                     {
                         continue;
                     }
 
-                    float h = math.distance(neighbor.Center, TargetPos);
-
                     var newNode = new AStarNode(
                         index: connectedIndex,
                         gCost: g,
-                        fCost: g + h,
+                        fCost: f,
                         cameFromIndex: current.Index
                     );
 
@@ -116,7 +127,7 @@ namespace Navigation
                 else if (currentNode.ConnectionCA == nextNodeIndex) edge = new(currentNode.CornerC, currentNode.CornerA);
                 else
                 {
-                    Debug.LogWarning("?");
+                    Debug.LogWarning("Nodes should be connected but are not...");
                     edge = new(currentNode.CornerA, currentNode.CornerB);
                 }
 
@@ -125,14 +136,6 @@ namespace Navigation
                 lastPortal = newPortal;
                 ResultPath.Add(newPortal);
             }
-
-            // var last = ResultPath[^1];
-            // var dir = math.normalize(TargetPos - last.Center);
-            // var targetNodeOffset = new float2(dir.y, -dir.x);
-            // ResultPath.Add(CreatePortal(TargetPos - targetNodeOffset, TargetPos + targetNodeOffset, last));
-
-            // // Create final path
-            // FunnelPath.FromPortals(portals, ResultPath);
 
             edgesIds.Dispose();
             cameFrom.Dispose();

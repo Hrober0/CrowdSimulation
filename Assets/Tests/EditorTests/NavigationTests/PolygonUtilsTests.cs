@@ -696,13 +696,7 @@ namespace Tests.EditorTests.NavigationTests
                 return;
             }
 
-            for (var index = 0; index < verts.Length - 1; index++)
-            {
-                float2 v = verts[index];
-                float2 v2 = verts[index + 1];
-                Debug.DrawLine(v.To3D(), v2.To3D(), color, 5);
-            }
-            Debug.DrawLine(verts[^1].To3D(), verts[0].To3D(), color, 5);
+            verts.AsArray().DrawLoop(color, 5);
         }
 
         private NativeList<T> ToNative<T>(List<T> list) where T : unmanaged

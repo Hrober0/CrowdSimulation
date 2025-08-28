@@ -13,17 +13,16 @@ namespace Tests.EditorTests.NavigationTests
         [Test]
         public void FunnelPath_StraightLine_ShouldReturnSingleStraightSegment()
         {
-            var portals = new NativeArray<Portal>(3, Allocator.Temp);
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(0, 1), new(1, 1))
+            };
             var result = new NativeList<float2>(Allocator.Temp);
 
             var start = new float2(0, 0);
             var end = new float2(0.5f, 2);
 
-            portals[0] = new(start, start);
-            portals[1] = new(new(0, 1), new(1, 1));
-            portals[2] = new(end, end);
-
-            FunnelPath.FromPortals(portals, result);
+            FunnelPath.FromPortals(start, end, portals.AsArray(), result);
 
             result.Length.Should().BeGreaterOrEqualTo(2);
             result[0].Should().BeApproximately(start);
@@ -36,7 +35,13 @@ namespace Tests.EditorTests.NavigationTests
         [Test]
         public void FunnelPath_NarrowTurns_ShouldFollowPortalsCorrectly()
         {
-            var portals = new NativeArray<Portal>(6, Allocator.Temp);
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(2, 0), new(1, -2)),// /
+                new(new(2, 2), new(4, 2)), // _
+                new(new(3, 6), new(4, 4)), // \
+                new(new(6, 6), new(5, 2)), // /
+            };
             var result = new NativeList<float2>(Allocator.Temp);
 
             //   Y ↑
@@ -47,19 +52,15 @@ namespace Tests.EditorTests.NavigationTests
             //   2 |              ----------    /
             //   1 |       
             //   0 |  s         /                         
-            //  -1 |          /                 e     
+            //  -1 |          /            e          
             //  -2 |        /
             //     +----------------------------------------→ X
             //         0    1    2    3    4    5    6
 
-            portals[0] = new(new(0, 0), new(0, 0)); // start
-            portals[1] = new(new(2, 0), new(1, -2)); // /
-            portals[2] = new(new(2, 2), new(4, 2)); // _
-            portals[3] = new(new(3, 6), new(4, 4)); // \
-            portals[4] = new(new(6, 6), new(5, 2)); // /
-            portals[5] = new(new(5, -1), new(5, -1)); // end
+            var start = new float2(0, 0);
+            var end = new float2(4, -1);
 
-            FunnelPath.FromPortals(portals, result);
+            FunnelPath.FromPortals(start, end, portals.AsArray(), result);
 
             // for (var index = 0; index < result.Length; index++)
             // {
@@ -71,7 +72,7 @@ namespace Tests.EditorTests.NavigationTests
             result[1].Should().BeApproximately(new(2, 0));
             result[2].Should().BeApproximately(new(4, 4));
             result[3].Should().BeApproximately(new(5, 2));
-            result[4].Should().BeApproximately(new(5, -1));
+            result[4].Should().BeApproximately(new(4, -1));
 
             portals.Dispose();
             result.Dispose();

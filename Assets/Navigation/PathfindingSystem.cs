@@ -15,22 +15,19 @@ namespace Navigation
 
         [Space]
         [SerializeField] private List<Transform> _obstacles;
-
         [SerializeField] private float _size;
 
         [Space]
         [SerializeField] private Transform _pathOrigin;
-
         [SerializeField] private Transform _pathTarget;
 
         [Space]
         [SerializeField] private bool _drawConnections;
-
         [SerializeField] private bool _drawNodes;
+        [SerializeField] private bool _drawNodesCenters;
 
         [Space]
         [SerializeField] private bool _drawObstacleTriangle;
-
         [SerializeField] private bool _drawObstacleBorder;
 
         private NavMesh<IdAttribute> _navMesh;
@@ -41,15 +38,7 @@ namespace Navigation
             _navMesh = new(1);
             _navObstacles = new(1);
 
-            if (_borderPoints.Count > 2)
-            {
-                AddInitNodes();
-            }
-
-            // _ = CheckInsertion();
-            // _ = CheckRectangle();
-            _ = UpdateMapObstacles();
-            _ = UpdatePath();
+            _ = Test();
         }
 
         private void OnDestroy()
@@ -58,15 +47,28 @@ namespace Navigation
             _navObstacles.Dispose();
         }
 
-        private async Awaitable WaitForClick()
+        private async Awaitable Test()
+        {
+            if (_borderPoints.Count > 2)
+            {
+                await AddInitNodes(false);
+            }
+
+            // _ = SlowAddition();
+            // _ = CheckRectangle();
+            _ = UpdateMapObstacles();
+            _ = UpdatePath();
+        }
+
+        private async Awaitable WaitForClick(KeyCode key = KeyCode.Space)
         {
             do
             {
                 await Awaitable.NextFrameAsync();
-            } while (!Input.GetKeyDown(KeyCode.Space));
+            } while (!Input.GetKeyDown(key));
         }
 
-        private async Awaitable CheckInsertion()
+        private async Awaitable SlowAddition()
         {
             await WaitForClick();
             var o1 = _navObstacles.AddObstacle(new(1), new(1, 1), new(3, 1), new(3, 3));
@@ -87,6 +89,8 @@ namespace Navigation
 
         private async Awaitable CheckRectangle()
         {
+            await WaitForClick();
+            
             _navObstacles.AddObstacle(new(1), CreateSquareAsTriangles(new float2(10, 6), 3, 30));
             RunUpdate();
 
@@ -120,30 +124,24 @@ namespace Navigation
 
         private async Awaitable UpdateMapObstacles()
         {
+            await WaitForClick(KeyCode.U);
+            
             var exist = new List<int>();
             while (true)
             {
-                foreach (var id in exist)
+                foreach (var obst in _obstacles)
                 {
-                    _navObstacles.RemoveObstacle(id);
-                }
-
-                do
-                {
-                    await Awaitable.NextFrameAsync();
-                } while (!Input.GetKeyDown(KeyCode.U));
-
-                foreach (var obs in _obstacles)
-                {
-                    var p = obs.position;
-                    var s = obs.lossyScale / 2f;
-                    using var list = new NativeList<float2>(Allocator.Temp)
+                    if (obst == null || !obst.gameObject.activeInHierarchy)
                     {
-                        new float2(p.x - s.x, p.y - s.y),
-                        new float2(p.x - s.x, p.y + s.y),
-                        new float2(p.x + s.x, p.y + s.y),
-                        new float2(p.x + s.x, p.y - s.y)
-                    };
+                        continue;
+                    }
+                    
+                    using var list = new NativeList<float2>(Allocator.Temp);
+                    foreach (var p in GetRectangleFromTransform(obst))
+                    {
+                        list.Add(p);
+                    }
+
                     PolygonUtils.ExpandPolygon(list, _size);
                     var id = _navObstacles.AddObstacle(list, new(exist.Count + 1));
                     exist.Add(id);
@@ -151,6 +149,20 @@ namespace Navigation
 
                 Debug.Log("Updated obstacles");
                 RunUpdate();
+                Debug.Log($"{_navMesh.GetCapacityStats()}\n{_navObstacles.GetCapacityStats()}");
+                
+                var pointsSize = Mathf.Max(_size * 10, 1) * Vector3.one;
+                _pathOrigin.localScale = pointsSize;
+                _pathTarget.localScale = pointsSize;
+
+                await WaitForClick(KeyCode.U);
+
+                exist.Reverse();
+                foreach (var id in exist)
+                {
+                    _navObstacles.RemoveObstacle(id);
+                }
+                exist.Clear();
             }
         }
 
@@ -207,12 +219,15 @@ namespace Navigation
 
             Debug.Log($"Found {resultPath.Length}");
 
-            foreach (Portal p in resultPath)
+            if (_drawNodes)
             {
-                Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green, 5);
+                foreach (Portal p in resultPath)
+                {
+                    Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.yellow, 5);
+                }
             }
 
-            DrawPath(from, to, resultPath, Color.magenta, 10);
+            DrawPath(from, to, resultPath, Color.green, 5);
         }
 
         private void DrawPath(float2 origin, float2 target, NativeList<Portal> portals, Color color, int duration)
@@ -220,25 +235,13 @@ namespace Navigation
             if (portals.Length > 0)
             {
                 using var path = new NativeList<float2>(Allocator.Temp);
-                var newPortals = new NativeArray<Portal>(portals.Length + 2, Allocator.Temp);
-                newPortals[0] = new Portal(origin, origin);
-                for (int i = 0; i < portals.Length; i++)
-                {
-                    newPortals[i + 1] = portals[i];
-                }
-
-                newPortals[^1] = new Portal(target, target);
-                FunnelPath.FromPortals(newPortals, path);
-                // Debug.DrawLine(origin.To3D(), path[0].To3D(), color, duration);
+                FunnelPath.FromPortals(origin, target, portals.AsArray(), path);
                 for (var index = 0; index < path.Length - 1; index++)
                 {
                     var p = path[index];
                     var p2 = path[index + 1];
                     Debug.DrawLine(p.To3D(), p2.To3D(), color, duration);
                 }
-
-                // Debug.DrawLine(target.To3D(), portals[^1].Center.To3D(), color, duration);
-                newPortals.Dispose();
             }
             else
             {
@@ -285,42 +288,56 @@ namespace Navigation
 
                 if (_drawNodes)
                 {
-                    _navMesh.DrawNodes();
+                    _navMesh.DrawNodes(_drawNodesCenters);
                 }
 
                 if (_drawObstacleTriangle)
                 {
                     _navObstacles.DrawLookup();
                 }
-
+                
                 if (_drawObstacleBorder)
                 {
                     _navObstacles.DrawEdges();
                 }
             }
-            else if (_drawNodes)
+            else
             {
-                Gizmos.color = Color.red;
-                var startPoints = new List<Vector2>();
-                foreach (var pointTransform in _borderPoints)
+                if (_drawNodes)
                 {
-                    startPoints.Add(pointTransform.position.To2D());
+                    Gizmos.color = Color.red;
+                    var startPoints = new List<Vector2>();
+                    foreach (var pointTransform in _borderPoints)
+                    {
+                        startPoints.Add(pointTransform.position.To2D());
+                    }
+
+                    IOutline.DrawBorderGizmos(startPoints);
                 }
 
-                IOutline.DrawBorderGizmos(startPoints);
+                if (_drawObstacleBorder)
+                {
+                    foreach (var obst in _obstacles)
+                    {
+                        if (obst != null && obst.gameObject.activeInHierarchy)
+                        {
+                            GetRectangleFromTransform(obst).DrawLoop(obst.gameObject.IsSelected() ? Color.green : Color.red);
+                        }
+                    }
+                }
             }
         }
 
-        private void AddInitNodes()
+        private async Awaitable AddInitNodes(bool wait)
         {
-            var positions = new NativeArray<float2>(_borderPoints.Count, Allocator.TempJob);
+            var positions = new NativeArray<float2>(_borderPoints.Count, Allocator.Persistent);
             for (var index = 0; index < _borderPoints.Count; index++)
             {
                 Transform pointTransform = _borderPoints[index];
                 positions[index] = pointTransform.position.To2D();
             }
 
-            using var triangulator = new Triangulator<float2>(Allocator.TempJob)
+            using var triangulator = new Triangulator<float2>(Allocator.Persistent)
             {
                 Input =
                 {
@@ -332,6 +349,11 @@ namespace Navigation
             var triangles = triangulator.Output.Triangles;
             for (int i = 0; i < triangles.Length; i += 3)
             {
+                if (wait)
+                {
+                    await WaitForClick();
+                }
+                
                 var triangle = new Triangle(
                     positions[triangles[i]],
                     positions[triangles[i + 1]],
@@ -341,6 +363,40 @@ namespace Navigation
             }
 
             positions.Dispose();
+        }
+
+        private float2[] GetRectangleFromTransform(Transform transform)
+        {
+            var p = (float2)(Vector2)transform.position;
+            var halfSize = (float2)(Vector2)transform.lossyScale * 0.5f;
+
+            // rotation in radians
+            float rad = math.radians(transform.rotation.eulerAngles.z);
+            float cos = math.cos(rad);
+            float sin = math.sin(rad);
+
+            // define local rectangle corners (unrotated, relative to center)
+            float2[] localCorners =
+            {
+                new float2(-halfSize.x, -halfSize.y),
+                new float2(-halfSize.x, halfSize.y),
+                new float2(halfSize.x, halfSize.y),
+                new float2(halfSize.x, -halfSize.y),
+            };
+
+            // rotate and translate to world space
+            var result = new float2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                float2 c = localCorners[i];
+                float2 rotated = new(
+                    c.x * cos - c.y * sin,
+                    c.x * sin + c.y * cos
+                );
+                result[i] = p + rotated;
+            }
+
+            return result;
         }
     }
 }

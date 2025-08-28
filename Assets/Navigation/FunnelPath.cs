@@ -5,18 +5,17 @@ namespace Navigation
 {
     public static class FunnelPath
     {
-        public static void FromPortals(NativeArray<Portal> portals, NativeList<float2> resultPath)
+        public static void FromPortals(float2 start, float2 end, NativeArray<Portal> portals, NativeList<float2> resultPath)
         {
-            float2 apex = portals[0].Left;
+            float2 apex = start;
             float2 left = apex;
             float2 right = apex;
-            int apexIndex = 0;
             int leftIndex = 0;
             int rightIndex = 0;
-            
+
             resultPath.Add(apex);
 
-            for (int i = 1; i < portals.Length; i++)
+            for (int i = 0; i < portals.Length; i++)
             {
                 float2 pLeft = portals[i].Left;
                 float2 pRight = portals[i].Right;
@@ -24,7 +23,7 @@ namespace Navigation
                 // Left check
                 if (Triangle.SignedArea(apex, right, pRight) >= 0f)
                 {
-                    if (apex.Equals(right) || Triangle.SignedArea(apex, left, pRight) < 0f)
+                    if (GeometryUtils.NearlyEqual(apex, right) || Triangle.SignedArea(apex, left, pRight) < 0f)
                     {
                         right = pRight;
                         rightIndex = i;
@@ -34,9 +33,9 @@ namespace Navigation
                         // Tight turn on left
                         resultPath.Add(left);
                         apex = left;
-                        apexIndex = leftIndex;
                         left = apex;
                         right = apex;
+                        var apexIndex = leftIndex;
                         leftIndex = apexIndex;
                         rightIndex = apexIndex;
                         i = apexIndex;
@@ -47,7 +46,7 @@ namespace Navigation
                 // Right check
                 if (Triangle.SignedArea(apex, left, pLeft) <= 0f)
                 {
-                    if (apex.Equals(left) || Triangle.SignedArea(apex, right, pLeft) > 0f)
+                    if (GeometryUtils.NearlyEqual(apex, left) || Triangle.SignedArea(apex, right, pLeft) > 0f)
                     {
                         left = pLeft;
                         leftIndex = i;
@@ -57,9 +56,9 @@ namespace Navigation
                         // Tight turn on right
                         resultPath.Add(right);
                         apex = right;
-                        apexIndex = rightIndex;
                         left = apex;
                         right = apex;
+                        var apexIndex = rightIndex;
                         leftIndex = apexIndex;
                         rightIndex = apexIndex;
                         i = apexIndex;
@@ -68,10 +67,18 @@ namespace Navigation
                 }
             }
 
-            // add target if not already added
-            if (math.distancesq(resultPath[^1], portals[^1].Left) > float.Epsilon)
+            // Add end
+            if (Triangle.SignedArea(apex, right, end) >= 0f && !GeometryUtils.NearlyEqual(apex, right) && !(Triangle.SignedArea(apex, left, end) < 0f))
             {
-                resultPath.Add(portals[^1].Left);
+                resultPath.Add(left);
+            }
+            else if (Triangle.SignedArea(apex, left, end) <= 0f && !GeometryUtils.NearlyEqual(apex, left) && !(Triangle.SignedArea(apex, right, end) > 0f))
+            {
+                resultPath.Add(right);
+            }
+            if (resultPath.Length == 0 || !GeometryUtils.NearlyEqual(resultPath[^1], end))
+            {
+                resultPath.Add(end);
             }
         }
     }
