@@ -11,16 +11,18 @@ using EdgeId = Navigation.NavNode.EdgeId;
 namespace Navigation
 {
     [BurstCompile]
-    public struct FindPathJob<T> : IJob where T : unmanaged, INodeAttributes<T>
+    public struct FindPathJob<TAttribute, TSeeker> : IJob
+        where TAttribute : unmanaged, INodeAttributes<TAttribute>
+        where TSeeker : unmanaged, IPathSeeker<TSeeker, TAttribute>
     {
-        [ReadOnly] public PathSeekerData SeekerData;
         [ReadOnly] public float2 StartPos;
         [ReadOnly] public int StartNodeIndex;
         [ReadOnly] public float2 TargetPos;
         [ReadOnly] public int TargetNodeIndex;
-        [ReadOnly] public NativeArray<NavNode<T>> Nodes;
+        [ReadOnly] public NativeArray<NavNode<TAttribute>> Nodes;
+        [ReadOnly] public TSeeker Seeker;
 
-        public NativeList<float2> ResultPath;
+        public NativeList<Portal> ResultPath;
 
         public void Execute()
         {
@@ -37,8 +39,7 @@ namespace Navigation
                 index: StartNodeIndex,
                 gCost: 0,
                 fCost: math.distance(Nodes[StartNodeIndex].Center, TargetPos),
-                cameFromIndex: -1,
-                comeFromBy: 0));
+                cameFromIndex: -1));
 
             // Find path to target node
             while (openSet.Count > 0)
@@ -52,7 +53,7 @@ namespace Navigation
 
                 closedSet.Add(current.Index);
 
-                NavNode<T> node = Nodes[current.Index];
+                NavNode<TAttribute> node = Nodes[current.Index];
                 foreach (EdgeId edgeId in edgesIds)
                 {
                     var connectedIndex = node.GetConnectionIndex(edgeId);
@@ -67,8 +68,8 @@ namespace Navigation
                         continue;
                     }
 
-                    NavNode<T> neighbor = Nodes[connectedIndex];
-                    float g = current.GCost + math.distance(node.Center, neighbor.Center);
+                    NavNode<TAttribute> neighbor = Nodes[connectedIndex];
+                    float g = current.GCost + math.distance(node.Center, neighbor.Center) * Seeker.CalculateMultiplier(neighbor.Attributes);
                     if (cameFrom.TryGetValue(connectedIndex, out AStarNode existing) && g >= existing.GCost)
                     {
                         continue;
@@ -80,8 +81,7 @@ namespace Navigation
                         index: connectedIndex,
                         gCost: g,
                         fCost: g + h,
-                        cameFromIndex: current.Index,
-                        comeFromBy: edgeId
+                        cameFromIndex: current.Index
                     );
 
                     cameFrom[connectedIndex] = newNode;
@@ -92,41 +92,56 @@ namespace Navigation
             // Recreate path
             // first node is target node
             // last node should be start node
-            using var trianglePath = new NativeList<AStarNode>(Allocator.Temp);
+            using var pathNodeIndexes = new NativeList<int>(Allocator.Temp);
             int currentIndex = TargetNodeIndex;
             while (cameFrom.TryGetValue(currentIndex, out AStarNode node))
             {
-                trianglePath.Add(node);
+                pathNodeIndexes.Add(node.Index);
                 currentIndex = node.CameFromIndex;
             }
+            pathNodeIndexes.Add(StartNodeIndex);
 
             // Create portals
-            var portals = new NativeArray<Portal>(trianglePath.Length + 1, Allocator.Temp);
-            portals[0] = new(StartPos, StartPos);
-            portals[^1] = new(TargetPos, TargetPos);
-            for (int i = 1; i < portals.Length - 1; i++)
+            var lastPortal = new Portal(StartPos, StartPos);
+            for (int i = 0; i < pathNodeIndexes.Length - 1; i++)
             {
                 // Path is processed from last node to achieve correct order
-                AStarNode pathNode = trianglePath[^i];
-                Edge edge = Nodes[pathNode.Index].GetEdge(pathNode.ComeFromBy);
+                int currentNodeIndex = pathNodeIndexes[^(i+1)];
+                int nextNodeIndex = pathNodeIndexes[^(i+2)];
+                NavNode<TAttribute> currentNode = Nodes[currentNodeIndex];
+
+                Edge edge;
+                if (currentNode.ConnectionAB == nextNodeIndex) edge = new(currentNode.CornerA, currentNode.CornerB);
+                else if (currentNode.ConnectionBC == nextNodeIndex) edge = new(currentNode.CornerB, currentNode.CornerC);
+                else if (currentNode.ConnectionCA == nextNodeIndex) edge = new(currentNode.CornerC, currentNode.CornerA);
+                else
+                {
+                    Debug.LogWarning("?");
+                    edge = new(currentNode.CornerA, currentNode.CornerB);
+                }
 
                 // Determine left/right ordering
-                portals[i] = CreatePortal(edge.A, edge.B, portals[i - 1]);
+                Portal newPortal = CreatePortal(edge.A, edge.B, lastPortal);
+                lastPortal = newPortal;
+                ResultPath.Add(newPortal);
             }
 
-            // Create final path
-            FunnelPath.FromPortals(portals, ResultPath);
+            // var last = ResultPath[^1];
+            // var dir = math.normalize(TargetPos - last.Center);
+            // var targetNodeOffset = new float2(dir.y, -dir.x);
+            // ResultPath.Add(CreatePortal(TargetPos - targetNodeOffset, TargetPos + targetNodeOffset, last));
+
+            // // Create final path
+            // FunnelPath.FromPortals(portals, ResultPath);
 
             edgesIds.Dispose();
             cameFrom.Dispose();
-            portals.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Portal CreatePortal(float2 p1, float2 p2, Portal lastPortal)
         {
-            float2 lastPortalCenter = (lastPortal.Right + lastPortal.Left) * 0.5f;
-            float area = Triangle.SignedArea(lastPortalCenter, p1, p2);
+            float area = Triangle.SignedArea(lastPortal.Center, p1, p2);
             Portal portal = area < 0
                 ? new(p1, p2)
                 : new(p2, p1);
@@ -139,15 +154,13 @@ namespace Navigation
             public readonly float GCost;
             public readonly float FCost;
             public readonly int CameFromIndex;
-            public readonly EdgeId ComeFromBy;
 
-            public AStarNode(int index, float gCost, float fCost, int cameFromIndex, EdgeId comeFromBy)
+            public AStarNode(int index, float gCost, float fCost, int cameFromIndex)
             {
                 Index = index;
                 GCost = gCost;
                 FCost = fCost;
                 CameFromIndex = cameFromIndex;
-                ComeFromBy = comeFromBy;
             }
 
             public int CompareTo(AStarNode other) => FCost.CompareTo(other.FCost);

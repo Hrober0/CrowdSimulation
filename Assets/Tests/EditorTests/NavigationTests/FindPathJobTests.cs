@@ -15,7 +15,7 @@ namespace Tests.EditorTests.NavigationTests
             var left = new float2(2, 0);
             var right = new float2(1, -2);
 
-            var portal = FindPathJob<IdAttribute>.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
+            var portal = FindPathJob<IdAttribute, SamplePathSeeker>.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(left);
             portal.Right.Should().BeApproximately(right);
@@ -27,7 +27,7 @@ namespace Tests.EditorTests.NavigationTests
             var notRight = new float2(2, 0);
             var notLeft = new float2(1, -2);
 
-            var portal = FindPathJob<IdAttribute>.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
+            var portal = FindPathJob<IdAttribute, SamplePathSeeker>.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(notRight);
             portal.Right.Should().BeApproximately(notLeft);
@@ -189,6 +189,7 @@ namespace Tests.EditorTests.NavigationTests
             const float CELL_SIZE = 1f;
 
             using var lookup = new NativeParallelMultiHashMap<int2, int>(2, Allocator.Temp);
+            using var portals = new NativeList<Portal>(Allocator.Temp);
             var resultPath = new NativeList<float2>(Allocator.Temp);
 
             for (int i = 0; i < nodes.Length; i++)
@@ -197,18 +198,20 @@ namespace Tests.EditorTests.NavigationTests
                 lookup.Add(cell, i);
             }
 
-            var job = new FindPathJob<IdAttribute>
+            var job = new FindPathJob<IdAttribute, SamplePathSeeker>
             {
                 StartPos = start,
                 StartNodeIndex = GetCellFromWorldPosition(start),
                 TargetPos = end,
                 TargetNodeIndex = GetCellFromWorldPosition(end),
-                SeekerData = new(radius: 0.1f),
+                // SeekerData = new(radius: 0.1f),
                 Nodes = nodes,
-                ResultPath = resultPath
+                ResultPath = portals
             };
 
             job.Execute();
+            
+            FunnelPath.FromPortals(portals.AsArray(), resultPath);
 
             return resultPath;
 

@@ -109,6 +109,13 @@ namespace Navigation
             // Remove edges
             ObstacleEdges.Remove(id);
         }
+
+        public void UpdateAttributes(int id, T attributes)
+        {
+            Obstacle obstacle = Obstacles[id];
+            obstacle.Attributes = attributes;
+            Obstacles[id] = obstacle;
+        }
         
         #region Debug
 
@@ -145,11 +152,11 @@ namespace Navigation
         
         #endregion
 
-        public readonly struct Obstacle
+        public struct Obstacle
         {
             public readonly float2 Min;
             public readonly float2 Max;
-            public readonly T Attributes;
+            public T Attributes;
 
             public Obstacle(float2 min, float2 max, T attributes)
             {

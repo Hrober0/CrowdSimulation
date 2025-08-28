@@ -509,6 +509,95 @@ namespace Tests.EditorTests.NavigationTests
             result.AsArray().Should().HaveCount(3);
         }
 
+        [Test]
+        public void ExpandSquare_ShouldIncreaseTriangleSize()
+        {
+            using var polygon = new NativeList<float2>(Allocator.Temp)
+            {
+                new float2(0, 0), // left
+                new float2(1, 1), // top
+                new float2(2, 0), // right
+            };
+
+            Draw(polygon, Color.white);
+            PolygonUtils.ExpandPolygon(polygon, .5f);
+            Draw(polygon, Color.red);
+            
+            // Expect square expanded outward -> each corner offset
+            polygon.Length.Should().Be(3);
+
+            polygon[0].Should().BeApproximately(new(-1.20710671f, -0.5F));
+            polygon[1].Should().BeApproximately(new(1, 1.70710671f));
+            polygon[2].Should().BeApproximately(new(3.20710659f, -0.5f));
+        }
+        
+        [Test]
+        public void ExpandSquare_ShouldIncreaseRectangleSize()
+        {
+            using var polygon = new NativeList<float2>(Allocator.Temp)
+            {
+                new float2(0, 0), // left bottom
+                new float2(0, 1), // left up
+                new float2(1, 1), // right up
+                new float2(1, 0), // right up
+            };
+
+            Draw(polygon, Color.white);
+            PolygonUtils.ExpandPolygon(polygon, 1);
+            Draw(polygon, Color.red);
+            
+            // Expect square expanded outward -> each corner offset
+            polygon.Length.Should().Be(4);
+
+            polygon[0].Should().BeApproximately(new(-1, -1));
+            polygon[1].Should().BeApproximately(new(-1, 2));
+            polygon[2].Should().BeApproximately(new(2, 2));
+            polygon[3].Should().BeApproximately(new(2, -1));
+        }
+
+        [Test]
+        public void ExpandTriangle_ShouldPreserveCCW()
+        {
+            using var polygon = new NativeList<float2>(Allocator.Temp)
+            {
+                new float2(0, 0),
+                new float2(1, 1),
+                new float2(2, 0),
+            };
+
+            Draw(polygon, Color.white);
+            PolygonUtils.ExpandPolygon(polygon, 0.5f);
+            Draw(polygon, Color.red);
+            
+            // Should remain CCW
+            float area = Triangle.SignedArea(polygon[0], polygon[1], polygon[2]);
+            area.Should().BeLessThan(0);
+        }
+
+        [Test]
+        public void ExpandPolygon_WithZeroRadius_ShouldRemainSame()
+        {
+            using var polygon = new NativeList<float2>(Allocator.Temp)
+            {
+                new float2(0, 0),
+                new float2(1, 0),
+                new float2(1, 1),
+                new float2(0, 1),
+            };
+
+            var original = new float2[4];
+            polygon.AsArray().CopyTo(original);
+
+            Draw(polygon, Color.white);
+            PolygonUtils.ExpandPolygon(polygon, 0f);
+            Draw(polygon, Color.red);
+            
+            for (int i = 0; i < 4; i++)
+            {
+                polygon[i].Should().BeApproximately(original[i]);
+            }
+        }
+
         // [Test]
         // public void PolygonIntersection_ShouldReturnEmpty_WhenNoOverlap()
         // {
@@ -598,6 +687,22 @@ namespace Tests.EditorTests.NavigationTests
                 Debug.DrawLine(edge.A.To3D(), edge.B.To3D(), Color.white, 5);
                 edge.Center.To3D().DrawPoint(Color.red, 5, 0.1f);
             }
+        }
+        
+        private void Draw(in NativeList<float2> verts, Color color)
+        {
+            if (!debug)
+            {
+                return;
+            }
+
+            for (var index = 0; index < verts.Length - 1; index++)
+            {
+                float2 v = verts[index];
+                float2 v2 = verts[index + 1];
+                Debug.DrawLine(v.To3D(), v2.To3D(), color, 5);
+            }
+            Debug.DrawLine(verts[^1].To3D(), verts[0].To3D(), color, 5);
         }
 
         private NativeList<T> ToNative<T>(List<T> list) where T : unmanaged

@@ -1,6 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
 using HCore.Extensions;
-using HCore.Shapes;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -342,7 +341,55 @@ namespace Navigation
                 }
             }
         }
-        
+
+        /// <summary>
+        /// Expands (offsets) a simple polygon outward by given radius.
+        /// Input must be CCW (counter-clockwise).
+        /// Returns expanded polygon in CCW order.
+        /// </summary>
+        public static void ExpandPolygon(NativeList<float2> polygon, float radius)
+        {
+            float2 start = polygon[0];
+            float2 prev = polygon[^1];
+            int count = polygon.Length - 1;
+            for (int i = 0; i < count; i++)
+            {
+                float2 curr = polygon[i];
+                float2 next = polygon[i + 1];
+
+                ExpandVertex(curr, prev, next, radius, out float2 expanded);
+                polygon[i] = expanded;
+                
+                prev = curr;
+            }
+            ExpandVertex(polygon[^1], prev, start, radius, out float2 lastExpanded);
+            polygon[^1] = lastExpanded;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ExpandVertex(float2 curr, float2 prev, float2 next, float radius, out float2 expanded)
+        {
+            // Edge directions
+            float2 dirPrev = math.normalize(curr - prev);
+            float2 dirNext = math.normalize(next - curr);
+
+            // Outward normals
+            float2 normalPrev = new(-dirPrev.y, dirPrev.x);
+            float2 normalNext = new(-dirNext.y, dirNext.x);
+
+            // Compute bisector
+            float2 bisector = math.normalize(normalPrev + normalNext);
+
+            // Angle between edges
+            float cosTheta = math.clamp(math.dot(-dirPrev, dirNext), -1f, 1f);
+            float theta = math.acos(cosTheta);
+
+            // Distance along bisector
+            float dist = radius / math.sin(theta * 0.5f);
+
+            expanded = curr + bisector * dist;
+        }
+
         // public static List<float2> PolygonIntersection(IReadOnlyList<float2> polyA, IReadOnlyList<float2> polyB)
         // {
         //     if (polyA.Count < 3 || polyB.Count < 3)
