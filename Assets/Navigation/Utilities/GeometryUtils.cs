@@ -254,6 +254,23 @@ namespace Navigation
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool NearlyEqual(float2 u, float2 v, float eps = EPSILON) => math.distancesq(u, v) < eps;
+        
+        /// <summary>
+        /// Returns the closest point on a line segment AB to point P.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float2 ClosestPointOnEdge(float2 a, float2 b, float2 p)
+        {
+            float2 ab = b - a;
+            float2 ap = p - a;
+
+            float t = math.dot(ap, ab) / math.dot(ab, ab);
+
+            // Clamp t to [0, 1] so the point stays within the segment
+            t = math.clamp(t, 0f, 1f);
+
+            return a + t * ab;
+        }
     }
 
 }

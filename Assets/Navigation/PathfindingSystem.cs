@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;
@@ -57,7 +58,8 @@ namespace Navigation
             // _ = SlowAddition();
             // _ = CheckRectangle();
             _ = UpdateMapObstacles();
-            _ = UpdatePath();
+            // _ = UpdatePath();
+            _ = FollowPath();
         }
 
         private async Awaitable WaitForClick(KeyCode key = KeyCode.Space)
@@ -171,7 +173,53 @@ namespace Navigation
             while (true)
             {
                 await WaitForClick();
-                FindPath((Vector2)_pathOrigin.position, (Vector2)_pathTarget.position);
+                float2 from = (Vector2)_pathOrigin.position;
+                float2 to = (Vector2)_pathTarget.position;
+                using var resultPath = FindPath(from, to);
+                if (_drawNodes)
+                {
+                    foreach (Portal p in resultPath)
+                    {
+                        Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.yellow);
+                    }
+                }
+
+                DrawPath(from, to, resultPath, Color.green, 5);
+            }
+        }
+        
+        private async Awaitable FollowPath()
+        {
+            while (true)
+            {
+                await WaitForClick();
+                await Awaitable.NextFrameAsync();
+                
+                while (!Input.GetKeyDown(KeyCode.Space))
+                {
+                    await Awaitable.NextFrameAsync();
+                    
+                    var seaker = (float2)(Vector2)_pathOrigin.position;
+                    var target = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
+                    if (math.lengthsq(target - seaker) < 0.01f)
+                    {
+                        continue;
+                    }
+                    
+                    using var portals = FindPath(seaker, target);
+                    using var path = new NativeList<float2>(Allocator.Temp);
+                    FunnelPath.FromPortals(seaker, target, portals.AsArray(), path);
+                    var closeTarget = path.Length > 1 ? path[1] : target;
+                    _pathOrigin.position += (Vector3)(Vector2)math.normalize(closeTarget - seaker) * Time.deltaTime * 2;
+                    
+                    if (_drawNodes)
+                    {
+                        foreach (Portal p in portals)
+                        {
+                            Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
+                        }
+                    }
+                }
             }
         }
 
@@ -189,20 +237,20 @@ namespace Navigation
             }.Run();
         }
 
-        private void FindPath(float2 from, float2 to)
+        private NativeList<Portal> FindPath(float2 from, float2 to)
         {
-            using var resultPath = new NativeList<Portal>(Allocator.Temp);
+            var resultPath = new NativeList<Portal>(Allocator.Temp);
 
             if (!_navMesh.TryGetNodeIndex(from, out var fromIndex))
             {
                 Debug.LogError($"{from} not found");
-                return;
+                return new();
             }
 
             if (!_navMesh.TryGetNodeIndex(to, out var toIndex))
             {
                 Debug.LogError($"{to} not found");
-                return;
+                return new();
             }
 
             Debug.Log($"{from} to {to}");
@@ -219,18 +267,10 @@ namespace Navigation
 
             Debug.Log($"Found {resultPath.Length}");
 
-            if (_drawNodes)
-            {
-                foreach (Portal p in resultPath)
-                {
-                    Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.yellow, 5);
-                }
-            }
-
-            DrawPath(from, to, resultPath, Color.green, 5);
+            return resultPath;
         }
 
-        private void DrawPath(float2 origin, float2 target, NativeList<Portal> portals, Color color, int duration)
+        private void DrawPath(float2 origin, float2 target, NativeList<Portal> portals, Color color, float duration)
         {
             if (portals.Length > 0)
             {
