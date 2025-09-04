@@ -63,9 +63,9 @@ namespace Navigation
         {
 #if UNITY_EDITOR
             return UnityEditor.Selection.gameObjects != null && System.Array.IndexOf(UnityEditor.Selection.gameObjects, gameObject) >= 0;
-#endif
-
+#else
             return false;
+#endif
         }
     }
 }

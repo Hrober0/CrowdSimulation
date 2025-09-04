@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using andywiecko.BurstTriangulator;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
 using CustomNativeCollections;
 using HCore;
 using HCore.Extensions;
 using HCore.Shapes;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -17,11 +20,11 @@ namespace Navigation
         public NativeSpatialHash<IndexedTriangle> ObstacleLookup;
         public NativeParallelMultiHashMap<int, Edge> ObstacleEdges;
 
-        public NavObstacles(float chunkSize, int obstacleInitialCapacity = 512, int averageVerticesPerObstacle = 4)
+        public NavObstacles(float chunkSize, int capacity = 512, int averageVerticesPerObstacle = 4)
         {
-            Obstacles = new(obstacleInitialCapacity, Allocator.Persistent);
-            ObstacleLookup = new(obstacleInitialCapacity, chunkSize, Allocator.Persistent);
-            ObstacleEdges = new(obstacleInitialCapacity * averageVerticesPerObstacle, Allocator.Persistent);
+            Obstacles = new(capacity, Allocator.Persistent);
+            ObstacleLookup = new(capacity, chunkSize, Allocator.Persistent);
+            ObstacleEdges = new(capacity * averageVerticesPerObstacle, Allocator.Persistent);
         }
 
         public void Dispose()
@@ -65,6 +68,7 @@ namespace Navigation
 
             // Add triangle spatial hash
             using var outputTriangles = new NativeList<int>(border.Length * 3, Allocator.Temp);
+            using var status = new NativeReference<andywiecko.BurstTriangulator.Status>(Allocator.Temp);
             new UnsafeTriangulator<float2>().Triangulate(
                 input: new()
                 {
@@ -74,12 +78,19 @@ namespace Navigation
                 output: new()
                 {
                     Triangles = outputTriangles,
+                    Status = status,
                 },
                 args: Args.Default(
                     restoreBoundary: true
                 ), 
                 allocator: Allocator.Temp
             );
+
+            if (status.Value != Status.OK)
+            {
+                constraintEdges.Dispose();
+                return -1;
+            }
 
             for (var index = 0; index < outputTriangles.Length; index += 3)
             {
@@ -96,6 +107,19 @@ namespace Navigation
             return newId;
         }
 
+        public int RunAddObstacle(in NativeList<float2> border, T attributes)
+        {
+            using var obstacleId = new NativeReference<int>(Allocator.TempJob);
+            new AddObstacleJob
+            {
+                Border = border,
+                Attributes = attributes,
+                NavObstacles = this,
+                Id = obstacleId,
+            }.Run();
+            return obstacleId.Value;
+        }
+        
         public void RemoveObstacle(int id)
         {
             // Remove obstacle
@@ -110,11 +134,26 @@ namespace Navigation
             ObstacleEdges.Remove(id);
         }
 
+        public void RunRemoveObstacle(int id)
+        {
+            new RemoveObstacleJob
+            {
+                ObstacleId = id,
+            }.Run();
+        }
+        
         public void UpdateAttributes(int id, T attributes)
         {
             Obstacle obstacle = Obstacles[id];
             obstacle.Attributes = attributes;
             Obstacles[id] = obstacle;
+        }
+
+        public void Clear()
+        {
+            Obstacles.Clear();
+            ObstacleLookup.Clear();
+            ObstacleEdges.Clear();
         }
         
         #region Debug
@@ -184,6 +223,32 @@ namespace Navigation
             public override int GetHashCode() => HashCode.Combine(Triangle, Index);
             public IEnumerable<Vector2> GetBorderPoints() => Triangle.GetBorderPoints();
         }
+        
+        [BurstCompile]
+        private struct AddObstacleJob : IJob
+        {
+            [ReadOnly] public NativeList<float2> Border;
+            [ReadOnly] public T Attributes;
+            public NativeReference<int> Id;
+            public NavObstacles<T> NavObstacles;
+            
+            public void Execute()
+            {
+                Id.Value = NavObstacles.AddObstacle(Border, Attributes);
+            }
+        }
+    
+        [BurstCompile]
+        private struct RemoveObstacleJob : IJob
+        {
+            [ReadOnly] public int ObstacleId;
+            public NavObstacles<T> NavObstacles;
+            
+            public void Execute()
+            {
+                NavObstacles.RemoveObstacle(ObstacleId);
+            }
+        }
     }
 
     public static class NavObstaclesExtension
@@ -195,7 +260,7 @@ namespace Navigation
             {
                 nativeList.Add(border[i]);
             }
-            return navObstacles.AddObstacle(in nativeList, attributes);
+            return navObstacles.RunAddObstacle(in nativeList, attributes);
         }
         public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, params float2[] border) where T : unmanaged, INodeAttributes<T>
         {
@@ -204,7 +269,7 @@ namespace Navigation
             {
                 nativeList.Add(border[i]);
             }
-            return navObstacles.AddObstacle(in nativeList, attributes);
+            return navObstacles.RunAddObstacle(in nativeList, attributes);
         }
     }
 }

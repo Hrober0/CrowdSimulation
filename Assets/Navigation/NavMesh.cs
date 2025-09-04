@@ -19,10 +19,10 @@ namespace Navigation
         public IEnumerable<NavNode<T>> GetActiveNodes => _nodes;
         public bool IsCreated => _nodesPositionLookup.IsCreated;
 
-        public NavMesh(float chunkSize, int nodesInitialCapacity = 1024)
+        public NavMesh(float chunkSize, int capacity = 1024)
         {
-            _nodes = new(nodesInitialCapacity, Allocator.Persistent);
-            _nodesPositionLookup = new(nodesInitialCapacity * 2, chunkSize, Allocator.Persistent);
+            _nodes = new(capacity, Allocator.Persistent);
+            _nodesPositionLookup = new(capacity * 2, chunkSize, Allocator.Persistent);
         }
 
         public void Dispose()

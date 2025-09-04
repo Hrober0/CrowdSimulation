@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;

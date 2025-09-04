@@ -68,6 +68,15 @@ namespace CustomNativeCollections
             _freeIndexes.Add(index);
             return true;
         }
+
+        public void Clear()
+        {
+            _freeIndexes.Clear();
+            for (int i = 0; i < _list.Length; i++)
+            {
+                _freeIndexes.Add(i);
+            }
+        }
         
         public T this[int index]
         {
