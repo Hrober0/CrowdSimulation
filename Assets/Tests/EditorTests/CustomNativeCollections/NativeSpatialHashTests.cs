@@ -13,7 +13,7 @@ namespace Tests.EditorTests.CustomNativeCollections
         [SetUp]
         public void Setup()
         {
-            _hash = new(capacity: 2, chunkSize: 1f, allocator: Allocator.Persistent, capacityAddition: 2);
+            _hash = new(capacity: 10, chunkSize: 1f, allocator: Allocator.Persistent, capacityAddition: 2);
         }
 
         [TearDown]
@@ -80,16 +80,16 @@ namespace Tests.EditorTests.CustomNativeCollections
             int before = _hash.Capacity;
 
             // Add more than initial capacity
-            for (int i = 0; i < before + 5; i++)
+            for (int i = 0; i < before + 1; i++)
             {
                 _hash.AddPoint(new float2(i, i), i);
             }
 
             int after = _hash.Capacity;
-            after.Should().BeGreaterThan(before);
+            after.Should().Be(before + 2);
 
             int count = _hash.Count;
-            count.Should().Be(before + 5);
+            count.Should().Be(before + 1);
         }
 
         [Test]

@@ -144,7 +144,7 @@ namespace CustomNativeCollections
             if (Map.Count() + additional > Map.Capacity)
             {
                 Debug.LogWarning($"Map capacity ({Map.Capacity}) exceeded, map was relocated, it will cause memory leak!");
-                Map.Capacity = math.max(Map.Capacity + _capacityAddition, Map.Count() + additional);
+                Map.Capacity += math.max(_capacityAddition, additional);
             }
         }
 

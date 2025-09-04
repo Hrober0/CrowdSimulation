@@ -255,7 +255,7 @@ namespace Navigation
     {
         public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, List<float2> border) where T : unmanaged, INodeAttributes<T>
         {
-            using var nativeList = new NativeList<float2>(border.Count, Allocator.Temp);
+            using var nativeList = new NativeList<float2>(border.Count, Allocator.TempJob);
             for (int i = 0; i < border.Count; i++)
             {
                 nativeList.Add(border[i]);
@@ -264,7 +264,7 @@ namespace Navigation
         }
         public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, params float2[] border) where T : unmanaged, INodeAttributes<T>
         {
-            using var nativeList = new NativeList<float2>(border.Length, Allocator.Temp);
+            using var nativeList = new NativeList<float2>(border.Length, Allocator.TempJob);
             for (int i = 0; i < border.Length; i++)
             {
                 nativeList.Add(border[i]);
