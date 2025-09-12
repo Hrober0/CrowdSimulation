@@ -194,29 +194,13 @@ namespace VisualTests
                 float2 origin = (Vector2)_pathOrigin.position;
                 float2 target = (Vector2)_pathTarget.position;
                 
-                if (!_navMesh.TryGetNodeIndex(origin, out var fromIndex))
-                {
-                    Debug.LogError($"{origin} not found");
-                    await Awaitable.WaitForSecondsAsync(.1f);
-                    continue;
-                }
-                
-                if (!_navMesh.TryGetNodeIndex(target, out var toIndex))
-                {
-                    Debug.LogError($"{target} not found");
-                    await Awaitable.WaitForSecondsAsync(.1f);
-                    continue;
-                }
-                
                 // Debug.Log($"{origin} to {target}");
                 var portals = new NativeList<Portal>(Allocator.TempJob);
                 var job = new FindPathJob<IdAttribute, SamplePathSeeker>
                 {
-                    StartPos = origin,
-                    StartNodeIndex = fromIndex,
-                    TargetPos = target,
-                    TargetNodeIndex = toIndex,
-                    Nodes = _navMesh.Nodes,
+                    StartPosition = origin,
+                    TargetPosition = target,
+                    NavMesh = _navMesh,
                     ResultPath = portals
                 };
                 job.Run();
@@ -224,7 +208,7 @@ namespace VisualTests
                 // Debug.Log($"Found {portals.Length}");
                 
                 var path = new NativeList<float2>(Allocator.Temp);
-                FunnelPath.FromPortals(origin, target, portals.AsArray(), path);
+                PathFinding.FunnelPath(origin, target, portals.AsArray(), path);
                 
                 // Debug.Log($"FunnelPath {path.Length}");
                 float delay = 1f / _fps;
@@ -323,7 +307,7 @@ namespace VisualTests
             }
             
             // Debug.Log("Run");
-            new NaveMeshUpdateJob<IdAttribute>
+            new NavMeshUpdateJob<IdAttribute>
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,

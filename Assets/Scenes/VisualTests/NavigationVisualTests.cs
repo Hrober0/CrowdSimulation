@@ -207,7 +207,7 @@ namespace Navigation
                     
                     using var portals = FindPath(seaker, target);
                     using var path = new NativeList<float2>(Allocator.Temp);
-                    FunnelPath.FromPortals(seaker, target, portals.AsArray(), path);
+                    PathFinding.FunnelPath(seaker, target, portals.AsArray(), path);
                     var closeTarget = path.Length > 1 ? path[1] : target;
                     _pathOrigin.position += (Vector3)(Vector2)math.normalize(closeTarget - seaker) * Time.deltaTime * 2;
                     
@@ -227,7 +227,7 @@ namespace Navigation
         private void RunUpdate(float2 min, float2 max)
         {
             // Debug.Log("Run");
-            new NaveMeshUpdateJob<IdAttribute>
+            new NavMeshUpdateJob<IdAttribute>
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,
@@ -240,29 +240,15 @@ namespace Navigation
         {
             var resultPath = new NativeList<Portal>(Allocator.Temp);
 
-            if (!_navMesh.TryGetNodeIndex(from, out var fromIndex))
-            {
-                Debug.LogError($"{from} not found");
-                return new();
-            }
-
-            if (!_navMesh.TryGetNodeIndex(to, out var toIndex))
-            {
-                Debug.LogError($"{to} not found");
-                return new();
-            }
-
             Debug.Log($"{from} to {to}");
             var job = new FindPathJob<IdAttribute, SamplePathSeeker>
             {
-                StartPos = from,
-                StartNodeIndex = fromIndex,
-                TargetPos = to,
-                TargetNodeIndex = toIndex,
-                Nodes = _navMesh.Nodes,
+                StartPosition = from,
+                TargetPosition = to,
+                NavMesh = _navMesh,
                 ResultPath = resultPath
             };
-            job.Execute();
+            job.Run();
 
             Debug.Log($"Found {resultPath.Length}");
 
@@ -274,7 +260,7 @@ namespace Navigation
             if (portals.Length > 0)
             {
                 using var path = new NativeList<float2>(Allocator.Temp);
-                FunnelPath.FromPortals(origin, target, portals.AsArray(), path);
+                PathFinding.FunnelPath(origin, target, portals.AsArray(), path);
                 for (var index = 0; index < path.Length - 1; index++)
                 {
                     var p = path[index];

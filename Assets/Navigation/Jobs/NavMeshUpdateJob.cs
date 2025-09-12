@@ -12,7 +12,7 @@ using UnityEngine;
 namespace Navigation
 {
     [BurstCompile]
-    public struct NaveMeshUpdateJob<T> : IJob  where T : unmanaged, INodeAttributes<T>
+    public struct NavMeshUpdateJob<T> : IJob  where T : unmanaged, INodeAttributes<T>
     {
         private const float MIN_POINT_DISTANCE = .001f;
         private const int DEFAULT_CAPACITY = 128;

@@ -8,7 +8,7 @@ using Tests.TestsUtilities;
 
 namespace Tests.EditorTests.NavigationTests
 {
-    public class FunnelPathTests
+    public class PathFindingTests
     {
         [Test]
         public void FunnelPath_StraightLine_ShouldReturnSingleStraightSegment()
@@ -22,7 +22,7 @@ namespace Tests.EditorTests.NavigationTests
             var start = new float2(0, 0);
             var end = new float2(0.5f, 2);
 
-            FunnelPath.FromPortals(start, end, portals.AsArray(), result);
+            PathFinding.FunnelPath(start, end, portals.AsArray(), result);
 
             result.Length.Should().BeGreaterOrEqualTo(2);
             result[0].Should().BeApproximately(start);
@@ -60,7 +60,7 @@ namespace Tests.EditorTests.NavigationTests
             var start = new float2(0, 0);
             var end = new float2(4, -1);
 
-            FunnelPath.FromPortals(start, end, portals.AsArray(), result);
+            PathFinding.FunnelPath(start, end, portals.AsArray(), result);
 
             // for (var index = 0; index < result.Length; index++)
             // {

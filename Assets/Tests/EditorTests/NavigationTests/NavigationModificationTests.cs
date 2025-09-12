@@ -567,7 +567,7 @@ namespace Tests.EditorTests.NavigationTests
 
         private void RunUpdate(float2 min, float2 max)
         {
-            new NaveMeshUpdateJob<IdAttribute>
+            new NavMeshUpdateJob<IdAttribute>
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,

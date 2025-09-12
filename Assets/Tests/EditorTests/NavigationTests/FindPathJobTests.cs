@@ -15,7 +15,7 @@ namespace Tests.EditorTests.NavigationTests
             var left = new float2(2, 0);
             var right = new float2(1, -2);
 
-            var portal = FindPathJob<IdAttribute, SamplePathSeeker>.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
+            var portal =PathFinding.CreatePortal(left, right, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(left);
             portal.Right.Should().BeApproximately(right);
@@ -27,7 +27,7 @@ namespace Tests.EditorTests.NavigationTests
             var notRight = new float2(2, 0);
             var notLeft = new float2(1, -2);
 
-            var portal = FindPathJob<IdAttribute, SamplePathSeeker>.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
+            var portal = PathFinding.CreatePortal(notLeft, notRight, new(new(0, 0), new(0, 0)));
 
             portal.Left.Should().BeApproximately(notRight);
             portal.Right.Should().BeApproximately(notLeft);
@@ -80,7 +80,7 @@ namespace Tests.EditorTests.NavigationTests
 
             var start = new float2(0.1f, 0.1f);
             var target = new float2(0.9f, 0.9f);
-            NativeList<float2> resultPath = ExecuteJob(start, target, nodes);
+            NativeList<float2> resultPath = FindPath(start, target, nodes);
 
             resultPath.Length.Should().Be(2);
             resultPath[0].Should().BeApproximately(start);
@@ -165,7 +165,7 @@ namespace Tests.EditorTests.NavigationTests
             float2 start = nodes[0].Center;
             float2 target = nodes[3].Center;
 
-            NativeList<float2> resultPath = ExecuteJob(start, target, nodes);
+            NativeList<float2> resultPath = FindPath(start, target, nodes);
 
             // Log intermediate results
             // Debug.Log($"Path from {start} to {end}");
@@ -184,7 +184,7 @@ namespace Tests.EditorTests.NavigationTests
             resultPath.Dispose();
         }
 
-        private static NativeList<float2> ExecuteJob(float2 start, float2 end, NativeArray<NavNode<IdAttribute>> nodes)
+        private static NativeList<float2> FindPath(float2 start, float2 target, NativeArray<NavNode<IdAttribute>> nodes)
         {
             const float CELL_SIZE = 1f;
 
@@ -198,20 +198,17 @@ namespace Tests.EditorTests.NavigationTests
                 lookup.Add(cell, i);
             }
 
-            var job = new FindPathJob<IdAttribute, SamplePathSeeker>
-            {
-                StartPos = start,
-                StartNodeIndex = GetCellFromWorldPosition(start),
-                TargetPos = end,
-                TargetNodeIndex = GetCellFromWorldPosition(end),
-                // SeekerData = new(radius: 0.1f),
-                Nodes = nodes,
-                ResultPath = portals
-            };
-
-            job.Execute();
+            PathFinding.FindPath(
+                start,
+                GetCellFromWorldPosition(start),
+                target,
+                GetCellFromWorldPosition(target),
+                nodes,
+                new SamplePathSeeker(),
+                portals
+                );
             
-            FunnelPath.FromPortals(start, end, portals.AsArray(), resultPath);
+            PathFinding.FunnelPath(start, target, portals.AsArray(), resultPath);
 
             return resultPath;
 
