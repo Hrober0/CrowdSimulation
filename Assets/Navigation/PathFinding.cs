@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using CustomNativeCollections;
+using HCore.Extensions;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -221,33 +222,25 @@ namespace Navigation
                 : new(p2, p1);
             return portal;
         }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="agentPosition"></param>
-        /// <param name="portal"></param>
-        /// <param name="nextPortal"></param>
-        /// <param name="portalEdgeBias">Force of push agent to do not touch the walls of corridor</param>
-        /// <returns>Normalized direction</returns>
-        public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float portalEdgeBias = 0.3f)
+        
+        public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float nextPortalImpact = 0.3f)
         {
-            // 1. Project onto portal line
-            var t = math.clamp(
+            float2 t = math.clamp(
                 ((agentPosition - portal.Left) * (portal.Right - portal.Left)) /
                 math.lengthsq(portal.Right - portal.Left), 0, 1);
-            var proj = portal.Left + t * (portal.Right - portal.Left);
-
-            // 2. Compute forward direction along corridor
-            var dir = math.normalize(nextPortal.Center - proj);
-
-            // 3. Compute small lateral push if too close to portal edges
-            var leftDist = math.distance(agentPosition, portal.Left);
-            var rightDist = math.distance(agentPosition, portal.Right);
-            var lateralPush = ((rightDist - leftDist) / (rightDist + leftDist)) * portalEdgeBias;
-
-            // 4. Guidance vector = forward + lateral
-            var guidance = dir + new float2(-dir.y, dir.x) * lateralPush;
+            float2 proj = portal.Left + t * (portal.Right - portal.Left);
+            // proj.To3D().DrawPoint(Color.cyan, 5, .3f);
+            
+            float2 dir = math.normalize(proj - agentPosition);
+            // DebugUtils.Draw(agentPosition, agentPosition + dir, Color.cyan, 5);
+            
+            var leftDist = math.distance(proj, nextPortal.Left);
+            var rightDist = math.distance(proj, nextPortal.Right);
+            var lateralPush = ((rightDist - leftDist) / (rightDist + leftDist)) * nextPortalImpact;
+            float2 pushDir = new float2(-dir.y, dir.x) * lateralPush; 
+            // DebugUtils.Draw(proj, proj + pushDir, Color.blue, 5);
+            
+            float2 guidance = dir + pushDir;
             return math.normalize(guidance);
         }
     }
