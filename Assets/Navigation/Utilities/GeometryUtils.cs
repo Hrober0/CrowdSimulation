@@ -266,10 +266,32 @@ namespace Navigation
 
             float t = math.dot(ap, ab) / math.dot(ab, ab);
 
-            // Clamp t to [0, 1] so the point stays within the segment
             t = math.clamp(t, 0f, 1f);
 
             return a + t * ab;
+        }
+        
+        /// <summary>
+        /// Converts a 2D direction vector to an angle in degrees [0, 360).
+        /// </summary>
+        /// <list type="">
+        ///  <item>Top    ->   0</item>
+        ///  <item>Right  ->  90</item>
+        ///  <item>Bottom -> 180</item>
+        ///  <item>Left   -> 270</item>
+        /// </list>
+        /// <param name="dir">The 2D direction vector (float2).</param>
+        /// <returns>Angle in degrees, normalized to [0, 360).</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float ToAngleT0(this float2 dir)
+        {
+            // atan2 returns radians in range [-π, π]
+            float angleRad = math.atan2(dir.y, dir.x);
+
+            // Convert to degrees
+            float angleDeg = angleRad * (-180f / math.PI);
+
+            return (angleDeg + 810) % 360f;
         }
     }
 

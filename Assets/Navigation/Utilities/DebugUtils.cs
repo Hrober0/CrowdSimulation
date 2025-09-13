@@ -67,5 +67,47 @@ namespace Navigation
             return false;
 #endif
         }
+        
+        public static float2[] GetRectangleFromTransform(Transform transform)
+        {
+            var p = (float2)(Vector2)transform.position;
+            var halfSize = (float2)(Vector2)transform.lossyScale * 0.5f;
+
+            // rotation in radians
+            float rad = math.radians(transform.rotation.eulerAngles.z);
+            float cos = math.cos(rad);
+            float sin = math.sin(rad);
+
+            // define local rectangle corners (unrotated, relative to center)
+            float2[] localCorners =
+            {
+                new float2(-halfSize.x, -halfSize.y),
+                new float2(-halfSize.x, halfSize.y),
+                new float2(halfSize.x, halfSize.y),
+                new float2(halfSize.x, -halfSize.y),
+            };
+
+            // rotate and translate to world space
+            var result = new float2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                float2 c = localCorners[i];
+                float2 rotated = new(
+                    c.x * cos - c.y * sin,
+                    c.x * sin + c.y * cos
+                );
+                result[i] = p + rotated;
+            }
+
+            return result;
+        }
+        
+        public static async Awaitable WaitForClick(KeyCode key = KeyCode.Space)
+        {
+            do
+            {
+                await Awaitable.NextFrameAsync();
+            } while (!Input.GetKeyDown(key));
+        }
     }
 }

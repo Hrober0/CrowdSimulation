@@ -223,25 +223,31 @@ namespace Navigation
             return portal;
         }
         
-        public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float nextPortalImpact = 0.3f)
+        public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, float2 nextPoint, float portalEdgeBias = 0.5f)
         {
-            float2 t = math.clamp(
-                ((agentPosition - portal.Left) * (portal.Right - portal.Left)) /
-                math.lengthsq(portal.Right - portal.Left), 0, 1);
-            float2 proj = portal.Left + t * (portal.Right - portal.Left);
-            // proj.To3D().DrawPoint(Color.cyan, 5, .3f);
-            
-            float2 dir = math.normalize(proj - agentPosition);
-            // DebugUtils.Draw(agentPosition, agentPosition + dir, Color.cyan, 5);
-            
-            var leftDist = math.distance(proj, nextPortal.Left);
-            var rightDist = math.distance(proj, nextPortal.Right);
-            var lateralPush = ((rightDist - leftDist) / (rightDist + leftDist)) * nextPortalImpact;
-            float2 pushDir = new float2(-dir.y, dir.x) * lateralPush; 
-            // DebugUtils.Draw(proj, proj + pushDir, Color.blue, 5);
-            
-            float2 guidance = dir + pushDir;
-            return math.normalize(guidance);
+            // Forward term: head toward next portal center
+            float2 forwardDir = math.normalize(nextPoint - agentPosition);
+
+            // Corridor basis
+            float2 portalDir = math.normalize(portal.Right - portal.Left);
+            float2 portalNormal = new float2(-portalDir.y, portalDir.x);
+
+            // Signed distance from corridor center line
+            float2 portalCenter = (portal.Left + portal.Right) * 0.5f;
+            float offset = math.dot(agentPosition - portalCenter, portalNormal);
+
+            // Corridor half width
+            float halfWidth = math.length(portal.Right - portal.Left) * 0.5f;
+
+            // Normalized lateral offset (clamped)
+            float normalizedOffset = offset / math.max(halfWidth, 0.001f);
+            normalizedOffset = math.clamp(normalizedOffset, -1f, 1f);
+
+            // Lateral correction (toward center)
+            float2 lateralDir = -portalNormal * normalizedOffset * portalEdgeBias;
+
+            // Combine forward and lateral
+            return math.normalize(forwardDir + lateralDir);
         }
     }
 }

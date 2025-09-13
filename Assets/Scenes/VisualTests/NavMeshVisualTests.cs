@@ -9,18 +9,14 @@ using UnityEngine;
 
 namespace Navigation
 {
-    public class PathfindingSystem : MonoBehaviour
+    public class NavMeshVisualTests : MonoBehaviour
     {
         [SerializeField] private List<Transform> _borderPoints;
 
         [Space]
         [SerializeField] private List<Transform> _obstacles;
         [SerializeField] private float _size;
-
-        [Space]
-        [SerializeField] private Transform _pathOrigin;
-        [SerializeField] private Transform _pathTarget;
-
+        
         [Space]
         [SerializeField] private bool _drawConnections;
         [SerializeField] private bool _drawNodes;
@@ -29,16 +25,18 @@ namespace Navigation
         [Space]
         [SerializeField] private bool _drawObstacleTriangle;
         [SerializeField] private bool _drawObstacleBorder;
-
+        
         private NavMesh<IdAttribute> _navMesh;
         private NavObstacles<IdAttribute> _navObstacles;
-
+        
+        public NavMesh<IdAttribute> NavMesh => _navMesh;
+        
         private void Start()
         {
-            _navMesh = new(1);
-            _navObstacles = new(1);
+            _navMesh = new(10);
+            _navObstacles = new(10);
 
-            _ = Test();
+            _ = RunTest();
         }
 
         private void OnDestroy()
@@ -46,8 +44,8 @@ namespace Navigation
             _navMesh.Dispose();
             _navObstacles.Dispose();
         }
-
-        private async Awaitable Test()
+        
+        private async Awaitable RunTest()
         {
             if (_borderPoints.Count > 2)
             {
@@ -57,46 +55,36 @@ namespace Navigation
             // _ = SlowAddition();
             // _ = CheckRectangle();
             _ = UpdateMapObstacles();
-            // _ = UpdatePath();
-            _ = FollowPath();
-        }
-
-        private async Awaitable WaitForClick(KeyCode key = KeyCode.Space)
-        {
-            do
-            {
-                await Awaitable.NextFrameAsync();
-            } while (!Input.GetKeyDown(key));
         }
 
         private async Awaitable SlowAddition()
         {
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             var o1 = _navObstacles.AddObstacle(new(1), new(1, 1), new(3, 1), new(3, 3));
             RunUpdate();
 
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             var o2 = _navObstacles.AddObstacle(new(2), CreateSquareAsTriangles(new float2(10, 6), 3, 30));
             RunUpdate();
 
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             _navObstacles.RemoveObstacle(o1);
             RunUpdate();
 
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             _navObstacles.RemoveObstacle(o2);
             RunUpdate();
         }
 
         private async Awaitable CheckRectangle()
         {
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             
             _navObstacles.AddObstacle(new(1), CreateSquareAsTriangles(new float2(10, 6), 3, 30));
             RunUpdate();
 
             float deg = 0;
-            await WaitForClick();
+            await DebugUtils.WaitForClick();
             while (true)
             {
                 var mpos = Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
@@ -110,22 +98,21 @@ namespace Navigation
                 var o1 = _navObstacles.AddObstacle(new(2), CreateSquareAsTriangles(mpos, size / 2, deg));
                 RunUpdate(addMin, addMax);
 
-                // await WaitForClick();
+                // await DebugUtils.WaitForClick();
 
                 await Awaitable.NextFrameAsync();
                 _navObstacles.RemoveObstacle(o1);
                 RunUpdate(addMin, addMax);
 
-                // await WaitForClick();
+                // await DebugUtils.WaitForClick();
 
                 deg += Time.deltaTime * 20;
                 Debug.Log($"{_navMesh.GetCapacityStats()}\n{_navObstacles.GetCapacityStats()}");
             }
         }
-
         private async Awaitable UpdateMapObstacles()
         {
-            await WaitForClick(KeyCode.U);
+            await DebugUtils.WaitForClick(KeyCode.U);
             
             var exist = new List<int>();
             while (true)
@@ -138,7 +125,7 @@ namespace Navigation
                     }
                     
                     using var list = new NativeList<float2>(Allocator.Temp);
-                    foreach (var p in GetRectangleFromTransform(obst))
+                    foreach (var p in DebugUtils.GetRectangleFromTransform(obst))
                     {
                         list.Add(p);
                     }
@@ -151,12 +138,8 @@ namespace Navigation
                 Debug.Log("Updated obstacles");
                 RunUpdate();
                 Debug.Log($"{_navMesh.GetCapacityStats()}\n{_navObstacles.GetCapacityStats()}");
-                
-                var pointsSize = Mathf.Max(_size * 10, 1) * Vector3.one;
-                _pathOrigin.localScale = pointsSize;
-                _pathTarget.localScale = pointsSize;
 
-                await WaitForClick(KeyCode.U);
+                await DebugUtils.WaitForClick(KeyCode.U);
 
                 exist.Reverse();
                 foreach (var id in exist)
@@ -164,61 +147,6 @@ namespace Navigation
                     _navObstacles.RemoveObstacle(id);
                 }
                 exist.Clear();
-            }
-        }
-
-        private async Awaitable UpdatePath()
-        {
-            while (true)
-            {
-                await WaitForClick();
-                float2 from = (Vector2)_pathOrigin.position;
-                float2 to = (Vector2)_pathTarget.position;
-                using var resultPath = FindPath(from, to);
-                if (_drawNodes)
-                {
-                    foreach (Portal p in resultPath)
-                    {
-                        Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.yellow);
-                    }
-                }
-
-                DrawPath(from, to, resultPath, Color.green, 5);
-            }
-        }
-        
-        private async Awaitable FollowPath()
-        {
-            while (true)
-            {
-                await WaitForClick();
-                await Awaitable.NextFrameAsync();
-                
-                while (!Input.GetKeyDown(KeyCode.Space))
-                {
-                    await Awaitable.NextFrameAsync();
-                    
-                    var seaker = (float2)(Vector2)_pathOrigin.position;
-                    var target = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
-                    if (math.lengthsq(target - seaker) < 0.01f)
-                    {
-                        continue;
-                    }
-                    
-                    using var portals = FindPath(seaker, target);
-                    using var path = new NativeList<float2>(Allocator.Temp);
-                    PathFinding.FunnelPath(seaker, target, portals.AsArray(), path);
-                    var closeTarget = path.Length > 1 ? path[1] : target;
-                    _pathOrigin.position += (Vector3)(Vector2)math.normalize(closeTarget - seaker) * Time.deltaTime * 2;
-                    
-                    if (_drawNodes)
-                    {
-                        foreach (Portal p in portals)
-                        {
-                            Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
-                        }
-                    }
-                }
             }
         }
 
@@ -234,44 +162,6 @@ namespace Navigation
                 UpdateMin = min,
                 UpdateMax = max,
             }.Run();
-        }
-
-        private NativeList<Portal> FindPath(float2 from, float2 to)
-        {
-            var resultPath = new NativeList<Portal>(Allocator.Temp);
-
-            Debug.Log($"{from} to {to}");
-            var job = new FindPathJob<IdAttribute, SamplePathSeeker>
-            {
-                StartPosition = from,
-                TargetPosition = to,
-                NavMesh = _navMesh,
-                ResultPath = resultPath
-            };
-            job.Run();
-
-            Debug.Log($"Found {resultPath.Length}");
-
-            return resultPath;
-        }
-
-        private void DrawPath(float2 origin, float2 target, NativeList<Portal> portals, Color color, float duration)
-        {
-            if (portals.Length > 0)
-            {
-                using var path = new NativeList<float2>(Allocator.Temp);
-                PathFinding.FunnelPath(origin, target, portals.AsArray(), path);
-                for (var index = 0; index < path.Length - 1; index++)
-                {
-                    var p = path[index];
-                    var p2 = path[index + 1];
-                    Debug.DrawLine(p.To3D(), p2.To3D(), color, duration);
-                }
-            }
-            else
-            {
-                Debug.DrawLine(origin.To3D(), target.To3D(), color, duration);
-            }
         }
 
         private static List<float2> CreateSquareAsTriangles(float2 center, float size, float rotationDegrees)
@@ -346,7 +236,7 @@ namespace Navigation
                     {
                         if (obst != null && obst.gameObject.activeInHierarchy)
                         {
-                            GetRectangleFromTransform(obst).DrawLoop(obst.gameObject.IsSelected() ? Color.green : Color.red);
+                            DebugUtils.GetRectangleFromTransform(obst).DrawLoop(obst.gameObject.IsSelected() ? Color.green : Color.red);
                         }
                     }
                 }
@@ -376,7 +266,7 @@ namespace Navigation
             {
                 if (wait)
                 {
-                    await WaitForClick();
+                    await DebugUtils.WaitForClick();
                 }
                 
                 var triangle = new Triangle(
@@ -388,40 +278,6 @@ namespace Navigation
             }
 
             positions.Dispose();
-        }
-
-        private float2[] GetRectangleFromTransform(Transform transform)
-        {
-            var p = (float2)(Vector2)transform.position;
-            var halfSize = (float2)(Vector2)transform.lossyScale * 0.5f;
-
-            // rotation in radians
-            float rad = math.radians(transform.rotation.eulerAngles.z);
-            float cos = math.cos(rad);
-            float sin = math.sin(rad);
-
-            // define local rectangle corners (unrotated, relative to center)
-            float2[] localCorners =
-            {
-                new float2(-halfSize.x, -halfSize.y),
-                new float2(-halfSize.x, halfSize.y),
-                new float2(halfSize.x, halfSize.y),
-                new float2(halfSize.x, -halfSize.y),
-            };
-
-            // rotate and translate to world space
-            var result = new float2[4];
-            for (int i = 0; i < 4; i++)
-            {
-                float2 c = localCorners[i];
-                float2 rotated = new(
-                    c.x * cos - c.y * sin,
-                    c.x * sin + c.y * cos
-                );
-                result[i] = p + rotated;
-            }
-
-            return result;
         }
     }
 }

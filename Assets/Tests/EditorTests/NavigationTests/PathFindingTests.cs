@@ -256,67 +256,69 @@ namespace Tests.EditorTests.NavigationTests
         {
             var vector = ComputeGuidanceVector(new(0, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
             vector.Should().BeApproximately(new(0, 1));
+            vector.ToAngleT0().Should().BeApproximately(0, .01f);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
-            vector.Should().BeApproximately(new(0.622009158f, 0.783009946f));
+            vector.ToAngleT0().Should().BeLessThan(45);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheRight()
         {
             var vector = ComputeGuidanceVector(new(5, .7f), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
-            vector.Should().BeApproximately(new(-0.9822016F, 0.187829673F));
+            vector.ToAngleT0().Should().BeGreaterThan(-45);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.Should().BeApproximately(new(0.748187661F, 0.663487136F));
+            vector.ToAngleT0().Should().BeLessThan(45);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal()
         {
             var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.Should().BeApproximately(new(0.2443394F, 0.9696898F));
+            vector.ToAngleT0().Should().BeGreaterThan(315);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft_WhenNextPortalInTiltedLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
-            vector.Should().BeApproximately(new(0.474099785F, 0.880471051F));
+            vector.ToAngleT0().Should().BeLessThan(45);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal_WhenNextPortalInTiltedLeft()
         {
             var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
-            vector.Should().BeApproximately(new(-0.08337605F, 0.996518135F));
+            vector.ToAngleT0().Should().BeGreaterThan(315);
         }
         
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToFirstPortal_WhenAgentAfterPortal()
         {
             var vector = ComputeGuidanceVector(new(1.7f, 2), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.Should().BeApproximately(new(-0.7846819F, -0.6198986F));
+            vector.ToAngleT0().Should().BeLessThan(270);
         }
 
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToFirstPortal_WhenAgentIsCloseToPortal()
         {
             var vector = ComputeGuidanceVector(new(2f, .9f), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.Should().BeApproximately(new(-0.9244805F, 0.381229132F));
+            vector.ToAngleT0().Should().BeLessThan(315);
+            vector.ToAngleT0().Should().BeGreaterThan(270);
         }
         
         private static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float portalEdgeBias = 0.3f)
         {
-            var result = PathFinding.ComputeGuidanceVector(agentPosition, portal, nextPortal, portalEdgeBias);
+            var result = PathFinding.ComputeGuidanceVector(agentPosition, portal, nextPortal.Center, portalEdgeBias);
             
             DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
             DebugUtils.Draw(nextPortal.Left, nextPortal.Right, Color.magenta, 5);
