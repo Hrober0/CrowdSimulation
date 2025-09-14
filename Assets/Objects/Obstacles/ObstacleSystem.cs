@@ -146,9 +146,12 @@ namespace Objects.Obstacles
 
         private void OnDrawGizmos()
         {
-            if (_drawObstacles)
+            if (ObstacleLookup.IsCreated)
             {
-                ObstacleLookup?.DrawObstacle();
+                if (_drawObstacles)
+                {
+                    ObstacleLookup.DrawObstacle();
+                }
             }
         }
     }

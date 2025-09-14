@@ -6,7 +6,6 @@ using Unity.Mathematics;
 
 namespace AgentSimulation
 {
-
     [BurstCompile]
     public struct UpdateAgentJobParallel : IJobParallelFor
     {
@@ -22,12 +21,11 @@ namespace AgentSimulation
         [ReadOnly] public float TimeStamp;
 
         private Agent _currentAgent;
-        private float _timeStampInv;
 
         public void Execute(int index)
         {
             _currentAgent = Agents[index];
-            _timeStampInv = 1f / TimeStamp;
+            var timeStampInv = 1f / TimeStamp;
 
             // Compute Agent Neighbor
             var agentNeighbors = new NativeList<AgentNeighbor>(Allocator.Temp);
@@ -41,7 +39,7 @@ namespace AgentSimulation
             var orcaLines = new NativeList<Line>(Allocator.Temp);
             AddObstacleLine(orcaLines, obstacleNeighbors, ObstacleVertices);
             int numObstLines = orcaLines.Length;
-            AddAgentLine(orcaLines, agentNeighbors);
+            AddAgentLine(orcaLines, agentNeighbors, timeStampInv);
 
             var newVelocity = _currentAgent.Velocity;
 
@@ -178,7 +176,7 @@ namespace AgentSimulation
             obstacleNeighbors[i] = new ObstacleVertexNeighbor { Distance = distSq, Obstacle = obstacle };
         }
 
-        private readonly void AddAgentLine(NativeList<Line> orcaLines, NativeList<AgentNeighbor> agentNeighbors)
+        private readonly void AddAgentLine(NativeList<Line> orcaLines, NativeList<AgentNeighbor> agentNeighbors, float timeStampInv)
         {
             float invTimeHorizon = 1 / _currentAgent.TimeHorizonAgent;
             
@@ -236,14 +234,14 @@ namespace AgentSimulation
                 else
                 {
                     /* Vector from cutoff center to relative velocity. */
-                    float2 w = relativeVelocity - _timeStampInv * relativePosition;
+                    float2 w = relativeVelocity - timeStampInv * relativePosition;
 
 
                     float wLength = math.length(w);
                     float2 unitW = w / wLength;
 
                     line.Direction = new float2(unitW.y, -unitW.x);
-                    u = (combinedRadius * _timeStampInv - wLength) * unitW;
+                    u = (combinedRadius * timeStampInv - wLength) * unitW;
                 }
 
                 line.Point = _currentAgent.Velocity + 0.5f * u;

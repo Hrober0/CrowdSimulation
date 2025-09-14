@@ -7,12 +7,14 @@ using UnityEngine;
 
 namespace AgentSimulation
 {
-    public class AgentLookup : IDisposable
+    public struct AgentLookup : IDisposable
     {
         public NativeList<Agent> Agents;
         public NativeParallelMultiHashMap<int, int> AgentsLookup;   // position hash index to agent index
 
         private readonly float _chunkSize;
+        
+        public bool IsCreated => Agents.IsCreated;
         
         public AgentLookup(float chunkSize)
         {
@@ -71,7 +73,12 @@ namespace AgentSimulation
         public void UpdateAgentLookup()
         {
             AgentsLookup.Clear();
-            AgentsLookup.Capacity = math.max(AgentsLookup.Capacity, Agents.Length * 2);
+            var requiredCapacity = math.max(AgentsLookup.Capacity, Agents.Length * 2);
+            if (requiredCapacity > AgentsLookup.Capacity)
+            {
+                Debug.LogWarning($"Map capacity ({AgentsLookup.Capacity}) exceeded, map was relocated, it will cause memory leak!");
+                AgentsLookup.Capacity = requiredCapacity + 2048;
+            }
             new BuildAgentLookupJob
             {
                 Agents = Agents,
@@ -81,6 +88,12 @@ namespace AgentSimulation
             .Schedule(Agents.Length, 4).Complete();
         }
 
+        public void Clear()
+        {
+            Agents.Clear();
+            AgentsLookup.Clear();
+        }
+        
         public void Dispose()
         {
             Agents.Dispose();

@@ -8,12 +8,14 @@ using UnityEngine;
 
 namespace AgentSimulation
 {
-    public class ObstacleLookup : IDisposable
+    public struct ObstacleLookup : IDisposable
     {
         public NativeList<ObstacleVertex> ObstacleVertices;
         public NativeParallelMultiHashMap<int, int> ObstacleVerticesLookup;     // position hash index to vertex index
 
         private readonly float _chunkSize;
+        
+        public bool IsCreated => ObstacleVertices.IsCreated;
 
         public ObstacleLookup(float chunkSize)
         {
@@ -110,7 +112,12 @@ namespace AgentSimulation
         public void UpdateObstacleVeritiesLookup()
         {
             ObstacleVerticesLookup.Clear();
-            ObstacleVerticesLookup.Capacity = math.max(ObstacleVerticesLookup.Capacity, ObstacleVertices.Length * 2 + 1024);
+            var requiredCapacity = math.max(ObstacleVerticesLookup.Capacity, ObstacleVertices.Length * 3);
+            if (requiredCapacity > ObstacleVerticesLookup.Capacity)
+            {
+                Debug.LogWarning($"Map capacity ({ObstacleVerticesLookup.Capacity}) exceeded, map was relocated, it will cause memory leak!");
+                ObstacleVerticesLookup.Capacity = requiredCapacity + 2048;
+            }
             new BuildObstacleVerticesLookupJob
                 {
                     Vertices = ObstacleVertices,
@@ -118,6 +125,12 @@ namespace AgentSimulation
                     ChunkSizeMultiplier = 1f / _chunkSize,
                 }
                 .Schedule(ObstacleVertices.Length, 4).Complete();
+        }
+
+        public void Clear()
+        {
+            ObstacleVertices.Clear();
+            ObstacleVerticesLookup.Clear();
         }
         
         public void Dispose()

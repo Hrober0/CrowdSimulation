@@ -144,13 +144,14 @@ namespace Objects.Agents
         
         private void SyncAgentDataIn()
         {
+            var agents = AgentLookup.Agents;
             for (int i = 0; i < AgentLookup.Agents.Length; i++)
             {
-                var agentData = AgentLookup.Agents[i];
+                var agentData = agents[i];
                 var agentM = _objectsSystem.Objects[agentData.ObjectId].GetModule<IMovingObject>();
                 agentData.PrefVelocity = agentM.TargetVelocity;
                 agentData.Position = agentM.Position;
-                AgentLookup.Agents[i] = agentData;
+                agents[i] = agentData;
             }
         }
 
@@ -166,19 +167,22 @@ namespace Objects.Agents
         
         private void OnDrawGizmos()
         {
-            if (_drawPositions)
+            if (AgentLookup.IsCreated)
             {
-                AgentLookup?.DrawPositions();
-            }
-            
-            if (_drawVelocities)
-            {
-                AgentLookup?.DrawVelocities();
-            }
-            
-            if (_drawPreferredVelocities)
-            {
-                AgentLookup?.DrawPreferredVelocities();
+                if (_drawPositions)
+                {
+                    AgentLookup.DrawPositions();
+                }
+                
+                if (_drawVelocities)
+                {
+                    AgentLookup.DrawVelocities();
+                }
+                
+                if (_drawPreferredVelocities)
+                {
+                    AgentLookup.DrawPreferredVelocities();
+                }
             }
         }
     }

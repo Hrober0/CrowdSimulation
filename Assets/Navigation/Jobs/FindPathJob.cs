@@ -16,7 +16,7 @@ namespace Navigation
         [ReadOnly] public NavMesh<TAttribute> NavMesh;
         [ReadOnly] public TSeeker Seeker;
 
-        public NativeList<Portal> ResultPath;
+        [WriteOnly] public NativeList<Portal> ResultPath;
         
         public void Execute()
         {

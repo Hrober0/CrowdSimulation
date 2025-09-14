@@ -15,7 +15,7 @@ namespace Navigation
         [ReadOnly] public NavMesh<TAttribute> NavMesh;
         [ReadOnly] public TSeeker Seeker;
         
-        public NativeList<Portal> ResultPath; //TODO list of lists
+        [WriteOnly] public NativeArray<NativeList<Portal>> ResultPaths;
         
         public void Execute(int index)
         {
@@ -30,7 +30,7 @@ namespace Navigation
                 Debug.LogWarning($"{targetPosition} not found in NavMesh");
                 return;
             }
-            PathFinding.FindPath(startPosition, startNodeIndex, targetPosition, targetNodeIndex, NavMesh.Nodes, Seeker, ResultPath);
+            PathFinding.FindPath(startPosition, startNodeIndex, targetPosition, targetNodeIndex, NavMesh.Nodes, Seeker, ResultPaths[index]);
         }
         
         public readonly struct StartAndTarget
