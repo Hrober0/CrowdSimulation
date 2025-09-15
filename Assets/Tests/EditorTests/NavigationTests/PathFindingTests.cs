@@ -1,11 +1,14 @@
-﻿using FluentAssertions;
+﻿using System.Linq;
+using FluentAssertions;
 using HCore.Extensions;
+using HCore.Shapes;
 using Navigation;
 using NUnit.Framework;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using Tests.TestsUtilities;
+using Triangle = Navigation.Triangle;
 
 namespace Tests.EditorTests.NavigationTests
 {
@@ -314,6 +317,153 @@ namespace Tests.EditorTests.NavigationTests
             var vector = ComputeGuidanceVector(new(2f, .9f), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
             vector.ToAngleT0().Should().BeLessThan(315);
             vector.ToAngleT0().Should().BeGreaterThan(270);
+        }
+
+        [Test]
+        public void FindSpaces_ShouldFindSpaces()
+        {
+            /*
+                Geometry:
+                Triangle layout (top view):
+              1 |  C
+                |  |\
+            0.5 |  |  \
+                |  |____\
+              0 |  A     B
+                +----------------------→ X
+                   0     1     2    3
+
+                Triangle 0: ABC
+                Triangle 1: BDC
+            */
+
+            var a = new float2(0, 0);
+            var b = new float2(1, 0);
+            var c = new float2(0, 1);
+            var d = new float2(1, 1);
+
+            var nodes = new NativeArray<NavNode<IdAttribute>>(1, Allocator.Temp);
+            nodes[0] = new(
+                a,
+                b,
+                c,
+                connectionAB: -1,
+                connectionBC: -1,
+                connectionCA: -1,
+                new()
+            );
+            
+            using var resultPosition = new NativeList<float2>(20,Allocator.Temp);
+            PathFinding.FindSpaces(new(.5f, .5f), 0, 3, .3f, nodes, new SamplePathSeeker(), resultPosition);
+
+            foreach (var node in nodes)
+            {
+                node.Triangle.DrawBorder(Color.yellow, 5);
+            }
+            foreach (var pos in resultPosition)
+            {
+                pos.To3D().DrawPoint(Color.green, 5, .3f);
+            }
+            
+            resultPosition.Length.Should().Be(3);
+            resultPosition[0].Should().BeApproximately(new(.5f, .5f));
+            resultPosition[1].Should().BeApproximately(new(.5f, .2f));
+            resultPosition[2].Should().BeApproximately(new(.2f, .5f));
+            
+            nodes.Dispose();
+        }
+        
+        [Test]
+        public void FindSpaces_ShouldFindSpaces_AvoidingInvalidNodes()
+        {
+            /*
+                Geometry:
+                Triangle layout (top view):
+              1 |     C_____D_____E
+                |    /\ x  /\    /
+            0.5 |   /  \  /x*\  /
+                |  /____\/____\/
+              0 |  A     B     F
+                +----------------------→ X
+                   0     1     2    3
+
+                Triangle 0: ABC
+                Triangle 1: CBD - not valid
+                Triangle 2: BFD - not valid
+                Triangle 3: DEF
+
+                Path should go from t0 (0.5, 0.6) to t3 (2, 0.6)
+            */
+
+            float2 a = new(0, 0);
+            float2 b = new(1, 0);
+            float2 c = new(0.5f, 1);
+            float2 d = new(1.5f, 1);
+            float2 e = new(2.5f, 1);
+            float2 f = new(2f, 0);
+
+            var nodes = new NativeArray<NavNode<IdAttribute>>(4, Allocator.Temp);
+
+            // Triangle 0: ABC
+            nodes[0] = new(
+                cornerA: a,
+                cornerB: b,
+                cornerC: c,
+                connectionAB: -1,
+                connectionBC: 1,
+                connectionCA: -1,
+                new()
+            );
+            // Triangle 1: CBD
+            nodes[1] = new(
+                cornerA: c,
+                cornerB: b,
+                cornerC: d,
+                connectionAB: 0,
+                connectionBC: 2,
+                connectionCA: -1,
+                new(1)
+            );
+            // Triangle 2: BFD
+            nodes[2] = new(
+                cornerA: b,
+                cornerB: f,
+                cornerC: d,
+                connectionAB: -1,
+                connectionBC: 3,
+                connectionCA: 1,
+                new(2)
+            );
+            // Triangle 3: DEF
+            nodes[3] = new(
+                cornerA: d,
+                cornerB: e,
+                cornerC: f,
+                connectionAB: 1,
+                connectionBC: -1,
+                connectionCA: 2,
+                new()
+            );
+
+            using var resultPosition = new NativeList<float2>(20,Allocator.Temp);
+            PathFinding.FindSpaces(new(1.4f, .5f), 0, 100, .2f, nodes, new SamplePathSeeker(), resultPosition);
+
+            foreach (var node in nodes)
+            {
+                node.Triangle.DrawBorder(Color.yellow, 5);
+            }
+            foreach (var pos in resultPosition)
+            {
+                pos.To3D().DrawPoint(Color.green, 5, .3f);
+            }
+            
+            resultPosition.Length.Should().Be(25);
+            resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, a, b, c)).Should().HaveCount(12);
+            resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, c, b, d)).Should().BeEmpty();
+            resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, b, f, d)).Should().BeEmpty();
+            resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, d, e, f)).Should().HaveCount(13);
+
+            nodes.Dispose();
         }
         
         private static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float portalEdgeBias = 0.3f)

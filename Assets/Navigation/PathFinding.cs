@@ -1,6 +1,8 @@
 ﻿using System.Runtime.CompilerServices;
 using CustomNativeCollections;
 using HCore.Extensions;
+using HCore.Shapes;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -86,13 +88,14 @@ namespace Navigation
             }
         }
 
+        [BurstCompile]
         public static void FindPath<TAttribute, TSeeker>(
             float2 startPosition, 
             int startNodeIndex,
             float2 targetPosition,
             int targetNodeIndex,
             in NativeArray<NavNode<TAttribute>> nodes,
-            TSeeker seeker,
+            in TSeeker seeker,
             NativeList<Portal> resultPath
             )
             where TAttribute : unmanaged, INodeAttributes<TAttribute>
@@ -152,7 +155,17 @@ namespace Navigation
                     }
 
                     NavNode<TAttribute> neighbor = nodes[connectedIndex];
-                    float g = current.GCost + math.distance(node.Center, neighbor.Center) * seeker.CalculateMultiplier(neighbor.Attributes);
+                    
+                    // ReSharper disable once PossiblyImpureMethodCallOnReadonlyVariable
+                    float moveCost = seeker.CalculateCost(neighbor.Attributes, math.distance(node.Center, neighbor.Center));
+                    
+                    // ReSharper disable once CompareOfFloatsByEqualityOperator
+                    if (moveCost == float.MaxValue)
+                    {
+                        continue;
+                    }
+                    
+                    float g = current.GCost + moveCost;
                     float h = math.distance(neighbor.Center, targetPosition);
                     float f = g + h;
                     if (cameFrom.TryGetValue(connectedIndex, out AStarNode existing) && f >= existing.FCost)
@@ -194,9 +207,18 @@ namespace Navigation
                 NavNode<TAttribute> currentNode = nodes[currentNodeIndex];
 
                 Edge edge;
-                if (currentNode.ConnectionAB == nextNodeIndex) edge = new(currentNode.CornerA, currentNode.CornerB);
-                else if (currentNode.ConnectionBC == nextNodeIndex) edge = new(currentNode.CornerB, currentNode.CornerC);
-                else if (currentNode.ConnectionCA == nextNodeIndex) edge = new(currentNode.CornerC, currentNode.CornerA);
+                if (currentNode.ConnectionAB == nextNodeIndex)
+                {
+                    edge = new(currentNode.CornerA, currentNode.CornerB);
+                }
+                else if (currentNode.ConnectionBC == nextNodeIndex)
+                {
+                    edge = new(currentNode.CornerB, currentNode.CornerC);
+                }
+                else if (currentNode.ConnectionCA == nextNodeIndex)
+                {
+                    edge = new(currentNode.CornerC, currentNode.CornerA);
+                }
                 else
                 {
                     Debug.LogWarning("Nodes should be connected but are not...");
@@ -230,7 +252,7 @@ namespace Navigation
 
             // Corridor basis
             float2 portalDir = math.normalize(portal.Right - portal.Left);
-            float2 portalNormal = new float2(-portalDir.y, portalDir.x);
+            float2 portalNormal = new(-portalDir.y, portalDir.x);
 
             // Signed distance from corridor center line
             float2 portalCenter = (portal.Left + portal.Right) * 0.5f;
@@ -248,6 +270,90 @@ namespace Navigation
 
             // Combine forward and lateral
             return math.normalize(forwardDir + lateralDir);
+        }
+
+        [BurstCompile]
+        public static void FindSpaces<TAttribute, TSeeker>(
+            float2 centerPosition,
+            int centerNodeIndex,
+            int positionsToFind,
+            float spacing,
+            in NativeArray<NavNode<TAttribute>> nodes, 
+            in TSeeker seeker,
+            NativeList<float2> positions
+            )
+            where TAttribute : unmanaged, INodeAttributes<TAttribute>
+            where TSeeker : unmanaged, IPlaceSeeker<TSeeker, TAttribute>
+        {
+            if (positionsToFind <= 0)
+            {
+                return;
+            }
+            
+            using var closedSet = new NativeHashSet<int>(nodes.Length, Allocator.Temp);
+            using var openSet = new NativeQueue<int>(Allocator.Temp);
+            using var foundPositions = new NativeHashSet<int2>(math.max(positionsToFind * 4, 16), Allocator.Temp);
+            
+            var invSpacing = 1f / spacing;
+            openSet.Enqueue(centerNodeIndex);
+            while (!openSet.IsEmpty())
+            {
+                var evaluatingIndex = openSet.Dequeue();
+                
+                NavNode<TAttribute> node = nodes[evaluatingIndex];
+
+                // ReSharper disable once PossiblyImpureMethodCallOnReadonlyVariable
+                if (seeker.IsValid(node.Attributes))
+                {
+                    Triangle nodeTriangle = node.Triangle;
+                    float2 min = math.floor((nodeTriangle.Min - centerPosition) / spacing) * spacing + centerPosition;
+                    float2 max = math.ceil((nodeTriangle.Max - centerPosition) / spacing) * spacing + centerPosition;
+                    for (float y = min.y; y <= max.y; y += spacing)
+                    {
+                        for (float x = min.x; x <= max.x; x += spacing)
+                        {
+                            var p = new float2(x, y);
+                            // p.To3D().DrawPoint(Triangle.PointIn(p, nodeTriangle.A, nodeTriangle.B, nodeTriangle.C) ? Color.green : Color.red, 5, .3f);
+                            
+                            if (!Triangle.PointIn(p, nodeTriangle.A, nodeTriangle.B, nodeTriangle.C))
+                            {
+                                continue;
+                            }
+
+                            var key = new int2((int)math.floor(p.x * invSpacing), (int)math.floor(p.y * invSpacing));
+                            if (foundPositions.Add(key))
+                            {
+                                positions.Add(p);
+                            }
+                        }
+                    }
+                }
+                
+                if (foundPositions.Count >= positionsToFind)
+                {
+                    break;
+                }
+
+                AddConnectedNode(node.ConnectionAB);
+                AddConnectedNode(node.ConnectionBC);
+                AddConnectedNode(node.ConnectionCA);
+            }
+            
+            positions.Sort(new PointDistanceComparer(centerPosition));
+            if (positions.Length > positionsToFind)
+            {
+                positions.RemoveRange(positionsToFind, positions.Length - positionsToFind);
+            }
+            return;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void AddConnectedNode(int index)
+            {
+                if (index != NavNode.NULL_INDEX && closedSet.Add(index))
+                {
+                    openSet.Enqueue(index);
+                }
+            }
         }
     }
 }

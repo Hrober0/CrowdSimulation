@@ -4,6 +4,6 @@
         where T : unmanaged, IPathSeeker<T, TAttribute>
         where TAttribute : unmanaged
     {
-        float CalculateMultiplier(TAttribute attribute);
+        float CalculateCost(in TAttribute attribute, float distance);
     }
 }

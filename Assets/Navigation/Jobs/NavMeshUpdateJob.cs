@@ -126,7 +126,7 @@ namespace Navigation
                     }
                     
                     intersectionBuffer.Add(insidePoint);
-                    intersectionBuffer.Sort(new PointComparer{Reference = insidePoint});
+                    intersectionBuffer.Sort(new PointDistanceComparer(insidePoint));
                     for (int i = 0; i < intersectionBuffer.Length - 1; i++)
                     {
                         insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
@@ -313,18 +313,6 @@ namespace Navigation
                 }
                 
                 NavMesh.AddNode(new(triangle, attributes));
-            }
-        }
-        
-        private struct PointComparer : IComparer<float2>
-        {
-            public float2 Reference;
-
-            public int Compare(float2 a, float2 b)
-            {
-                float da = math.lengthsq(a - Reference);
-                float db = math.lengthsq(b - Reference);
-                return da.CompareTo(db); // ascending order
             }
         }
     }

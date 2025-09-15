@@ -1,10 +1,8 @@
 ﻿namespace Navigation
 {
-    public struct SamplePathSeeker : IPathSeeker<SamplePathSeeker, IdAttribute>
+    public struct SamplePathSeeker : IPathSeeker<SamplePathSeeker, IdAttribute>, IPlaceSeeker<SamplePathSeeker, IdAttribute>
     {
-        public float CalculateMultiplier(IdAttribute attribute)
-        {
-            return attribute.Entries > 0 ? 100000 : 1;
-        }
+        public readonly float CalculateCost(in IdAttribute attribute, float distance) => attribute.Entries > 0 ? float.MaxValue : distance;
+        public readonly bool IsValid(in IdAttribute attribute) => attribute.Entries == 0;
     }
 }
