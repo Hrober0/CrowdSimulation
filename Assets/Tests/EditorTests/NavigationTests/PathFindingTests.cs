@@ -1,5 +1,6 @@
 ﻿using System.Linq;
 using FluentAssertions;
+using HCore;
 using HCore.Extensions;
 using HCore.Shapes;
 using Navigation;
@@ -41,7 +42,7 @@ namespace Tests.EditorTests.NavigationTests
         {
             var portals = new NativeList<Portal>(Allocator.Temp)
             {
-                new(new(2, 0), new(1, -2)),// /
+                new(new(2, 0), new(1, -2)), // /
                 new(new(2, 2), new(4, 2)), // _
                 new(new(3, 6), new(4, 4)), // \
                 new(new(6, 6), new(5, 2)), // /
@@ -81,7 +82,7 @@ namespace Tests.EditorTests.NavigationTests
             portals.Dispose();
             result.Dispose();
         }
-        
+
         [Test]
         public void CreatePortal_CCW_KeepsOrder()
         {
@@ -105,7 +106,7 @@ namespace Tests.EditorTests.NavigationTests
             portal.Left.Should().BeApproximately(notRight);
             portal.Right.Should().BeApproximately(notLeft);
         }
-        
+
         [Test]
         public void FindPath_ShouldConnectTwoNodes()
         {
@@ -261,49 +262,49 @@ namespace Tests.EditorTests.NavigationTests
             vector.Should().BeApproximately(new(0, 1));
             vector.ToAngleT0().Should().BeApproximately(0, .01f);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
             vector.ToAngleT0().Should().BeLessThan(45);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheRight()
         {
             var vector = ComputeGuidanceVector(new(5, .7f), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
             vector.ToAngleT0().Should().BeGreaterThan(-45);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
             vector.ToAngleT0().Should().BeLessThan(45);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal()
         {
             var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
             vector.ToAngleT0().Should().BeGreaterThan(315);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft_WhenNextPortalInTiltedLeft()
         {
             var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
             vector.ToAngleT0().Should().BeLessThan(45);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal_WhenNextPortalInTiltedLeft()
         {
             var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
             vector.ToAngleT0().Should().BeGreaterThan(315);
         }
-        
+
         [Test]
         public void ComputeGuidanceVector_ShouldReturnGuideToFirstPortal_WhenAgentAfterPortal()
         {
@@ -352,27 +353,28 @@ namespace Tests.EditorTests.NavigationTests
                 connectionCA: -1,
                 new()
             );
-            
-            using var resultPosition = new NativeList<float2>(20,Allocator.Temp);
+
+            using var resultPosition = new NativeList<float2>(20, Allocator.Temp);
             PathFinding.FindSpaces(new(.5f, .5f), 0, 3, .3f, nodes, new SamplePathSeeker(), resultPosition);
 
             foreach (var node in nodes)
             {
                 node.Triangle.DrawBorder(Color.yellow, 5);
             }
+
             foreach (var pos in resultPosition)
             {
                 pos.To3D().DrawPoint(Color.green, 5, .3f);
             }
-            
+
             resultPosition.Length.Should().Be(3);
             resultPosition[0].Should().BeApproximately(new(.5f, .5f));
             resultPosition[1].Should().BeApproximately(new(.5f, .2f));
             resultPosition[2].Should().BeApproximately(new(.2f, .5f));
-            
+
             nodes.Dispose();
         }
-        
+
         [Test]
         public void FindSpaces_ShouldFindSpaces_AvoidingInvalidNodes()
         {
@@ -445,18 +447,19 @@ namespace Tests.EditorTests.NavigationTests
                 new()
             );
 
-            using var resultPosition = new NativeList<float2>(20,Allocator.Temp);
+            using var resultPosition = new NativeList<float2>(20, Allocator.Temp);
             PathFinding.FindSpaces(new(1.4f, .5f), 0, 100, .2f, nodes, new SamplePathSeeker(), resultPosition);
 
             foreach (var node in nodes)
             {
                 node.Triangle.DrawBorder(Color.yellow, 5);
             }
+
             foreach (var pos in resultPosition)
             {
                 pos.To3D().DrawPoint(Color.green, 5, .3f);
             }
-            
+
             resultPosition.Length.Should().Be(25);
             resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, a, b, c)).Should().HaveCount(12);
             resultPosition.AsArray().Where(p => Triangle.PointInExcludingEdges(p, c, b, d)).Should().BeEmpty();
@@ -465,18 +468,199 @@ namespace Tests.EditorTests.NavigationTests
 
             nodes.Dispose();
         }
+
+        [Test]
+        public void AssignTargets_ShouldAssignPositionsToClosestTargets_WhenCountsMatch()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(0, 0),
+                new float2(10, 0),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(new[]
+            {
+                new float2(1, 0),
+                new float2(9, 0),
+            }, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            assignments[0].Should().BeApproximately(new(1, 0));
+            assignments[1].Should().BeApproximately(new(9, 0));
+        }
+
+        [Test]
+        public void AssignTargets_ShouldAssignAgentsToClosestTargets_WhenMoreTargetsThanPositions()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(0, 0),
+                new float2(10, 0),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(new[]
+            {
+                new float2(1, 0),
+                new float2(5, 5),
+                new float2(9, 0),
+            }, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            assignments[0].Should().BeApproximately(new(1, 0));
+            assignments[1].Should().BeApproximately(new(9, 0));
+        }
         
+        [Test]
+        public void AssignTargets_ShouldAssignAgentsToClosestTargets_WhenPositionsAreSpilted()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(0, 0),
+                new float2(0, -1),
+                new float2(1, 1),
+                new float2(-1, 0),
+                new float2(-1, 2),
+                
+                new float2(0, -4),
+                new float2(0, -5),
+                new float2(1, -3),
+                new float2(-1, -4),
+                new float2(-1, -2),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(new[]
+            {
+                new float2(7, 2),
+                new float2(8, 2),
+                new float2(9, 2),
+                new float2(10, 2),
+                new float2(7, 3),
+                new float2(8, 3),
+                new float2(9, 3),
+                new float2(10, 3),
+                new float2(7, 4),
+                new float2(8, 4),
+                new float2(9, 4),
+                new float2(10, 4),
+                new float2(7, 5),
+                new float2(8, 5),
+                new float2(9, 5),
+                new float2(10, 5),
+            }, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            foreach (var target in targets)
+            {
+                if (!assignments.Contains(target))
+                {
+                    target.To3D().DrawPoint(Color.black, 5, .3f);
+                }
+            }
+            for (var index = 0; index < positions.Length; index++)
+            {
+                positions[index].To3D().DrawPoint(ColorUtils.GetColor(index), 5, .3f);
+                assignments[index].To3D().DrawPoint(ColorUtils.GetColor(index), 5, .3f);
+            }
+
+            assignments.Should().ContainInOrder(
+                new float2(9f, 5f), 
+                new float2(9f, 4f), 
+                new float2(10f, 5f), 
+                new float2(8f, 5f), 
+                new float2(7f, 5f), 
+                new float2(9f, 2f), 
+                new float2(8f, 2f), 
+                new float2(10f, 2f), 
+                new float2(7f, 2f), 
+                new float2(8f, 3f)
+                );
+        }
+
+        [Test]
+        public void AssignTargets_ShouldNotAssign_WhenTargetsAreEmpty()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(0, 0),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(0, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            // Nothing assigned, default int = 0
+            assignments[0].Should().BeApproximately(float2.zero);
+        }
+
+        [Test]
+        public void AssignTargets_ShouldWarn_WhenPositionsExceedTargets()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(0, 0),
+                new float2(1, 0),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(new[]
+            {
+                new float2(0, 1),
+            }, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            // In this case, assignment is skipped
+            assignments[0].Should().BeApproximately(float2.zero);
+            assignments[1].Should().BeApproximately(float2.zero);
+        }
+
+        [Test]
+        public void AssignTargets_ShouldAssignCorrectly_InSymmetricScenario()
+        {
+            using var positions = new NativeArray<float2>(new[]
+            {
+                new float2(-5, 0),
+                new float2(5, 0),
+            }, Allocator.Temp);
+
+            using var targets = new NativeArray<float2>(new[]
+            {
+                new float2(-6, 0),
+                new float2(6, 0),
+            }, Allocator.Temp);
+
+            using var assignments = new NativeArray<float2>(positions.Length, Allocator.Temp);
+
+            PathFinding.AssignTargets(positions, targets, assignments);
+
+            assignments[0].Should().BeApproximately(new(-6, 0));
+            assignments[1].Should().BeApproximately(new(6, 0));
+        }
+
         private static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float portalEdgeBias = 0.3f)
         {
             var result = PathFinding.ComputeGuidanceVector(agentPosition, portal, nextPortal.Center, portalEdgeBias);
-            
+
             DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
             DebugUtils.Draw(nextPortal.Left, nextPortal.Right, Color.magenta, 5);
             agentPosition.To3D().DrawPoint(Color.red, 5, .3f);
             DebugUtils.Draw(agentPosition, agentPosition + result, Color.green, 5);
-                
+
             return result;
         }
+
         private static NativeList<Portal> FindPath(float2 start, float2 target, NativeArray<NavNode<IdAttribute>> nodes)
         {
             const float CELL_SIZE = 1f;
@@ -498,7 +682,7 @@ namespace Tests.EditorTests.NavigationTests
                 nodes,
                 new SamplePathSeeker(),
                 portals
-                );
+            );
 
             start.To3D().DrawPoint(Color.green, 5, .3f);
             target.To3D().DrawPoint(Color.red, 5, .3f);

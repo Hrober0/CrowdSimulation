@@ -221,6 +221,9 @@ namespace Navigation
             return cross1 * cross2;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Sign(float2 a, float2 b, float2 c) => Cross(b - a, c - a);
+        
         /// <summary>
         /// 2D cross product (returns scalar z-component)
         /// </summary>
@@ -259,7 +262,7 @@ namespace Navigation
         /// Returns the closest point on a line segment AB to point P.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float2 ClosestPointOnEdge(float2 a, float2 b, float2 p)
+        public static float2 ClosestPointOnSegment(float2 p, float2 a, float2 b)
         {
             float2 ab = b - a;
             float2 ap = p - a;

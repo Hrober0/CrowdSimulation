@@ -1,8 +1,6 @@
-﻿using System;
-using HCore.Shapes;
+﻿using HCore.Shapes;
 using HCore.Systems;
 using UnityEngine;
-using Random = UnityEngine.Random;
 
 namespace Objects.Agents
 {
@@ -15,13 +13,12 @@ namespace Objects.Agents
         
         public float Radius => _radius;
         public Vector2 Position => transform.position;
-        public Vector2 TargetVelocity { get; private set; }
+        public Vector2 TargetVelocity { get; set; }
 
         public IShape Bounds { get; private set; }
         
         public void Initialize(ISystemManager systems)
         {
-            TargetVelocity = Random.insideUnitCircle.normalized;
             Bounds = CreateBounds(Position);
         }
         public void Deinitialize() {}

@@ -344,8 +344,8 @@ namespace Navigation
 
         /// <summary>
         /// Expands (offsets) a simple polygon outward by given radius.
-        /// Input must be CCW (counter-clockwise).
-        /// Returns expanded polygon in CCW order.
+        /// For clockwise verts and positive radius polygon will be expanded.
+        /// Returns expanded polygon in the same order.
         /// </summary>
         public static void ExpandPolygon(NativeList<float2> polygon, float radius)
         {

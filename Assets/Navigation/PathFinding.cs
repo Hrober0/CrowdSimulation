@@ -74,14 +74,17 @@ namespace Navigation
             }
 
             // Add end
-            if (Triangle.SignedArea(apex, right, end) >= 0f && !GeometryUtils.NearlyEqual(apex, right) && !(Triangle.SignedArea(apex, left, end) < 0f))
+            if (Triangle.SignedArea(apex, right, end) >= 0f && !GeometryUtils.NearlyEqual(apex, right) &&
+                !(Triangle.SignedArea(apex, left, end) < 0f))
             {
                 resultPath.Add(left);
             }
-            else if (Triangle.SignedArea(apex, left, end) <= 0f && !GeometryUtils.NearlyEqual(apex, left) && !(Triangle.SignedArea(apex, right, end) > 0f))
+            else if (Triangle.SignedArea(apex, left, end) <= 0f && !GeometryUtils.NearlyEqual(apex, left) &&
+                     !(Triangle.SignedArea(apex, right, end) > 0f))
             {
                 resultPath.Add(right);
             }
+
             if (resultPath.Length == 0 || !GeometryUtils.NearlyEqual(resultPath[^1], end))
             {
                 resultPath.Add(end);
@@ -90,14 +93,14 @@ namespace Navigation
 
         [BurstCompile]
         public static void FindPath<TAttribute, TSeeker>(
-            float2 startPosition, 
+            float2 startPosition,
             int startNodeIndex,
             float2 targetPosition,
             int targetNodeIndex,
             in NativeArray<NavNode<TAttribute>> nodes,
             in TSeeker seeker,
             NativeList<Portal> resultPath
-            )
+        )
             where TAttribute : unmanaged, INodeAttributes<TAttribute>
             where TSeeker : unmanaged, IPathSeeker<TSeeker, TAttribute>
         {
@@ -115,7 +118,7 @@ namespace Navigation
                 gCost: 0,
                 fCost: math.distance(nodes[startNodeIndex].Center, targetPosition),
                 cameFromIndex: -1));
-            
+
             bool foundTargetNode = false;
             int triesAfterFoundTargetNode = 10;
 
@@ -155,16 +158,16 @@ namespace Navigation
                     }
 
                     NavNode<TAttribute> neighbor = nodes[connectedIndex];
-                    
+
                     // ReSharper disable once PossiblyImpureMethodCallOnReadonlyVariable
                     float moveCost = seeker.CalculateCost(neighbor.Attributes, math.distance(node.Center, neighbor.Center));
-                    
+
                     // ReSharper disable once CompareOfFloatsByEqualityOperator
                     if (moveCost == float.MaxValue)
                     {
                         continue;
                     }
-                    
+
                     float g = current.GCost + moveCost;
                     float h = math.distance(neighbor.Center, targetPosition);
                     float f = g + h;
@@ -195,6 +198,7 @@ namespace Navigation
                 pathNodeIndexes.Add(node.Index);
                 currentIndex = node.CameFromIndex;
             }
+
             pathNodeIndexes.Add(startNodeIndex);
 
             // Create portals
@@ -202,8 +206,8 @@ namespace Navigation
             for (int i = 0; i < pathNodeIndexes.Length - 1; i++)
             {
                 // Path is processed from last node to achieve correct order
-                int currentNodeIndex = pathNodeIndexes[^(i+1)];
-                int nextNodeIndex = pathNodeIndexes[^(i+2)];
+                int currentNodeIndex = pathNodeIndexes[^(i + 1)];
+                int nextNodeIndex = pathNodeIndexes[^(i + 2)];
                 NavNode<TAttribute> currentNode = nodes[currentNodeIndex];
 
                 Edge edge;
@@ -234,7 +238,7 @@ namespace Navigation
             edgesIds.Dispose();
             cameFrom.Dispose();
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Portal CreatePortal(float2 p1, float2 p2, Portal lastPortal)
         {
@@ -244,7 +248,7 @@ namespace Navigation
                 : new(p2, p1);
             return portal;
         }
-        
+
         public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, float2 nextPoint, float portalEdgeBias = 0.5f)
         {
             // Forward term: head toward next portal center
@@ -278,10 +282,10 @@ namespace Navigation
             int centerNodeIndex,
             int positionsToFind,
             float spacing,
-            in NativeArray<NavNode<TAttribute>> nodes, 
+            in NativeArray<NavNode<TAttribute>> nodes,
             in TSeeker seeker,
             NativeList<float2> positions
-            )
+        )
             where TAttribute : unmanaged, INodeAttributes<TAttribute>
             where TSeeker : unmanaged, IPlaceSeeker<TSeeker, TAttribute>
         {
@@ -289,17 +293,19 @@ namespace Navigation
             {
                 return;
             }
-            
+
             using var closedSet = new NativeHashSet<int>(nodes.Length, Allocator.Temp);
             using var openSet = new NativeQueue<int>(Allocator.Temp);
             using var foundPositions = new NativeHashSet<int2>(math.max(positionsToFind * 4, 16), Allocator.Temp);
+
+            // TODO: If first node is invalid algorithm should find the closest valid node before start searching
             
             var invSpacing = 1f / spacing;
             openSet.Enqueue(centerNodeIndex);
             while (!openSet.IsEmpty())
             {
                 var evaluatingIndex = openSet.Dequeue();
-                
+
                 NavNode<TAttribute> node = nodes[evaluatingIndex];
 
                 // ReSharper disable once PossiblyImpureMethodCallOnReadonlyVariable
@@ -314,7 +320,7 @@ namespace Navigation
                         {
                             var p = new float2(x, y);
                             // p.To3D().DrawPoint(Triangle.PointIn(p, nodeTriangle.A, nodeTriangle.B, nodeTriangle.C) ? Color.green : Color.red, 5, .3f);
-                            
+
                             if (!Triangle.PointIn(p, nodeTriangle.A, nodeTriangle.B, nodeTriangle.C))
                             {
                                 continue;
@@ -328,7 +334,7 @@ namespace Navigation
                         }
                     }
                 }
-                
+
                 if (foundPositions.Count >= positionsToFind)
                 {
                     break;
@@ -338,12 +344,13 @@ namespace Navigation
                 AddConnectedNode(node.ConnectionBC);
                 AddConnectedNode(node.ConnectionCA);
             }
-            
+
             positions.Sort(new PointDistanceComparer(centerPosition));
             if (positions.Length > positionsToFind)
             {
                 positions.RemoveRange(positionsToFind, positions.Length - positionsToFind);
             }
+
             return;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -354,6 +361,68 @@ namespace Navigation
                     openSet.Enqueue(index);
                 }
             }
+        }
+
+        public static void AssignTargets(in NativeArray<float2> positions, in NativeArray<float2> targets, NativeArray<float2> assignments)
+        {
+            int positionsCount = positions.Length;
+            int targetCount = targets.Length;
+
+            if (targetCount == 0)
+            {
+                Debug.LogWarning($"Target count have to be positive");
+                return;
+            }
+
+            if (targetCount < positionsCount)
+            {
+                Debug.LogWarning($"Target count ({targetCount}) cannot be less than position count ({positionsCount}).");
+                return;
+            }
+            
+            float2 agentsCenter = float2.zero;
+            for (int i = 0; i < positionsCount; i++)
+            {
+                agentsCenter += positions[i];
+            }
+            agentsCenter /= positionsCount;
+
+            float2 targetsCenter = float2.zero;
+            for (int i = 0; i < targetCount; i++)
+            {
+                targetsCenter += targets[i];
+            }
+            targetsCenter /= targetCount;
+            
+            var relativeTargets = new NativeArray<float2>(targetCount, Allocator.Temp);
+            for (int i = 0; i < targetCount; i++)
+            {
+                relativeTargets[i] = targets[i] - targetsCenter;
+            }
+            
+            var relativeTargetsCount = relativeTargets.Length;
+            for (int i = 0; i < positionsCount; i++)
+            {
+                float2 relativePosition = positions[i] - agentsCenter;
+                
+                float bestCost = float.MaxValue;
+                int bestTarget = -1;
+
+                for (int j = 0; j < relativeTargetsCount; j++)
+                {
+                    float cost = math.lengthsq(relativePosition - relativeTargets[j]);
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        bestTarget = j;
+                    }
+                }
+
+                assignments[i] = relativeTargets[bestTarget] + targetsCenter;
+                relativeTargets[bestTarget] = relativeTargets[--relativeTargetsCount];
+            }
+
+            relativeTargets.Dispose();
         }
     }
 }
