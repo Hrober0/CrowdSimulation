@@ -1,15 +1,30 @@
 # Crowd simulation for Unity
 
-This project is a **Burst-accelerated navigation mesh (NavMesh) system for Unity**, designed with **RTS-style crowd simulation** in mind.  
-Unlike Unity’s built-in NavMesh, this implementation focuses on **fast dynamic updates**, **low GC pressure**, and **scalable pathfinding**.
+A **Burst-optimized** agent navigation system built for RTS-style crowd simulation.
+Unlike Unity’s built-in AI Navigation, this solution is designed for **scalable pathfinding**, **dynamic updates**, and **low memory overhead** — enabling hundreds of agents to move fluidly in real time.
 
-## What is a NavMesh?
+## What is wrong with Unit's navigation system?
+Unity’s navigation system works for basic AI, but it has key drawbacks for large-scale crowd simulation:
 
-A **navigation mesh (NavMesh)** is a collection of polygons (usually triangles) that defines the walkable areas in a game world.  
-It enables agents (units, NPCs, crowds) to find paths around obstacles and reach their targets efficiently.
+1. NavMesh updates are costly
+- Unity’s NavMesh is static by default.
+- Updating it requires expensive full or partial rebakes.
+- Raycast-based queries are not efficient at runtime.
 
-In real-time strategy and large-scale simulations, traditional NavMesh systems often struggle with performance when updating or handling hundreds of units.  
-This project tackles that problem head-on.
+2. Limited path modifiers
+- Only supports cost multipliers per agent type.
+- Changing the walkable area requires placing obstacles, which affect all NavMesh layers, not just the one you want.
+
+3. Not built for large crowds
+- Lacks fine control over group movement.
+- Performance degrades significantly with many agents.
+
+## Design goals
+- **Performance-first** — Fully Burst-compiled for SIMD acceleration.
+- **Modular** — Swap in new movement systems or pathfinding heuristics easily.
+- **Flexible NavMesh** — Support for efficient local updates without rebaking the entire map.
+- **Crowd-aware** — Scales gracefully to hundreds (or thousands) of agents.
+- **Customizable** — Extend behavior via generic **node attributes** and **path seeker**.
 
 ## Visulization
 - [Navmesh update explanation](https://youtu.be/uCZhevX9qrY?si=YffUNqXb-7onxPsE)
@@ -21,19 +36,24 @@ This project tackles that problem head-on.
 The project is split into tree main parts:
 
 ### 1. Navigation
-- Core **NavMesh generation and updates**  
-- **Node-based pathfinding** with smart links  
-- Optimized with **Unity Burst** for high performance
+- **NavMesh** is build with triangle **NavNodes** covering it all area
+- **NavNodes** are connected by common edges, creates a graph for A* pathfining
+- **NavNodes** have generic **attributes** to be use for evaluate a cost of path by generic **seeker**
+- **NavObstacle** is a collection of polygons with **attributes**
+- **NavMesh** can be updated at given area to bake **attributes** and shape of **NavObstacle** on that area
 
 ### 2. Avoidance
-- Job-based implementation of **RVO2 (Reciprocal Velocity Obstacles)**  [RVO2](https://gamma.cs.unc.edu/RVO2)
-- Real-time **crowd avoidance** to prevent unit collisions  
-- Scales well for **hundreds of agents moving simultaneously**
+- Real-time **crowd avoidance** to prevent agents collisions
+- Agents generting avoidance vectors to avoid contact before it heppend
+- Supports both **dynamic** circle agents and **static** polygon obstacles
+- Built on a job-based implementation of **RVO2 (Reciprocal Velocity Obstacles)**  [RVO2](https://gamma.cs.unc.edu/RVO2)
 
 ### 3. Crowd Simulation
-- Integration of navigation + avoidance + attacks  
-- Designed for **RTS-style games**, swarms, and large agent counts
+- Seamless integration of navigation and avoidance into a unified simulation loop.
+- Efficient querying of agents and obstacles for decision-making.
+- High-level APIs to order agents to move as individuals or groups.
 
 ## Tech Highlights
+- Unity 6.2
 - Built with **DOTS** (Entities + Jobs + Burst)
 - Use burst triangulation by [andywiecko](https://github.com/andywiecko/BurstTriangulator)
