@@ -12,7 +12,9 @@ In real-time strategy and large-scale simulations, traditional NavMesh systems o
 This project tackles that problem head-on.
 
 ## Visulization
-- [Navmesh update](https://youtu.be/uCZhevX9qrY?si=YffUNqXb-7onxPsE)
+- [Navmesh update explanation](https://youtu.be/uCZhevX9qrY?si=YffUNqXb-7onxPsE)
+- [Navmesh update performance test](https://www.youtube.com/watch?v=FILGhMOsSlo)
+- [Pathfinding on Navmesh explained](https://www.youtube.com/watch?v=Et-tu-1pM7k)
 
 ## Project Structure
 
