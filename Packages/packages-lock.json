@@ -8,7 +8,7 @@
         "com.unity.burst": "1.8.7",
         "com.unity.collections": "2.2.0"
       },
-      "hash": "13233f3ff24a677e1a7e6c73089a930f224f0c43"
+      "hash": "14ef3aacbcc9cba1f859c5a11d27b23903adcde3"
     },
     "com.boundfoxstudios.fluentassertions": {
       "version": "https://github.com/BoundfoxStudios/fluentassertions-unity.git#upm",
@@ -183,7 +183,7 @@
       }
     },
     "com.unity.ide.rider": {
-      "version": "3.0.36",
+      "version": "3.0.38",
       "depth": 0,
       "source": "registry",
       "dependencies": {

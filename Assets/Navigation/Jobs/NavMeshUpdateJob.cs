@@ -197,8 +197,8 @@ namespace Navigation
                     Status = triangulationStatus,
                 },
                 args: Args.Default(
-                    verbose: true,         // false to not throw errors, because unity can stop on error inside job, what's lead to unity memory corruption
-                    validateInput: false    // there is an error with input validation https://github.com/andywiecko/BurstTriangulator/issues/384
+                    verbose: true         // false to not throw errors, because unity can stop on error inside job, what's lead to unity memory corruption
+                    // validateInput: false
                     ), 
                 allocator: Allocator.Temp
             );
