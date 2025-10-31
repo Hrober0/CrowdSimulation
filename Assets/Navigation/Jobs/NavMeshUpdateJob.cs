@@ -59,12 +59,6 @@ namespace Navigation
             using var borderEdgesCCW = new NativeList<Edge>(unorderedBorderEdges.Length, Allocator.Temp);
             PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, toleration: MIN_POINT_DISTANCE);
             
-            // fixedBorderEdges.Clear();
-            // foreach (var edge in borderEdges)
-            // {
-            //     fixedBorderEdges.Add(new(edge.A, edge.B));
-            // }
-            
             // Get obstacle inside border
             using var obstaclesParts = new NativeList<NavObstacles<T>.IndexedTriangle>(DEFAULT_CAPACITY, Allocator.Temp);
             NavObstacles.ObstacleLookup.QueryAABB(UpdateMin, UpdateMax, obstaclesParts);
@@ -99,6 +93,7 @@ namespace Navigation
 
                     if (!isAInside && !isBInside)
                     {
+                        // TODO: if edge is long it can be inside polygon even when both of its ends are outside 
                         // Outside polygon
                         continue;
                     }

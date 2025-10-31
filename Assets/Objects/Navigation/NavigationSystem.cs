@@ -69,7 +69,7 @@ namespace Objects.Navigation
 
         private void Update()
         {
-            if (Input.GetMouseButtonDown(0))
+            if (Input.GetMouseButtonDown(0) && _agents.Count > 0)
             {
                 var targetClick = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
                 if (!_navMesh.TryGetNodeIndex(targetClick, out var targetNodeIndex))

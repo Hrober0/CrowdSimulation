@@ -138,16 +138,19 @@ namespace Navigation
                 edgeMap.Add(edge.A, edge);
                 edgeMap.Add(edge.B, edge);
             }
-            
 
+            // Debug.Log("Checking CCW");
+            
             // Reconstruct ordered boundary loop
             bool isClosed = true;
             float2 startVert = edges[0].A;
             float2 currentVert = startVert;
             float2 nextVert = edges[0].B;
             points.Add(currentVert);
+            // Debug.Log($"NextEdge {currentVert.x}, {currentVert.y}");
             for (int i = 0; i < edges.Length; i++)
             {
+                // Debug.Log($"NextEdge {nextVert.x}, {nextVert.y}");
                 points.Add(nextVert);
                 
                 EdgeKey? found = null;
@@ -276,6 +279,7 @@ namespace Navigation
                         continue;
                     }
 
+                    // Debug.Log($"{a.A}, {a.B}, {b.A}, {b.B} -> {intersection1}, {intersection2} | {GeometryUtils.NearlyEqual(intersection1, intersection2, tolerance)} {GeometryUtils.SegmentsEqual(a.A, a.B, b.A, b.B, tolerance)}");
                     if (GeometryUtils.NearlyEqual(intersection1, intersection2, tolerance))
                     {
                         // Edges not overlap
@@ -301,7 +305,7 @@ namespace Navigation
                     
                     // Overlaps partially
                     GeometryUtils.GetFarthestPointsOnLine(a.A, a.B, b.A, b.B, out float2 end1, out float2 end2);
-                        
+                    
                     float2 pointsCloseToEnd1 = intersection1;
                     float2 pointsCloseToEnd2 = intersection2;
                     if (math.distancesq(end1, pointsCloseToEnd1) >
@@ -310,9 +314,28 @@ namespace Navigation
                         (pointsCloseToEnd1, pointsCloseToEnd2) = (pointsCloseToEnd2, pointsCloseToEnd1);
                     }
 
-                    edges[ai] = new Edge(end1, pointsCloseToEnd1);
-                    edges[bi] = new Edge(end2, pointsCloseToEnd2);
-                    edges.Add(new Edge(pointsCloseToEnd1, pointsCloseToEnd2));
+                    // Debug.Log($"{end1}-{pointsCloseToEnd1} {end2}-{pointsCloseToEnd2}");    
+                    if (GeometryUtils.NearlyEqual(end1, pointsCloseToEnd1, tolerance))
+                    {
+                        // Debug.Log("c1");
+                        // edges[ai] = new Edge(end1, pointsCloseToEnd1);               // do not create empty edge
+                        edges[ai] = new Edge(pointsCloseToEnd1, pointsCloseToEnd2);
+                        edges[bi] = new Edge(end2, pointsCloseToEnd2);
+                    }
+                    else if (GeometryUtils.NearlyEqual(end2, pointsCloseToEnd2, tolerance))
+                    {
+                        // Debug.Log("c2");
+                        // edges[ai] = new Edge(end2, pointsCloseToEnd2);               // do not create empty edge
+                        edges[ai] = new Edge(pointsCloseToEnd1, pointsCloseToEnd2);
+                        edges[bi] = new Edge(end1, pointsCloseToEnd1);
+                    }
+                    else
+                    {
+                        // Debug.Log("c3");
+                        edges[ai] = new Edge(end1, pointsCloseToEnd1);
+                        edges[bi] = new Edge(end2, pointsCloseToEnd2);
+                        edges.Add(new Edge(pointsCloseToEnd1, pointsCloseToEnd2));
+                    }
                 }
             }
 

@@ -446,6 +446,141 @@ namespace Tests.EditorTests.NavigationTests
 
             result.AsArray().Should().HaveCount(3);
         }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new(0, 0), new(10, 0)), // horizontal line
+                new Edge(new(0, 0), new(2, 0)), // overlapping
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(2, 0), new(10, 0)));
+
+            result.AsArray().Should().HaveCount(2);
+        }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge_Multiple()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new(0, 0), new(10, 0)), // horizontal line
+                new Edge(new(0, 0), new(2, 0)), // overlapping 1
+                new Edge(new(8, 0), new(10, 0)), // overlapping 2
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(2, 0), new(8, 0)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(8, 0), new(10, 0)));
+
+            result.AsArray().Should().HaveCount(3);
+        }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge_Multiple_AndHaveAdditionalCommonPoint()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+
+                
+                new Edge(new(9, 0), new(9, 2)),
+                new Edge(new(9, 5), new(9, 7)),
+                
+                new Edge(new(9, 0), new(10, 7)),
+                
+                new Edge(new(9, 7), new(9, 0)),
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 0), new(9, 2)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 2), new(9, 5)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 5), new(9, 7)));
+
+            result.AsArray().Should().HaveCount(4);
+        }
+        
+        [Test]
+        public void CutIntersectingEdges_ShouldCutOverlapping_Complex()
+        {
+            // Arrange
+            //    Y                    
+            //    ▲
+            // 10 |  *----------------------------------
+            //  9 |  |
+            //  8 |  |
+            //  7 |  *-----*----*  
+            //  6 |  | \ 2 | 3 /     
+            //  5 |  |    \*  /
+            //  4 |  |     |  /
+            //  3 |  |     | /
+            //  2 |  *-----* /
+            //  1 |  | \ 1 |/
+            //  0 |  *---\*--------------------------------
+            //    |  
+            //    └────────────────────────────────────────────────────────────────────▶ X
+            //       0     1     2     3     4     5     6     7     8     9    10   
+            var edges = new List<Edge>
+            {
+                new Edge(new(10, 0), new(10, 10)),
+                new Edge(new(10, 10), new(0, 10)),
+                new Edge(new(0, 10), new(0, 0)),
+                new Edge(new(0, 0), new(10, 0)),
+                
+                // Triangle 1
+                new Edge(new(0, 2), new(1, 0)),
+                new Edge(new(1, 0), new(1, 2)),
+                new Edge(new(1, 2), new(0, 2)),
+                
+                // Triangle 2
+                new Edge(new(0, 7), new(1, 5)),
+                new Edge(new(1, 5), new(1, 7)),
+                new Edge(new(1, 7), new(0, 7)),
+                
+                // Triangle 3
+                new Edge(new(1, 7), new(1, 0)),
+                new Edge(new(1, 0), new(2, 7)),
+                new Edge(new(2, 7), new(1, 7)),
+            };
+
+            // Act
+            using var result = ToNative(edges);
+            PolygonUtils.CutIntersectingEdges(result, .0005f);
+
+            Draw(result);
+
+            // Assert
+            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 0), new(1, 2)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 2), new(1, 5)));
+            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 5), new(1, 7)));
+
+            result.AsArray().Should().HaveCount(16);
+        }
 
         [Test]
         public void CutIntersectingEdges_ShouldCutOverlappingCompletely()
