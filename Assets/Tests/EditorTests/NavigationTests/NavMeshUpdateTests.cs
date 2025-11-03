@@ -17,8 +17,6 @@ namespace Tests.EditorTests.NavigationTests
 {
     public class NavMeshUpdateTests
     {
-        private bool debug = true;
-
         private NavMesh<IdAttribute> _navMesh;
         private NavObstacles<IdAttribute> _navObstacles;
 
@@ -264,7 +262,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void AddObstacle__ShouldCreateCorrectNodes_ForObstacleWithEdgesOutsideNavArea_AndContainNavAreaVertex()
+        public void AddObstacle_ShouldCreateCorrectNodes_ForObstacleWithEdgesOutsideNavArea_AndContainNavAreaVertex()
         {
             //    Y
             //    ▲
@@ -296,7 +294,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void AddObstacle__ShouldCreateCorrectNodes_ForObstacleWithEdgesOutsideNavArea_AndContainNavAreaVertex_AndVertOnEdge()
+        public void AddObstacle_ShouldCreateCorrectNodes_ForObstacleWithEdgesOutsideNavArea_AndContainNavAreaVertex_AndVertOnEdge()
         {
             //    Y
             //    ▲            |
@@ -493,7 +491,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void EnsureValidTriangulation_ShouldMergeOverlappingTriangles_MultipleTimes()
+        public void Update_ShouldMergeOverlappingTriangles_MultipleTimes()
         {
             //    Y                    /
             //    ▲      (1,2) (2,2)  /      |
@@ -527,7 +525,7 @@ namespace Tests.EditorTests.NavigationTests
         }
         
         [Test]
-        public void EnsureValidTriangulation_ShouldCutLineOnMultipleParts()
+        public void Update_ShouldCutLineOnMultipleParts()
         {
             //    Y                    
             //    ▲
@@ -562,7 +560,7 @@ namespace Tests.EditorTests.NavigationTests
         }
         
         [Test]
-        public void EnsureValidTriangulation_ShouldCreateBorder()
+        public void Update_ShouldCreateBorder()
         {
             //    Y                    
             //    ▲
@@ -614,7 +612,7 @@ namespace Tests.EditorTests.NavigationTests
         }
         
         [Test]
-        public void EnsureValidTriangulation_ShouldCreateBorder_AndPutObstacleInside()
+        public void Update_ShouldCreateBorder_AndPutObstacleInside()
         {
             //    Y                    
             //    ▲
@@ -686,28 +684,102 @@ namespace Tests.EditorTests.NavigationTests
             
             _navMesh.GetActiveNodes.Should().HaveCount(24);
         }
+        
+        [Test]
+        public void Update_ShouldIncludeObjectThatIsBiggerThenArea()
+        {
+            //    Y                    
+            //    ▲       
+            //  5 |         |                             |
+            //  4 |   *----_|__________                   |
+            //  3 |   |     |          -----------------__|_____
+            //  2 |   *-----*-----------------------------*------=*
+            //  1 |         |                             |
+            //  0 |         *-----------------------------*
+            //    |  
+            //    └───────────────────────────────────────────────────────────▶ X
+            //       -2     0     2     4     6     8     10     12   
+            
+            _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
+            
+            // Act create border
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(2);
+            
+            _navMesh.GetActiveNodes.Should().HaveCount(6);
+        }
+        
+        [Test]
+        public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasCrossing()
+        {
+            //    Y                    
+            //    ▲                       |  |
+            //  5 |         |             |  |            |
+            //  4 |   *----_|__________ |    |            |
+            //  3 |   |     |          -----------------__|_____
+            //  2 |   *-----*-----------------------------*------=*
+            //  1 |         |           |    |            |
+            //  0 |         *-----------*----*------------*
+            //    |  
+            //    └───────────────────────────────────────────────────────────▶ X
+            //       -2     0     2     4     6     8     10     12   
+            
+            _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
+            _navObstacles.AddObstacle(new(2), new(4, 0), new(6, 0), new(6, 12));
+            
+            // Act create border
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(6);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(6);
+            
+            _navMesh.GetActiveNodes.Should().HaveCount(18);
+        }
+        
+        [Test]
+        public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasOvverlapingCrossing()
+        {
+            //    Y                    
+            //    ▲                       |  |
+            //  5 |         |             |  |            |
+            //  4 |   *----_|__________ |    |            |
+            //  3 |   |     |          -----------------__|_____
+            //  2 |   *-----*-----------*----*------------*------=*
+            //  1 |         |                             |
+            //  0 |         *-----------------------------*
+            //    |  
+            //    └───────────────────────────────────────────────────────────▶ X
+            //       -2     0     2     4     6     8     10     12   
+            
+            _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
+            _navObstacles.AddObstacle(new(2), new(4, 2), new(6, 2), new(6, 10));
+            
+            // Act create border
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(6);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
+            
+            _navMesh.GetActiveNodes.Should().HaveCount(15);
+        }
 
         #region Helpers
-
-        private void Draw(List<Triangle> triangles)
-        {
-            if (!debug)
-            {
-                return;
-            }
-
-            foreach (var tr in triangles)
-            {
-                tr.DrawBorder(Color.white, 3);
-                tr.GetCenter.To3D().DrawPoint(Color.white, 3, .1f);
-            }
-        }
 
         private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float offsetX) => Draw(nodes, new float2(offsetX, 0));
 
         private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float2 offset = default)
         {
-            if (!debug)
+            if (!TestConfig.DEBUG)
             {
                 return;
             }

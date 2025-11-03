@@ -1,6 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
 using FluentAssertions;
 using HCore.Extensions;
 using Navigation;
@@ -15,8 +13,6 @@ namespace Tests.EditorTests.NavigationTests
 {
     public class PolygonUtilsTests
     {
-        private bool debug = true;
-
         [Test]
         public void GetEdgesUnordered_ShouldReturn3Edges_FromSingleTriangle()
         {
@@ -812,7 +808,7 @@ namespace Tests.EditorTests.NavigationTests
 
         private void Draw(in NativeList<Edge> edges)
         {
-            if (!debug)
+            if (!TestConfig.DEBUG)
             {
                 return;
             }
@@ -826,7 +822,7 @@ namespace Tests.EditorTests.NavigationTests
         
         private void Draw(in NativeList<float2> verts, Color color)
         {
-            if (!debug)
+            if (!TestConfig.DEBUG)
             {
                 return;
             }

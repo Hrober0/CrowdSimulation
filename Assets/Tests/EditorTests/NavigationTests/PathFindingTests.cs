@@ -653,10 +653,13 @@ namespace Tests.EditorTests.NavigationTests
         {
             var result = PathFinding.ComputeGuidanceVector(agentPosition, portal, nextPortal.Center, portalEdgeBias);
 
-            DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
-            DebugUtils.Draw(nextPortal.Left, nextPortal.Right, Color.magenta, 5);
-            agentPosition.To3D().DrawPoint(Color.red, 5, .3f);
-            DebugUtils.Draw(agentPosition, agentPosition + result, Color.green, 5);
+            if (TestConfig.DEBUG)
+            {
+                DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
+                DebugUtils.Draw(nextPortal.Left, nextPortal.Right, Color.magenta, 5);
+                agentPosition.To3D().DrawPoint(Color.red, 5, .3f);
+                DebugUtils.Draw(agentPosition, agentPosition + result, Color.green, 5);
+            }
 
             return result;
         }
@@ -684,11 +687,14 @@ namespace Tests.EditorTests.NavigationTests
                 portals
             );
 
-            start.To3D().DrawPoint(Color.green, 5, .3f);
-            target.To3D().DrawPoint(Color.red, 5, .3f);
-            foreach (var portal in portals.AsArray())
+            if (TestConfig.DEBUG)
             {
-                DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
+                start.To3D().DrawPoint(Color.green, 5, .3f);
+                target.To3D().DrawPoint(Color.red, 5, .3f);
+                foreach (var portal in portals.AsArray())
+                {
+                    DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
+                }
             }
 
             return portals;

@@ -7,14 +7,13 @@ using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
 using HCore.Shapes;
+using Tests.TestsUtilities;
 using Triangle = Navigation.Triangle;
 
 namespace Tests.EditorTests.NavigationTests
 {
     public class NavMeshTests
     {
-        private bool _debug = true;
-
         private NavMesh<IdAttribute> _navMesh;
 
         [SetUp]
@@ -329,7 +328,7 @@ namespace Tests.EditorTests.NavigationTests
 
         private void Draw(NativeArray<NavNode<IdAttribute>> nodes)
         {
-            if (!_debug)
+            if (!TestConfig.DEBUG)
             {
                 return;
             }
@@ -365,7 +364,7 @@ namespace Tests.EditorTests.NavigationTests
 
         private void DrawOffset(NativeArray<NavNode<IdAttribute>> nodes)
         {
-            if (!_debug)
+            if (!TestConfig.DEBUG)
             {
                 return;
             }
