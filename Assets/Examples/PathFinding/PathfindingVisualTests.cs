@@ -1,13 +1,22 @@
+using System;
 using HCore.Extensions;
+using Navigation;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace Navigation
+namespace PathFindingTest
 {
     public class PathfindingVisualTests : MonoBehaviour
     {
+        public enum TestType
+        {
+            UpdatePath,
+            FollowPath,
+            FollowPathToPortal,
+        }
+        
         [SerializeField] private NavMeshVisualTests _meshVisual;
         
         [Space]
@@ -17,6 +26,9 @@ namespace Navigation
         [Space]
         [SerializeField] private bool _drawPortals;
         
+        [Space]
+        [SerializeField] private TestType _testType = TestType.FollowPathToPortal;
+        
         private void Start()
         {
             _ = RunTest();
@@ -24,9 +36,20 @@ namespace Navigation
 
         private async Awaitable RunTest()
         {
-            // _ = UpdatePath();
-            // _ = FollowPath();
-            _ = FollowPathToPortal();
+            switch (_testType)
+            {
+                case TestType.UpdatePath:
+                    _ = UpdatePath();
+                    break;
+                case TestType.FollowPath:
+                    _ = FollowPath();
+                    break;
+                case TestType.FollowPathToPortal:
+                    _ = FollowPathToPortal();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
         
         private async Awaitable UpdatePath()

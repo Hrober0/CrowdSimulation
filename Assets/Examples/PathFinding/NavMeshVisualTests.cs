@@ -1,16 +1,25 @@
+using System;
 using System.Collections.Generic;
 using andywiecko.BurstTriangulator;
 using HCore.Extensions;
 using HCore.Shapes;
+using Navigation;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace Navigation
+namespace PathFindingTest
 {
     public class NavMeshVisualTests : MonoBehaviour
     {
+        public enum TestType
+        {
+            SlowAddition,
+            CheckRectangle,
+            UpdateMapObstacles,
+        }
+        
         [SerializeField] private List<Transform> _borderPoints;
 
         [Space]
@@ -25,6 +34,9 @@ namespace Navigation
         [Space]
         [SerializeField] private bool _drawObstacleTriangle;
         [SerializeField] private bool _drawObstacleBorder;
+        
+        [Space]
+        [SerializeField] private TestType _testType = TestType.UpdateMapObstacles;
         
         private NavMesh<IdAttribute> _navMesh;
         private NavObstacles<IdAttribute> _navObstacles;
@@ -52,9 +64,20 @@ namespace Navigation
                 await AddInitNodes(false);
             }
 
-            // _ = SlowAddition();
-            // _ = CheckRectangle();
-            _ = UpdateMapObstacles();
+            switch (_testType)
+            {
+                case TestType.SlowAddition:
+                    _ = SlowAddition();
+                    break;
+                case TestType.CheckRectangle:
+                    _ = CheckRectangle();
+                    break;
+                case TestType.UpdateMapObstacles:
+                    _ = UpdateMapObstacles();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
         }
 
         private async Awaitable SlowAddition()
@@ -269,7 +292,7 @@ namespace Navigation
                     await DebugUtils.WaitForClick();
                 }
                 
-                var triangle = new Triangle(
+                var triangle = new Navigation.Triangle(
                     positions[triangles[i]],
                     positions[triangles[i + 1]],
                     positions[triangles[i + 2]]

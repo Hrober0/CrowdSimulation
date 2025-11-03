@@ -1,15 +1,14 @@
 using System.Collections.Generic;
 using HCore;
-using HCore.Extensions;
 using Navigation;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace VisualTests
+namespace NavMeshPerformance
 {
-    public class NavigationPerformanceTest : MonoBehaviour
+    public class NavMeshPerformanceTest : MonoBehaviour
     {
         [SerializeField] private TextAsset _jsonFile; 
         [SerializeField] private float _fps = 30f;
@@ -340,8 +339,8 @@ namespace VisualTests
                 new(0, 0)
             ), new()));
         }
-        
-        public void DrawObstacles(float duration)
+
+        private void DrawObstacles(float duration)
         {
             using NativeArray<int> keys = _navObstacles.ObstacleEdges.GetKeyArray(Allocator.Temp);
             foreach (var key in keys)
@@ -361,8 +360,8 @@ namespace VisualTests
                 // (center / (number * 2)).To3D().DrawPoint(color, duration, 0.1f);
             }
         }
-        
-        public void DrawNodes(float duration)
+
+        private void DrawNodes(float duration)
         {
             foreach (var node in _navMesh.Nodes)
             {

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Objects.Agents;
 using UnityEngine;
 
-namespace VisualTests
+namespace AvoidanceTest
 {
     public class SetRandomAgentVelcity : MonoBehaviour
     {
