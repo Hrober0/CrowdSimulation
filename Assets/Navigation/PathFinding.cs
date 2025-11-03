@@ -160,7 +160,7 @@ namespace Navigation
                     NavNode<TAttribute> neighbor = nodes[connectedIndex];
 
                     // ReSharper disable once PossiblyImpureMethodCallOnReadonlyVariable
-                    float moveCost = seeker.CalculateCost(neighbor.Attributes, math.distance(node.Center, neighbor.Center));
+                    float moveCost = seeker.CalculateCost(neighbor.Attributes, node.Center, neighbor.Center);
 
                     // ReSharper disable once CompareOfFloatsByEqualityOperator
                     if (moveCost == float.MaxValue)
