@@ -1,8 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using andywiecko.BurstTriangulator;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
-using CustomNativeCollections;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -90,13 +88,6 @@ namespace Navigation
                         insideEdges.Add(new Edge(obstacleEdge.A, obstacleEdge.B));
                         continue;
                     }
-
-                    if (!isAInside && !isBInside)
-                    {
-                        // TODO: if edge is long it can be inside polygon even when both of its ends are outside 
-                        // Outside polygon
-                        continue;
-                    }
                     
                     intersectionBuffer.Clear();
                     foreach (Edge borderEdge in borderEdgesCCW)
@@ -106,25 +97,52 @@ namespace Navigation
                             intersectionBuffer.Add(intersectionPoint);
                         }
                     }
-
-                    if (intersectionBuffer.Length == 0)
-                    {
-                        Debug.LogWarning($"{obstacleEdge} {isAInside} {isBInside} should intersect border!");
-                        continue;
-                    }
-
-                    var insidePoint = isAInside ? obstacleEdge.A : obstacleEdge.B;
-                    if (intersectionBuffer.Length == 1)
-                    {
-                        insideEdges.Add(new Edge(intersectionBuffer[0], insidePoint));
-                        continue;
-                    }
                     
-                    intersectionBuffer.Add(insidePoint);
-                    intersectionBuffer.Sort(new PointDistanceComparer(insidePoint));
-                    for (int i = 0; i < intersectionBuffer.Length - 1; i++)
+                    if (isAInside || isBInside)
                     {
-                        insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
+                        if (intersectionBuffer.Length == 0)
+                        {
+                            Debug.LogWarning($"Edge {obstacleEdge} should intersect border, because have one of the endpoint inside ({isAInside} {isBInside})");
+                            continue;
+                        }
+                        
+                        // start with point inside it is one of the edge ends points
+                        float2 startPoint = isAInside ? obstacleEdge.A : obstacleEdge.B;
+                        
+                        if (intersectionBuffer.Length == 1)
+                        {
+                            // exist without sorting (happens often and allow to avoid additional computation)
+                            insideEdges.Add(new Edge(startPoint, intersectionBuffer[0]));
+                            continue;
+                        }
+                        
+                        intersectionBuffer.Add(startPoint);
+                        intersectionBuffer.Sort(new PointDistanceComparer(startPoint));
+                        for (int i = 0; i < intersectionBuffer.Length - 1; i++)
+                        {
+                            insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
+                        }
+                    }
+                    else
+                    {
+                        if (intersectionBuffer.Length == 0)
+                        {
+                            // It is possible that edge does not intersect area
+                            continue;
+                        }
+                        
+                        if (intersectionBuffer.Length == 2)
+                        {
+                            // exist without sorting (happens often and allow to avoid additional computation)
+                            insideEdges.Add(new Edge(intersectionBuffer[0], intersectionBuffer[1]));
+                            continue;
+                        }
+                        
+                        intersectionBuffer.Sort(new PointDistanceComparer(intersectionBuffer[0]));
+                        for (int i = 0; i < intersectionBuffer.Length - 1; i++)
+                        {
+                            insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
+                        }
                     }
                 }
             }
@@ -192,8 +210,8 @@ namespace Navigation
                     Status = triangulationStatus,
                 },
                 args: Args.Default(
-                    verbose: true         // false to not throw errors, because unity can stop on error inside job, what's lead to unity memory corruption
-                    // validateInput: false
+                    verbose: true,         // false to not throw errors, because unity can stop on error inside job, what's lead to unity memory corruption
+                    validateInput: true
                     ), 
                 allocator: Allocator.Temp
             );
