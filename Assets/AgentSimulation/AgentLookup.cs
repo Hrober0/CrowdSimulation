@@ -13,15 +13,17 @@ namespace AgentSimulation
         public NativeParallelMultiHashMap<int, int> AgentsLookup;   // position hash index to agent index
 
         private readonly float _chunkSize;
+        private readonly int _lookupEntriesMultiplier;
         
         public bool IsCreated => Agents.IsCreated;
         
-        public AgentLookup(float chunkSize)
+        public AgentLookup(float chunkSize, int capacity, int lookupEntriesMultiplier)
         {
-            Agents = new(Allocator.Persistent);
-            AgentsLookup = new(100, Allocator.Persistent);
-            
+            _lookupEntriesMultiplier = lookupEntriesMultiplier;
             _chunkSize = chunkSize;
+            
+            Agents = new(capacity,Allocator.Persistent);
+            AgentsLookup = new(capacity * _lookupEntriesMultiplier, Allocator.Persistent);
         }
         
         /// <summary>
@@ -73,7 +75,7 @@ namespace AgentSimulation
         public void UpdateAgentLookup()
         {
             AgentsLookup.Clear();
-            var requiredCapacity = math.max(AgentsLookup.Capacity, Agents.Length * 2);
+            var requiredCapacity = math.max(AgentsLookup.Capacity, Agents.Length * _lookupEntriesMultiplier);
             if (requiredCapacity > AgentsLookup.Capacity)
             {
                 Debug.LogWarning($"Map capacity ({AgentsLookup.Capacity}) exceeded, map was relocated, it will cause memory leak!");

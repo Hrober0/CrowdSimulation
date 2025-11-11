@@ -68,6 +68,9 @@ namespace Navigation
 #endif
         }
         
+        /// <summary>
+        /// Use position, scale and rotation to calculate verticies in CCW order
+        /// </summary>
         public static float2[] GetRectangleFromTransform(Transform transform)
         {
             var p = (float2)(Vector2)transform.position;
@@ -82,9 +85,9 @@ namespace Navigation
             float2[] localCorners =
             {
                 new float2(-halfSize.x, -halfSize.y),
-                new float2(-halfSize.x, halfSize.y),
-                new float2(halfSize.x, halfSize.y),
                 new float2(halfSize.x, -halfSize.y),
+                new float2(halfSize.x, halfSize.y),
+                new float2(-halfSize.x, halfSize.y),
             };
 
             // rotate and translate to world space

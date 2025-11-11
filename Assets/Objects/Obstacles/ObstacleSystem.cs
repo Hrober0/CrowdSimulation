@@ -33,7 +33,7 @@ namespace Objects.Obstacles
             _queries = new int[_objectsSystem.DefaultCapacity];
             _queriesConvex = new int[_objectsSystem.DefaultCapacity];
             
-            ObstacleLookup = new ObstacleLookup(_objectsSystem.ChunkSize);
+            ObstacleLookup = new ObstacleLookup(_objectsSystem.ChunkSize, 100, 3);
         }
         void IInitializable.Deinitialize()
         {

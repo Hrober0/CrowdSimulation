@@ -14,15 +14,17 @@ namespace AgentSimulation
         public NativeParallelMultiHashMap<int, int> ObstacleVerticesLookup;     // position hash index to vertex index
 
         private readonly float _chunkSize;
+        private readonly int _lookupEntriesMultiplier;
         
         public bool IsCreated => ObstacleVertices.IsCreated;
 
-        public ObstacleLookup(float chunkSize)
+        public ObstacleLookup(float chunkSize, int capacity, int lookupEntriesMultiplier)
         {
-            ObstacleVertices = new(Allocator.Persistent);
-            ObstacleVerticesLookup = new(100, Allocator.Persistent);
-            
+            _lookupEntriesMultiplier = lookupEntriesMultiplier;
             _chunkSize = chunkSize;
+            
+            ObstacleVertices = new(capacity, Allocator.Persistent);
+            ObstacleVerticesLookup = new(capacity * _lookupEntriesMultiplier, Allocator.Persistent);
         }
         
         /// <summary>
@@ -112,7 +114,7 @@ namespace AgentSimulation
         public void UpdateObstacleVeritiesLookup()
         {
             ObstacleVerticesLookup.Clear();
-            var requiredCapacity = math.max(ObstacleVerticesLookup.Capacity, ObstacleVertices.Length * 3);
+            var requiredCapacity = math.max(ObstacleVerticesLookup.Capacity, ObstacleVertices.Length * _lookupEntriesMultiplier);
             if (requiredCapacity > ObstacleVerticesLookup.Capacity)
             {
                 Debug.LogWarning($"Map capacity ({ObstacleVerticesLookup.Capacity}) exceeded, map was relocated, it will cause memory leak!");

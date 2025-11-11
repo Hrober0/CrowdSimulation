@@ -43,7 +43,7 @@ namespace Objects.Agents
             
             _queries = new int[_objectsSystem.DefaultCapacity];
             
-            AgentLookup = new AgentLookup(_objectsSystem.ChunkSize);
+            AgentLookup = new AgentLookup(_objectsSystem.ChunkSize, 100, 2);
             
             _simulationInterval = new WaitForSeconds(_timeStamp);
             StartCoroutine(Simulate());

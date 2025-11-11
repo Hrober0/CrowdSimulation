@@ -153,7 +153,7 @@ namespace PathFindingTest
                         list.Add(p);
                     }
 
-                    PolygonUtils.ExpandPolygon(list, _size);
+                    PolygonUtils.ExpandPolygon(list, -_size);
                     var id = _navObstacles.AddObstacle(list, new(exist.Count + 1));
                     exist.Add(id);
                 }
