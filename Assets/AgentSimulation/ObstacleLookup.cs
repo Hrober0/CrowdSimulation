@@ -33,16 +33,16 @@ namespace AgentSimulation
         /// <param name="vertices">>List of the vertices of the polygonal obstacle in counterclockwise order.</param>
         /// <param name="objectId">Obstacle id.</param>
         /// <param name="updateTree">To add obstacle to simulation tree must be updated, it can be done automatically on manually</param>
-        public void AddObstacle(List<float2> vertices, int objectId, bool updateTree = true)
+        public void AddObstacle(NativeList<float2> vertices, int objectId, bool updateTree = true)
         {
-            if (vertices.Count < 2)
+            if (vertices.Length < 2)
             {
                 return;
             }
 
             int firstVertexIndex = ObstacleVertices.Length;
 
-            for (int i = 0; i < vertices.Count; i++)
+            for (int i = 0; i < vertices.Length; i++)
             {
                 var obstacleVertex = new ObstacleVertex()
                 {
@@ -50,22 +50,22 @@ namespace AgentSimulation
                     VertexIndex = ObstacleVertices.Length,
                 };
 
-                obstacleVertex.Next = i < vertices.Count - 1 ? obstacleVertex.VertexIndex + 1 : firstVertexIndex;
-                obstacleVertex.Previous = i > 0 ? obstacleVertex.VertexIndex - 1 : firstVertexIndex + vertices.Count - 1;
+                obstacleVertex.Next = i < vertices.Length - 1 ? obstacleVertex.VertexIndex + 1 : firstVertexIndex;
+                obstacleVertex.Previous = i > 0 ? obstacleVertex.VertexIndex - 1 : firstVertexIndex + vertices.Length - 1;
 
                 obstacleVertex.Point = vertices[i];
-                obstacleVertex.Direction = math.normalize(vertices[(i == vertices.Count - 1 ? 0 : i + 1)] - vertices[i]);
+                obstacleVertex.Direction = math.normalize(vertices[(i == vertices.Length - 1 ? 0 : i + 1)] - vertices[i]);
 
-                if (vertices.Count == 2)
+                if (vertices.Length == 2)
                 {
                     obstacleVertex.Convex = true;
                 }
                 else
                 {
                     float t = RVOMath.LeftOf(
-                        vertices[i == 0 ? vertices.Count - 1 : i - 1],
+                        vertices[i == 0 ? vertices.Length - 1 : i - 1],
                         vertices[i],
-                        vertices[i == vertices.Count - 1 ? 0 : i + 1]);
+                        vertices[i == vertices.Length - 1 ? 0 : i + 1]);
                     obstacleVertex.Convex = (t >= 0f);
                 }
 
@@ -153,6 +153,29 @@ namespace AgentSimulation
             {
                 Gizmos.DrawLine(vert.Point.To3D(), ObstacleVertices[vert.Next].Point.To3D());
             }
+        }
+    }
+
+    public static class ObstacleLookupExtensions
+    {
+        public static void AddObstacle(this ObstacleLookup lookup, IEnumerable<float2> vertices, int objectId, bool updateTree = true)
+        {
+            using var nativeVertices = new NativeList<float2>(4, Allocator.Temp);
+            foreach (var point in vertices)
+            {
+                nativeVertices.Add(point);
+            }
+            lookup.AddObstacle(nativeVertices, objectId, updateTree);
+        }
+        
+        public static void AddObstacle(this ObstacleLookup lookup, IEnumerable<Vector2> vertices, int objectId, bool updateTree = true)
+        {
+            using var nativeVertices = new NativeList<float2>(4, Allocator.Temp);
+            foreach (var point in vertices)
+            {
+                nativeVertices.Add(point);
+            }
+            lookup.AddObstacle(nativeVertices, objectId, updateTree);
         }
     }
 }

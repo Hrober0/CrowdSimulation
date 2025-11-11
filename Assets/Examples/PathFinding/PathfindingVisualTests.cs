@@ -31,11 +31,6 @@ namespace PathFindingTest
         
         private void Start()
         {
-            _ = RunTest();
-        }
-
-        private async Awaitable RunTest()
-        {
             switch (_testType)
             {
                 case TestType.UpdatePath:

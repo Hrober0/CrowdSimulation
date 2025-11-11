@@ -4,6 +4,7 @@ using AgentSimulation;
 using HCore.Shapes;
 using HCore.Systems;
 using Objects.GenericSystems;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -120,13 +121,8 @@ namespace Objects.Obstacles
             {
                 return;
             }
-
-            var vertices = new List<float2>();
-            foreach (var point in obj.Bounds.GetBorderPoints())
-            {
-                vertices.Add(point);
-            }
-            ObstacleLookup.AddObstacle(vertices, objectId);
+            
+            ObstacleLookup.AddObstacle(obj.Bounds.GetBorderPoints(), objectId);
         }
         private void UnregisterObstacle(IObject obj, int objectId)
         {

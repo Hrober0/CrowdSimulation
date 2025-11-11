@@ -4,6 +4,7 @@ using System.Linq;
 using AgentSimulation;
 using HCore.Extensions;
 using Navigation;
+using Unity.Collections;
 using UnityEngine;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -15,20 +16,22 @@ namespace AvoidanceTest
     {
         [SerializeField] private List<Transform> _agents;
         [SerializeField] private List<Transform> _obstacles;
-        
+
         [Header("Settings")]
         [SerializeField] private float _timeStamp = 0.05f;
+
         [SerializeField] private float _chunkSize = 1;
-        
+
         [Header("Debug")]
         [SerializeField] private bool _drawPositions;
+
         [SerializeField] private bool _drawVelocities;
         [SerializeField] private bool _drawPreferredVelocities;
         [SerializeField] private bool _drawObstacleBorder;
 
         private AgentLookup _agentLookup;
         private ObstacleLookup _obstacleLookup;
-        
+
         private void Start()
         {
             _agentLookup = new AgentLookup(_chunkSize, 128, 2);
@@ -36,7 +39,7 @@ namespace AvoidanceTest
 
             AddObstacle();
             AddAgents();
-            
+
             _ = Simulate();
         }
 
@@ -51,13 +54,13 @@ namespace AvoidanceTest
             for (int index = 0; index < _obstacles.Count; index++)
             {
                 Transform obstacleTransform = _obstacles[index];
-                var vertices = DebugUtils.GetRectangleFromTransform(obstacleTransform).ToList();
+                var vertices = DebugUtils.GetRectangleFromTransform(obstacleTransform);
                 _obstacleLookup.AddObstacle(vertices, index, false);
             }
 
             _obstacleLookup.UpdateObstacleVeritiesLookup();
         }
-        
+
         private void AddAgents()
         {
             for (var index = 0; index < _agents.Count; index++)
@@ -69,7 +72,7 @@ namespace AvoidanceTest
                 _agentLookup.Agents[index] = agent;
             }
         }
-        
+
         private async Awaitable Simulate()
         {
             while (true)
@@ -107,7 +110,7 @@ namespace AvoidanceTest
                 _agentLookup.Agents[index] = agent;
             }
         }
-        
+
         private void SyncAgentTransform()
         {
             for (var index = 0; index < _agents.Count; index++)
@@ -124,19 +127,19 @@ namespace AvoidanceTest
                 {
                     _agentLookup.DrawPositions();
                 }
-                
+
                 if (_drawVelocities)
                 {
                     _agentLookup.DrawVelocities();
                 }
-                
+
                 if (_drawPreferredVelocities)
                 {
                     _agentLookup.DrawPreferredVelocities();
                 }
             }
-            
-            
+
+
             if (_drawObstacleBorder)
             {
                 if (_obstacleLookup.IsCreated)
