@@ -1,79 +1,205 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace CustomNativeCollections
 {
-    /// <summary>
-    /// IEquatable is use only for remove
-    /// </summary>
-    [BurstCompile]
-    public struct NativeSpatialHash<T> : System.IDisposable where T : unmanaged, System.IEquatable<T>
+    public struct Node<T>
     {
-        public NativeParallelMultiHashMap<int, T> Map;
+        public T Value;
+        public int Next; // index of next node in chain, or -1
+    }
+
+    [BurstCompile]
+    public struct NativeSpatialHash<T> : IDisposable
+        where T : unmanaged, IEquatable<T>
+    {
+        public NativeHashMap<int, int> CellHeads;
+        public NativeList<Node<T>> Nodes;
+        private NativeList<int> _freeStack;
 
         private readonly float _invCell;
-        private readonly int _capacityAddition;
 
-        public bool IsCreated => Map.IsCreated;
-        public void Clear() => Map.Clear();
-        public int Capacity => Map.Capacity;
-        public int Count => Map.Count();
+        public bool IsCreated => CellHeads.IsCreated && Nodes.IsCreated && _freeStack.IsCreated;
 
-        public NativeSpatialHash(int capacity, float chunkSize, Allocator allocator, int capacityAddition = 100)
+        public int Count { get; private set; } // number of active nodes (not equal to _nodes.Length)
+        public int Capacity => Nodes.Capacity;
+
+        public float CellSize => 1f / _invCell;
+        public float InvCellSize => _invCell;
+
+        public NativeSpatialHash(int capacity, float cellSize, Allocator allocator)
         {
-            chunkSize = math.max(1e-6f, chunkSize);
-            _invCell = 1f / chunkSize;
-            _capacityAddition = capacityAddition;
-            Map = new(math.max(1, capacity), allocator);
+            cellSize = math.max(1e-6f, cellSize);
+            _invCell = 1f / cellSize;
+
+            // we don't know number of unique keys; capacity/2 is a heuristic
+            int mapCap = math.max(1, capacity / 2);
+
+            CellHeads = new(mapCap, allocator);
+            Nodes = new(capacity, allocator);
+            _freeStack = new(capacity, allocator);
+
+            Count = 0;
         }
 
         public void Dispose()
         {
-            if (Map.IsCreated)
-            {
-                Map.Dispose();
-            }
+            if (CellHeads.IsCreated) CellHeads.Dispose();
+            if (Nodes.IsCreated) Nodes.Dispose();
+            if (_freeStack.IsCreated) _freeStack.Dispose();
         }
 
-        #region Modification
+        public void Clear()
+        {
+            CellHeads.Clear();
+            Nodes.Clear();
+            _freeStack.Clear();
+            Count = 0;
+        }
+
+        #region Helpers
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int AllocateNode()
+        {
+            int index;
+            int freeCount = _freeStack.Length;
+            if (freeCount > 0)
+            {
+                // pop from free stack
+                freeCount--;
+                index = _freeStack[freeCount];
+                _freeStack.RemoveAt(freeCount);
+            }
+            else
+            {
+                index = Nodes.Length;
+                Nodes.Add(new() { Value = default, Next = SpatialHashMethod.NODE_END });
+            }
+
+            Count++;
+            return index;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AddToCell(int cellKey, T value)
+        {
+            int index = AllocateNode();
+
+            if (CellHeads.TryGetValue(cellKey, out int head))
+            {
+                CellHeads[cellKey] = index;
+            }
+            else
+            {
+                head = SpatialHashMethod.NODE_END;
+                CellHeads.Add(cellKey, index);
+            }
+
+            Nodes[index] = new()
+            {
+                Value = value,
+                Next = head
+            };
+        }
+
+        /// <summary>
+        /// Remove a single value from a given cell, if present.
+        /// Returns true if removed.
+        /// </summary>
+        private bool RemoveFromCell(int cellKey, T value)
+        {
+            if (!CellHeads.TryGetValue(cellKey, out int head) || head < 0)
+            {
+                return false;
+            }
+
+            int current = head;
+            int prev = -1;
+
+            while (current >= 0)
+            {
+                ref Node<T> node = ref Nodes.ElementAt(current);
+                if (node.Value.Equals(value))
+                {
+                    int next = node.Next;
+
+                    // unlink from list
+                    if (prev < 0)
+                    {
+                        // removing head
+                        if (next >= 0)
+                        {
+                            CellHeads[cellKey] = next;
+                        }
+                        else
+                        {
+                            // no more nodes in this cell
+                            CellHeads.Remove(cellKey);
+                        }
+                    }
+                    else
+                    {
+                        Node<T> prevNode = Nodes[prev];
+                        prevNode.Next = next;
+                        Nodes[prev] = prevNode;
+                    }
+
+                    node.Next = SpatialHashMethod.NODE_EMPTY;
+                    _freeStack.Add(current);
+                    Count--;
+                    return true;
+                }
+
+                prev = current;
+                current = node.Next;
+            }
+
+            return false;
+        }
+
+        #endregion
+
+        #region Mofifications
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddPoint(float2 p, T value)
         {
-            EnsureCapacity(1);
-            var key = Hash(CellOf(p, _invCell));
-            Map.Add(key, value);
+            int key = SpatialHashMethod.Hash(SpatialHashMethod.CellOf(p, _invCell));
+            AddToCell(key, value);
         }
 
         public void AddAABB(float2 min, float2 max, T value)
         {
-            (int2 cMin, int2 cMax) = ToMinMax(min, max, _invCell);
-            EnsureCapacity((cMax.x - cMin.x + 1) * (cMax.y - cMin.y + 1));
-            for (int cy = cMin.y; cy <= cMax.y; cy++)
-            for (int cx = cMin.x; cx <= cMax.x; cx++)
+            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+
+            for (int y = cMin.y; y <= cMax.y; y++)
+            for (int x = cMin.x; x <= cMax.x; x++)
             {
-                var key = Hash(new int2(cx, cy));
-                Map.Add(key, value);
+                int key = SpatialHashMethod.Hash(new int2(x, y));
+                AddToCell(key, value);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemovePoint(float2 p, T value)
         {
-            int key = Hash(CellOf(p, _invCell));
-            Map.Remove(key, value);
+            int key = SpatialHashMethod.Hash(SpatialHashMethod.CellOf(p, _invCell));
+            RemoveFromCell(key, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemoveAABB(float2 min, float2 max, T value)
         {
-            (int2 cMin, int2 cMax) = ToMinMax(min, max, _invCell);
-            for (int cy = cMin.y; cy <= cMax.y; cy++)
-            for (int cx = cMin.x; cx <= cMax.x; cx++)
+            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            for (int y = cMin.y; y <= cMax.y; y++)
+            for (int x = cMin.x; x <= cMax.x; x++)
             {
-                Map.Remove(Hash(new int2(cx, cy)), value);
+                int key = SpatialHashMethod.Hash(new int2(x, y));
+                RemoveFromCell(key, value);
             }
         }
 
@@ -81,74 +207,134 @@ namespace CustomNativeCollections
 
         #region Query
 
+        public readonly void QueryCell(int2 cell, NativeList<T> results)
+        {
+            int key = SpatialHashMethod.Hash(cell);
+            if (!CellHeads.TryGetValue(key, out int head) || head < 0)
+            {
+                return;
+            }
+
+            int current = head;
+            while (current >= 0)
+            {
+                Node<T> node = Nodes[current];
+                results.Add(node.Value);
+                current = node.Next;
+            }
+        }
+
         public readonly void QueryPoint(float2 p, NativeList<T> results)
         {
-            int2 cell = CellOf(p, _invCell);
-            QueryCell(cell, results);
+            QueryCell(SpatialHashMethod.CellOf(p, _invCell), results);
         }
 
         public readonly void QueryAABB(float2 min, float2 max, NativeList<T> results)
         {
-            (int2 cMin, int2 cMax) = ToMinMax(min, max, _invCell);
-            for (int cy = cMin.y; cy <= cMax.y; cy++)
-            for (int cx = cMin.x; cx <= cMax.x; cx++)
+            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            for (int y = cMin.y; y <= cMax.y; y++)
+            for (int x = cMin.x; x <= cMax.x; x++)
             {
-                QueryCell(new int2(cx, cy), results);
+                QueryCell(new int2(x, y), results);
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly void QueryCell(int2 cell, NativeList<T> results)
+        public interface ISpatialProcessor
         {
-            int key = Hash(cell);
-            NativeParallelMultiHashMapIterator<int> it;
-            T value;
-            if (Map.TryGetFirstValue(key, out value, out it))
+            void Process(T value);
+        }
+
+        /// <summary>
+        /// Iterate through objects at given area, values can be duplicated.
+        /// </summary>
+        public readonly void ForEachInAABB<TProcessor>(float2 min, float2 max, ref TProcessor processor)
+            where TProcessor : struct, ISpatialProcessor
+        {
+            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            for (int y = cMin.y; y <= cMax.y; y++)
+            for (int x = cMin.x; x <= cMax.x; x++)
             {
-                do results.Add(value);
-                while (Map.TryGetNextValue(out value, ref it));
+                int key = SpatialHashMethod.Hash(new int2(x, y));
+
+                if (!CellHeads.TryGetValue(key, out int head) || head < 0)
+                {
+                    continue;
+                }
+
+                int current = head;
+                while (current >= 0)
+                {
+                    Node<T> node = Nodes[current];
+                    processor.Process(node.Value);
+                    current = node.Next;
+                }
             }
         }
 
         #endregion
+    }
 
-        #region Helpers
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int2 CellOf(float2 p, float invCell) => new int2((int)math.floor(p.x * invCell), (int)math.floor(p.y * invCell));
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int Hash(int2 cell) => (int)math.hash(cell);
+    public static class SpatialHashMethod
+    {
+        public const int NODE_END = -1;
+        public const int NODE_EMPTY = -2;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static (int2 cMin, int2 cMax) ToMinMax(float2 min, float2 max, float invCell)
+        public static int2 CellOf(float2 p, float invCell)
+            => new int2((int)math.floor(p.x * invCell), (int)math.floor(p.y * invCell));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Hash(int2 cell)
         {
-            int2 cMin = CellOf(min, invCell);
-            int2 cMax = CellOf(max, invCell);
-            if (cMax.x < cMin.x)
+            unchecked
             {
-                (cMin.x, cMax.x) = (cMax.x, cMin.x);
+                return (cell.y << 16) + cell.x;
             }
+        }
 
-            if (cMax.y < cMin.y)
-            {
-                (cMin.y, cMax.y) = (cMax.y, cMin.y);
-            }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static (int2 cMin, int2 cMax) ToMinMax(float2 a, float2 b, float invCell)
+        {
+            var cA = CellOf(a, invCell);
+            var cB = CellOf(b, invCell);
+            int2 cMin = math.min(cA, cB);
+            int2 cMax = math.max(cA, cB);
             return (cMin, cMax);
         }
 
+        /// <summary>
+        /// Iterate through objects at given area, values can be duplicated.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void EnsureCapacity(int additional)
+        public static void ForEachInAABB<TValue, TProcessor>(
+            float2 min,
+            float2 max,
+            float invCell,
+            in NativeHashMap<int, int> cellHeads,
+            in NativeArray<Node<TValue>> nodes,
+            ref TProcessor processor)
+            where TValue : unmanaged, IEquatable<TValue>
+            where TProcessor : struct, NativeSpatialHash<TValue>.ISpatialProcessor
         {
-            if (Map.Count() + additional > Map.Capacity)
+            (int2 cMin, int2 cMax) = ToMinMax(min, max, invCell);
+            for (int y = cMin.y; y <= cMax.y; y++)
+            for (int x = cMin.x; x <= cMax.x; x++)
             {
-                // ReSharper disable once Unity.PerformanceCriticalCodeInvocation
-                Debug.LogWarning($"Map capacity ({Map.Capacity}) exceeded, map was relocated, it will cause memory leak!");
-                Map.Capacity += math.max(_capacityAddition, additional);
+                int key = Hash(new int2(x, y));
+
+                if (!cellHeads.TryGetValue(key, out int head) || head < 0)
+                {
+                    continue;
+                }
+
+                int current = head;
+                while (current >= 0)
+                {
+                    Node<TValue> node = nodes[current];
+                    processor.Process(node.Value);
+                    current = node.Next;
+                }
             }
         }
-
-        #endregion
     }
 }

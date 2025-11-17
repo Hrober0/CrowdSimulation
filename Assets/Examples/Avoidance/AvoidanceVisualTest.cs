@@ -1,13 +1,9 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using AgentSimulation;
 using HCore.Extensions;
 using Navigation;
-using Unity.Collections;
 using UnityEngine;
 using Unity.Jobs;
-using Unity.Mathematics;
 using Random = UnityEngine.Random;
 
 namespace AvoidanceTest

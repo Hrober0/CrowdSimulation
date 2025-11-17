@@ -5,20 +5,31 @@ namespace ComplexNavigation
 {
     public class AgentAuthoring : MonoBehaviour
     {
-        [SerializeField] private float _movementSpeed = 10f;
-        [SerializeField] private float _rotationSpeed = 10f;
+        private static int _idCounter = 0; 
         
+        [SerializeField] private float _radius = .5f;
+
+        [Space]
+        [SerializeField] private float _movementSpeed = 10f;
+
+        [SerializeField] private float _rotationSpeed = 10f;
+
         public class Baker : Baker<AgentAuthoring>
         {
             public override void Bake(AgentAuthoring authoring)
             {
                 var entity = GetEntity(TransformUsageFlags.Dynamic);
+                AddComponent(entity, new AgentCoreData
+                {
+                    Entity = entity,
+                    Radius = authoring._radius,
+                });
                 AddComponent(entity, new AgentMovementData
-                    {
-                        MovementSpeed = authoring._movementSpeed,
-                        RotationSpeed = authoring._rotationSpeed
-                    });
-                AddComponent(entity, new TargetData{ TargetPosition = new(5,5)});
+                {
+                    MovementSpeed = authoring._movementSpeed,
+                    RotationSpeed = authoring._rotationSpeed
+                });
+                AddComponent(entity, new TargetData { TargetPosition = new(5, 5) });
             }
         }
     }

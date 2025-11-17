@@ -33,7 +33,7 @@ namespace Navigation
             ObstacleLookup.Dispose();
             ObstacleEdges.Dispose();
         }
-        
+
         public int AddObstacle(in NativeList<float2> border, T attributes)
         {
             if (border.Length < 2)
@@ -41,7 +41,7 @@ namespace Navigation
                 Debug.LogWarning("Attempted to obstacle with border containing less then one edge!");
                 return -1;
             }
-            
+
             // Add obstacle
             var worldMin = new float2(float.MaxValue, float.MaxValue);
             var worldMax = new float2(float.MinValue, float.MinValue);
@@ -82,7 +82,7 @@ namespace Navigation
                 },
                 args: Args.Default(
                     restoreBoundary: true
-                ), 
+                ),
                 allocator: Allocator.Temp
             );
 
@@ -98,10 +98,10 @@ namespace Navigation
                     border[outputTriangles[index]],
                     border[outputTriangles[index + 1]],
                     border[outputTriangles[index + 2]]
-                    );
+                );
                 ObstacleLookup.AddAABB(triangle.Min, triangle.Max, new IndexedTriangle(triangle, newId));
             }
-            
+
             constraintEdges.Dispose();
 
             return newId;
@@ -119,13 +119,13 @@ namespace Navigation
             }.Run();
             return obstacleId.Value;
         }
-        
+
         public void RemoveObstacle(int id)
         {
             // Remove obstacle
             Obstacle obstacle = Obstacles[id];
             Obstacles.RemoveAt(id);
-            
+
             // Remove triangle spatial hash
             var dummyTriangleToRemoveById = new IndexedTriangle(default, id);
             ObstacleLookup.RemoveAABB(obstacle.Min, obstacle.Max, dummyTriangleToRemoveById);
@@ -141,7 +141,7 @@ namespace Navigation
                 ObstacleId = id,
             }.Run();
         }
-        
+
         public void UpdateAttributes(int id, T attributes)
         {
             Obstacle obstacle = Obstacles[id];
@@ -155,7 +155,7 @@ namespace Navigation
             ObstacleLookup.Clear();
             ObstacleEdges.Clear();
         }
-        
+
         #region Debug
 
         public void DrawEdges()
@@ -174,21 +174,27 @@ namespace Navigation
                     center += edge.B;
                     number++;
                 }
-                
+
                 (center / (number * 2)).To3D().DrawPoint(color, null, 0.1f);
             }
         }
 
         public void DrawLookup()
         {
-            ObstacleLookup.Map.Draw(Color.green);
+            foreach (var node in ObstacleLookup.Nodes)
+            {
+                if (node.Next != SpatialHashMethod.NODE_EMPTY)
+                {
+                    node.Value.DrawBorder(Color.green);
+                }
+            }
         }
 
         public string GetCapacityStats()
         {
             return $"obstacle: {Obstacles.Length}\nedges: {ObstacleEdges.Count()} \nobstacleLookup: {ObstacleLookup.Count}";
         }
-        
+
         #endregion
 
         public struct Obstacle
@@ -223,7 +229,7 @@ namespace Navigation
             public override int GetHashCode() => HashCode.Combine(Triangle, Index);
             public IEnumerable<Vector2> GetBorderPoints() => Triangle.GetBorderPoints();
         }
-        
+
         [BurstCompile]
         private struct AddObstacleJob : IJob
         {
@@ -231,19 +237,19 @@ namespace Navigation
             [ReadOnly] public T Attributes;
             public NativeReference<int> Id;
             public NavObstacles<T> NavObstacles;
-            
+
             public void Execute()
             {
                 Id.Value = NavObstacles.AddObstacle(Border, Attributes);
             }
         }
-    
+
         [BurstCompile]
         private struct RemoveObstacleJob : IJob
         {
             [ReadOnly] public int ObstacleId;
             public NavObstacles<T> NavObstacles;
-            
+
             public void Execute()
             {
                 NavObstacles.RemoveObstacle(ObstacleId);
@@ -253,22 +259,27 @@ namespace Navigation
 
     public static class NavObstaclesExtension
     {
-        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, List<float2> border) where T : unmanaged, INodeAttributes<T>
+        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, List<float2> border)
+            where T : unmanaged, INodeAttributes<T>
         {
             using var nativeList = new NativeList<float2>(border.Count, Allocator.TempJob);
             for (int i = 0; i < border.Count; i++)
             {
                 nativeList.Add(border[i]);
             }
+
             return navObstacles.RunAddObstacle(in nativeList, attributes);
         }
-        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, params float2[] border) where T : unmanaged, INodeAttributes<T>
+
+        public static int AddObstacle<T>(this NavObstacles<T> navObstacles, T attributes, params float2[] border)
+            where T : unmanaged, INodeAttributes<T>
         {
             using var nativeList = new NativeList<float2>(border.Length, Allocator.TempJob);
             for (int i = 0; i < border.Length; i++)
             {
                 nativeList.Add(border[i]);
             }
+
             return navObstacles.RunAddObstacle(in nativeList, attributes);
         }
     }

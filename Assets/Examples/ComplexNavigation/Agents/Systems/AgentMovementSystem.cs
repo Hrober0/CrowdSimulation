@@ -5,35 +5,52 @@ using Unity.Transforms;
 
 namespace ComplexNavigation
 {
+    [BurstCompile]
+    [UpdateAfter(typeof(AgentVelocityCalculationSystem))]
     partial struct AgentMovementSystem : ISystem
     {
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            foreach ((
-                         RefRW<LocalTransform> localTransform,
-                         RefRO<AgentMovementData> movementData,
-                         RefRO<TargetData> targetData)
-                     in SystemAPI.Query<
-                         RefRW<LocalTransform>,
-                         RefRO<AgentMovementData>,
-                         RefRO<TargetData>>())
-            {
-                float2 moveDirection = targetData.ValueRO.TargetPosition - localTransform.ValueRO.Position.xy;
-                float magnitude = math.length(moveDirection);
-                float moveThisFrame = movementData.ValueRO.MovementSpeed * SystemAPI.Time.DeltaTime;
-                if (magnitude < moveThisFrame)
+            new PositionUpdateJob
                 {
-                    return;
+                    DeltaTime = SystemAPI.Time.DeltaTime,
                 }
+                .ScheduleParallel();
+        }
+    }
 
-                float3 fixedDirection = math.float3(moveDirection / magnitude, 0);
-                localTransform.ValueRW.Position += fixedDirection * moveThisFrame;
-                localTransform.ValueRW.Rotation = math.slerp(
-                    localTransform.ValueRO.Rotation,
-                    quaternion.RotateZ(math.atan2(moveDirection.y, moveDirection.x)),
-                    movementData.ValueRO.RotationSpeed * SystemAPI.Time.DeltaTime);
+    [BurstCompile]
+    public partial struct PositionUpdateJob : IJobEntity
+    {
+        public float DeltaTime;
+
+        public void Execute(ref LocalTransform localTransform,
+                            ref AgentCoreData coreData,
+                            in AgentMovementData movementData,
+                            in TargetData targetData)
+        {
+            float2 moveDirection = targetData.TargetPosition - localTransform.Position.xy;
+            coreData.PrefVelocity = math.normalize(moveDirection);
+
+            float2 velocity = coreData.Velocity;
+            float magnitude = math.length(velocity);
+            float moveThisFrame = movementData.MovementSpeed * DeltaTime;
+
+            // Prevent overshooting the target
+            if (magnitude < moveThisFrame)
+            {
+                return;
             }
+
+            float3 fixedDirection = math.float3(velocity / magnitude, 0);
+            localTransform.Position += fixedDirection * moveThisFrame;
+
+            localTransform.Rotation = math.slerp(
+                localTransform.Rotation,
+                quaternion.RotateZ(math.atan2(fixedDirection.y, fixedDirection.x)),
+                movementData.RotationSpeed * DeltaTime
+            );
         }
     }
 }
