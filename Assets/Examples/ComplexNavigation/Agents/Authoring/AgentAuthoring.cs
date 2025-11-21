@@ -29,7 +29,10 @@ namespace ComplexNavigation
                     MovementSpeed = authoring._movementSpeed,
                     RotationSpeed = authoring._rotationSpeed
                 });
+                AddComponent<Selected>(entity);
+                SetComponentEnabled<Selected>(entity, false);
                 AddComponent(entity, new TargetData { TargetPosition = new(5, 5) });
+                SetComponentEnabled<TargetData>(entity, false);
             }
         }
     }
