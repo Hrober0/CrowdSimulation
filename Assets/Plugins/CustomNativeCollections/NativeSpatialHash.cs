@@ -9,7 +9,7 @@ namespace CustomNativeCollections
     public struct Node<T>
     {
         public T Value;
-        public int Next; // index of next node in chain, or -1
+        public int Next; // index of next node in chain, or NODE_END, or NODE_EMPTY
     }
 
     [BurstCompile]
@@ -239,16 +239,11 @@ namespace CustomNativeCollections
             }
         }
 
-        public interface ISpatialProcessor
-        {
-            void Process(T value);
-        }
-
         /// <summary>
         /// Iterate through objects at given area, values can be duplicated.
         /// </summary>
         public readonly void ForEachInAABB<TProcessor>(float2 min, float2 max, ref TProcessor processor)
-            where TProcessor : struct, ISpatialProcessor
+            where TProcessor : struct, ISpatialQueryProcessor<T>
         {
             (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
             for (int y = cMin.y; y <= cMax.y; y++)
@@ -314,7 +309,7 @@ namespace CustomNativeCollections
             in NativeArray<Node<TValue>> nodes,
             ref TProcessor processor)
             where TValue : unmanaged, IEquatable<TValue>
-            where TProcessor : struct, NativeSpatialHash<TValue>.ISpatialProcessor
+            where TProcessor : struct, ISpatialQueryProcessor<TValue>
         {
             (int2 cMin, int2 cMax) = ToMinMax(min, max, invCell);
             for (int y = cMin.y; y <= cMax.y; y++)

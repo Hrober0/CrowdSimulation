@@ -32,8 +32,8 @@ namespace AgentSimulation
         /// </summary>
         /// <param name="vertices">>List of the vertices of the polygonal obstacle in counterclockwise order.</param>
         /// <param name="objectId">Obstacle id.</param>
-        /// <param name="updateTree">To add obstacle to simulation tree must be updated, it can be done automatically on manually</param>
-        public void AddObstacle(NativeList<float2> vertices, int objectId, bool updateTree = true)
+        /// <param name="updateLookup">To add obstacle to simulation tree must be updated, it can be done automatically on manually</param>
+        public void AddObstacle(NativeList<float2> vertices, int objectId, bool updateLookup = true)
         {
             if (vertices.Length < 2)
             {
@@ -72,7 +72,7 @@ namespace AgentSimulation
                 ObstacleVertices.Add(obstacleVertex);
             }
 
-            if (updateTree)
+            if (updateLookup)
             {
                 UpdateObstacleVeritiesLookup();
             }
@@ -83,8 +83,8 @@ namespace AgentSimulation
         /// </summary>
         /// <param name="objectId">Obstacle id.</param>
         /// <param name="vertexIndex">First of obstacle vertices, If known can speed up search.</param>
-        /// <param name="updateTree">To remove obstacle from simulation tree must be updated, it can be done automatically or manually later</param>
-        public void RemoveObstacle(int objectId, int vertexIndex = 0, bool updateTree = true)
+        /// <param name="updateLookup">To remove obstacle from simulation tree must be updated, it can be done automatically or manually later</param>
+        public void RemoveObstacle(int objectId, int vertexIndex = 0, bool updateLookup = true)
         {
             int del = 0;
             for (int i = vertexIndex; i < ObstacleVertices.Length; i++)
@@ -105,7 +105,7 @@ namespace AgentSimulation
                 }
             }
 
-            if (updateTree)
+            if (updateLookup)
             {
                 UpdateObstacleVeritiesLookup();
             }

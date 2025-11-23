@@ -9,20 +9,23 @@ using Unity.Mathematics;
 namespace ComplexNavigation
 {
     [BurstCompile]
-    [UpdateAfter(typeof(AgentSpatialHashUpdateSystem))]
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial class AgentVelocityCalculationSystem : SystemBase
     {
         [BurstCompile]
         protected override void OnUpdate()
         {
             var agentHashSystem = World.GetExistingSystemManaged<AgentSpatialHashSystem>();
+            var obstacleHashSystem = World.GetExistingSystemManaged<AvoidanceObstacleLookupSystem>();
 
             Dependency = new VelocityUpdateJob
                 {
                     AgentSpatialHash = agentHashSystem.SpatialHash,
-                    TimeStamp = .05f
+                    ObstacleSpatialHash = obstacleHashSystem.SpatialLookup,
+                    TimeStamp = SystemAPI.Time.DeltaTime,
                 }
                 .ScheduleParallel(Dependency);
+            Dependency.Complete();
         }
     }
 
@@ -33,8 +36,10 @@ namespace ComplexNavigation
         private const float NEIGHBOR_QUERY_DIST = 2f;
         private const float TIME_HORIZON_OBSTACLE = 2f;
         private const float TIME_HORIZON_AGENT = 2f;
+        private const float MAX_SPEED = 10f;
 
         [ReadOnly] public NativeSpatialHash<AgentCoreData> AgentSpatialHash;
+        [ReadOnly] public NativeSpatialLookup<ObstacleVertex> ObstacleSpatialHash;
         [ReadOnly] public float TimeStamp;
 
         public void Execute(ref AgentCoreData agentCoreData)
@@ -44,25 +49,39 @@ namespace ComplexNavigation
 
             // Compute agent neighbours
             var agentNeighbors = new NativeList<AgentNeighbor>(MAX_AGENT_NEIGHBORS, Allocator.Temp);
-            var agentInsertionProcessor = new NeighborInsertionProcessor
+            var agentLookupRange = agent.Radius + agent.NeighborDist;
+            var agentInsertionProcessor = new AgentNeighborInsertionProcessor
             {
                 CurrentAgent = agentCoreData,
-                QueryDistance = NEIGHBOR_QUERY_DIST,
+                QueryDistance = agentLookupRange,
                 MaxNeighbors = MAX_AGENT_NEIGHBORS,
                 AgentNeighbors = agentNeighbors
             };
             AgentSpatialHash.ForEachInAABB(
-                agentCoreData.Position - new float2(agentCoreData.Radius, agentCoreData.Radius),
-                agentCoreData.Position + new float2(agentCoreData.Radius, agentCoreData.Radius),
+                agentCoreData.Position - new float2(agentLookupRange, agentLookupRange),
+                agentCoreData.Position + new float2(agentLookupRange, agentLookupRange),
                 ref agentInsertionProcessor
             );
 
             // Compute obstacle neighbours
-            // var obstacleNeighbors = new NativeList<ObstacleVertexNeighbor>(Allocator.Temp);
+            var obstacleNeighbors = new NativeList<ObstacleVertexNeighbor>(32, Allocator.Temp);
+            var obstacleLookupRange = agent.Radius + agent.TimeHorizonObstacle * agent.MaxSpeed;
+            var obstacleInsertProcessor = new ObstacleNeighborInsertionProcessor
+            {
+                AgentPosition = agentCoreData.Position,
+                RangeSq = obstacleLookupRange * obstacleLookupRange,
+                ObstacleVertices = ObstacleSpatialHash.Values,
+                ObstacleNeighbors = obstacleNeighbors,
+            };
+            ObstacleSpatialHash.ForEachInAABB(
+                agentCoreData.Position - new float2(obstacleLookupRange, obstacleLookupRange),
+                agentCoreData.Position + new float2(obstacleLookupRange, obstacleLookupRange),
+                ref obstacleInsertProcessor
+            );
 
             // Compute orca lines
             var orcaLines = new NativeList<Line>(Allocator.Temp);
-            // Linear.AddObstacleLine(agent, orcaLines, obstacleNeighbors, ObstacleVertices);
+            Linear.AddObstacleLine(agent, orcaLines, obstacleNeighbors, ObstacleSpatialHash.Values);
             int numObstLines = orcaLines.Length;
             Linear.AddAgentLine(agent, orcaLines, agentNeighbors, timeStampInv);
 
@@ -88,7 +107,7 @@ namespace ComplexNavigation
             orcaLines.Dispose();
         }
 
-        private struct NeighborInsertionProcessor : NativeSpatialHash<AgentCoreData>.ISpatialProcessor
+        private struct AgentNeighborInsertionProcessor : ISpatialQueryProcessor<AgentCoreData>
         {
             public AgentCoreData CurrentAgent;
             public float QueryDistance;
@@ -127,6 +146,53 @@ namespace ComplexNavigation
             }
         }
 
+        private struct ObstacleNeighborInsertionProcessor : ISpatialQueryProcessor<ObstacleVertex>
+        {
+            public float RangeSq;
+            public float2 AgentPosition;
+            public NativeList<ObstacleVertex> ObstacleVertices;
+            public NativeList<ObstacleVertexNeighbor> ObstacleNeighbors;
+
+            public void Process(ObstacleVertex vertex)
+            {
+                float2 startPosition = vertex.Point;
+                float2 endPosition = ObstacleVertices[vertex.Next].Point;
+
+                float agentLeftOfLine = RVOMath.LeftOf(startPosition, endPosition, AgentPosition);
+                if (agentLeftOfLine >= 0)
+                {
+                    return;
+                }
+
+                float distSqLine = math.square(agentLeftOfLine) / math.lengthsq(endPosition - startPosition);
+                if (distSqLine >= RangeSq)
+                {
+                    // Try obstacle at this node only if agent is on right side of
+                    // obstacle (and can see obstacle).
+                    return;
+                }
+
+                float distSq = RVOMath.DistSqPointLineSegment(startPosition, endPosition, AgentPosition);
+
+                if (distSq >= RangeSq)
+                {
+                    return;
+                }
+
+                ObstacleNeighbors.Add(default);
+
+                // Sort to maintain order by distance
+                int i = ObstacleNeighbors.Length - 1;
+                while (i != 0 && distSq < ObstacleNeighbors[i - 1].Distance)
+                {
+                    ObstacleNeighbors[i] = ObstacleNeighbors[i - 1];
+                    --i;
+                }
+
+                ObstacleNeighbors[i] = new ObstacleVertexNeighbor { Distance = distSq, Obstacle = vertex };
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Agent ToAgent(in AgentCoreData coreData)
         {
@@ -136,7 +202,7 @@ namespace ComplexNavigation
                 Position = coreData.Position,
                 Velocity = coreData.Velocity,
                 PrefVelocity = coreData.PrefVelocity,
-                MaxSpeed = math.length(coreData.PrefVelocity),
+                MaxSpeed = MAX_SPEED,
                 Radius = coreData.Radius,
                 MaxNeighbors = MAX_AGENT_NEIGHBORS,
                 NeighborDist = NEIGHBOR_QUERY_DIST + coreData.Radius,

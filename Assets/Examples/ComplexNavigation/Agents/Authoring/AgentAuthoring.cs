@@ -5,8 +5,6 @@ namespace ComplexNavigation
 {
     public class AgentAuthoring : MonoBehaviour
     {
-        private static int _idCounter = 0; 
-        
         [SerializeField] private float _radius = .5f;
 
         [Space]

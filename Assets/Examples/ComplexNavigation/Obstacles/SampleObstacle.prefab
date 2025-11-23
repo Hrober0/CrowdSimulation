@@ -10,9 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2058155712901076369}
   - component: {fileID: 5874414198517573405}
-  - component: {fileID: 8279822697164886351}
-  - component: {fileID: 772651020051038727}
-  - component: {fileID: 2153063504707108227}
+  - component: {fileID: 1032138517587327349}
   m_Layer: 0
   m_Name: SampleObstacle
   m_TagString: Untagged
@@ -90,7 +88,7 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
---- !u!114 &8279822697164886351
+--- !u!114 &1032138517587327349
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -99,32 +97,6 @@ MonoBehaviour:
   m_GameObject: {fileID: 2121866507883316757}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1f17c1a1e3584e5183b2317230312374, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _boundsHolder:
-    objectRef: {fileID: 772651020051038727}
---- !u!114 &772651020051038727
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2121866507883316757}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0a13fb08555d4664b3999200ca530248, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &2153063504707108227
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2121866507883316757}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 80ffbd27143548fd901fcfdd519ad135, type: 3}
+  m_Script: {fileID: 11500000, guid: da8d5d542c304af1836e148ab87ff7f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 

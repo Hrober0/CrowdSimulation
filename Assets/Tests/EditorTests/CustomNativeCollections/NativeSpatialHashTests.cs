@@ -299,7 +299,7 @@ namespace Tests.EditorTests.CustomNativeCollections
             results.AsArray().Should().ContainSingle().Which.Should().Be(2);
         }
         
-        private struct CollectProcessor : NativeSpatialHash<int>.ISpatialProcessor
+        private struct CollectProcessor : ISpatialQueryProcessor<int>
         {
             public NativeList<int> Collected;
 

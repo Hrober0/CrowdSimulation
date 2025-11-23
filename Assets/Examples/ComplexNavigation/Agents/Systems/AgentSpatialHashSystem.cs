@@ -12,7 +12,6 @@ namespace ComplexNavigation
     public partial class AgentSpatialHashSystem : SystemBase
     {
         public NativeSpatialHash<AgentCoreData> SpatialHash;
-        public JobHandle OutputHandle;
 
         protected override void OnCreate()
         {
@@ -28,7 +27,9 @@ namespace ComplexNavigation
         protected override void OnDestroy()
         {
             if (SpatialHash.IsCreated)
+            {
                 SpatialHash.Dispose();
+            }
 
             base.OnDestroy();
         }
@@ -38,7 +39,7 @@ namespace ComplexNavigation
         }
     }
 
-    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [UpdateInGroup(typeof(InitializationSystemGroup))]
     [UpdateAfter(typeof(AgentSpatialHashSystem))]
     [BurstCompile]
     public partial struct AgentSpatialHashUpdateSystem : ISystem
@@ -47,7 +48,7 @@ namespace ComplexNavigation
         {
             var hashSystem = state.World.GetExistingSystemManaged<AgentSpatialHashSystem>();
 
-            var agentPositions = new NativeList<AgentData>(Allocator.TempJob);
+            var agentPositions = new NativeList<UpdateAgentSpatialHashJob.AgentData>(Allocator.TempJob);
             foreach (var (localTransform, coreData)
                      in SystemAPI.Query<RefRO<LocalTransform>, RefRW<AgentCoreData>>())
             {
@@ -60,25 +61,18 @@ namespace ComplexNavigation
                 });
             }
 
-            new UpdateSpatialHashJob
+            new UpdateAgentSpatialHashJob
             {
                 Hash = hashSystem.SpatialHash,
                 Agents = agentPositions
-            }.Run();
-
+            }.Schedule().Complete();
+            
             agentPositions.Dispose();
         }
     }
 
-    struct AgentData
-    {
-        public float2 Pos;
-        public float Radius;
-        public AgentCoreData CoreData;
-    }
-
     [BurstCompile]
-    struct UpdateSpatialHashJob : IJob
+    public struct UpdateAgentSpatialHashJob : IJob
     {
         public NativeSpatialHash<AgentCoreData> Hash;
         [ReadOnly] public NativeList<AgentData> Agents;
@@ -90,6 +84,13 @@ namespace ComplexNavigation
             {
                 Hash.AddAABB(a.Pos - new float2(a.Radius, a.Radius), a.Pos + new float2(a.Radius, a.Radius), a.CoreData);
             }
+        }
+        
+        public struct AgentData
+        {
+            public float2 Pos;
+            public float Radius;
+            public AgentCoreData CoreData;
         }
     }
 }
