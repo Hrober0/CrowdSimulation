@@ -20,11 +20,11 @@ namespace Navigation
         public NativeSpatialHash<IndexedTriangle> ObstacleLookup;
         public NativeParallelMultiHashMap<int, Edge> ObstacleEdges;
 
-        public NavObstacles(float chunkSize, int capacity = 512, int averageVerticesPerObstacle = 4)
+        public NavObstacles(float chunkSize, int capacity = 512, int averageVerticesPerObstacle = 4, Allocator allocator = Allocator.Persistent)
         {
-            Obstacles = new(capacity, Allocator.Persistent);
-            ObstacleLookup = new(capacity, chunkSize, Allocator.Persistent);
-            ObstacleEdges = new(capacity * averageVerticesPerObstacle, Allocator.Persistent);
+            Obstacles = new(capacity, allocator);
+            ObstacleLookup = new(capacity, chunkSize, allocator);
+            ObstacleEdges = new(capacity * averageVerticesPerObstacle, allocator);
         }
 
         public void Dispose()
@@ -68,7 +68,7 @@ namespace Navigation
 
             // Add triangle spatial hash
             using var outputTriangles = new NativeList<int>(border.Length * 3, Allocator.Temp);
-            using var status = new NativeReference<andywiecko.BurstTriangulator.Status>(Allocator.Temp);
+            using var status = new NativeReference<Status>(Allocator.Temp);
             new UnsafeTriangulator<float2>().Triangulate(
                 input: new()
                 {
