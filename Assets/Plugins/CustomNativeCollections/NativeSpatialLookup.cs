@@ -34,7 +34,7 @@ namespace CustomNativeCollections
 
         public readonly void QueryCell(int2 cell, NativeList<T> results)
         {
-            int key = SpatialHashMethod.Hash(cell);
+            int key = SpatialHashMethods.Hash(cell);
             foreach (var index in Lookup.GetValuesForKey(key))
             {
                 results.Add(Values[index]);
@@ -43,12 +43,12 @@ namespace CustomNativeCollections
 
         public readonly void QueryPoint(float2 p, NativeList<T> results)
         {
-            QueryCell(SpatialHashMethod.CellOf(p, InvCellSize), results);
+            QueryCell(SpatialHashMethods.CellOf(p, InvCellSize), results);
         }
 
         public readonly void QueryAABB(float2 min, float2 max, NativeList<T> results)
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, InvCellSize);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, InvCellSize);
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
@@ -62,11 +62,11 @@ namespace CustomNativeCollections
         public readonly void ForEachInAABB<TProcessor>(float2 min, float2 max, ref TProcessor processor)
             where TProcessor : struct, ISpatialQueryProcessor<T>
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, InvCellSize);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, InvCellSize);
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
-                int key = SpatialHashMethod.Hash(new int2(x, y));
+                int key = SpatialHashMethods.Hash(new int2(x, y));
                 foreach (var index in Lookup.GetValuesForKey(key))
                 {
                     processor.Process(Values[index]);

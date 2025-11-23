@@ -7,8 +7,10 @@ namespace ComplexNavigation
     {
         [SerializeField] private bool _drawEdges;
         [SerializeField] private bool _drawLookup;
+        [SerializeField] private bool _drawNodes;
+        [SerializeField] private bool _drawConnections;
         
-        private void Update()
+        private void OnDrawGizmos()
         {
             var world = World.DefaultGameObjectInjectionWorld;
             if (world is not { IsCreated: true })
@@ -30,6 +32,16 @@ namespace ComplexNavigation
             if (_drawLookup)
             {
                 navMeshSystem.NavObstacles.DrawLookup();
+            }
+
+            if (_drawNodes)
+            {
+                navMeshSystem.NavMesh.DrawNodes(true);
+            }
+            
+            if (_drawConnections)
+            {
+                navMeshSystem.NavMesh.DrawConnections();
             }
         }
     }

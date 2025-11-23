@@ -183,7 +183,7 @@ namespace Navigation
         {
             foreach (var node in ObstacleLookup.Nodes)
             {
-                if (node.Next != SpatialHashMethod.NODE_EMPTY)
+                if (node.Next != SpatialHashMethods.NODE_EMPTY)
                 {
                     node.Value.DrawBorder(Color.green);
                 }

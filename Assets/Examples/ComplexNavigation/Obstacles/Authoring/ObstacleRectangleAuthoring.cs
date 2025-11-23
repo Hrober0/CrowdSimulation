@@ -30,6 +30,7 @@ namespace ComplexNavigation
                 }
                 
                 AddComponent<UpdateAvoidanceObstacle>(entity);
+                AddComponent<UpdateNavigation>(entity);
             }
         }
     }

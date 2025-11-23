@@ -16,13 +16,11 @@ namespace Navigation
         private const int DEFAULT_CAPACITY = 128;
         private const int AVERAGE_OBSTACLE_VERTICES_CAPACITY = 16;
         
-        public float2 UpdateMin;
-        public float2 UpdateMax;
-
         public NavMesh<T> NavMesh;
-
-        [ReadOnly]
-        public NavObstacles<T> NavObstacles;
+        
+        [ReadOnly] public NavObstacles<T> NavObstacles;
+        [ReadOnly] public float2 UpdateMin;
+        [ReadOnly] public float2 UpdateMax;
         
         public void Execute()
         {

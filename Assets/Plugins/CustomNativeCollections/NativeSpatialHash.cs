@@ -77,7 +77,7 @@ namespace CustomNativeCollections
             else
             {
                 index = Nodes.Length;
-                Nodes.Add(new() { Value = default, Next = SpatialHashMethod.NODE_END });
+                Nodes.Add(new() { Value = default, Next = SpatialHashMethods.NODE_END });
             }
 
             Count++;
@@ -95,7 +95,7 @@ namespace CustomNativeCollections
             }
             else
             {
-                head = SpatialHashMethod.NODE_END;
+                head = SpatialHashMethods.NODE_END;
                 CellHeads.Add(cellKey, index);
             }
 
@@ -148,7 +148,7 @@ namespace CustomNativeCollections
                         Nodes[prev] = prevNode;
                     }
 
-                    node.Next = SpatialHashMethod.NODE_EMPTY;
+                    node.Next = SpatialHashMethods.NODE_EMPTY;
                     _freeStack.Add(current);
                     Count--;
                     return true;
@@ -168,18 +168,18 @@ namespace CustomNativeCollections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddPoint(float2 p, T value)
         {
-            int key = SpatialHashMethod.Hash(SpatialHashMethod.CellOf(p, _invCell));
+            int key = SpatialHashMethods.Hash(SpatialHashMethods.CellOf(p, _invCell));
             AddToCell(key, value);
         }
 
         public void AddAABB(float2 min, float2 max, T value)
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, _invCell);
 
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
-                int key = SpatialHashMethod.Hash(new int2(x, y));
+                int key = SpatialHashMethods.Hash(new int2(x, y));
                 AddToCell(key, value);
             }
         }
@@ -187,18 +187,18 @@ namespace CustomNativeCollections
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemovePoint(float2 p, T value)
         {
-            int key = SpatialHashMethod.Hash(SpatialHashMethod.CellOf(p, _invCell));
+            int key = SpatialHashMethods.Hash(SpatialHashMethods.CellOf(p, _invCell));
             RemoveFromCell(key, value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RemoveAABB(float2 min, float2 max, T value)
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, _invCell);
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
-                int key = SpatialHashMethod.Hash(new int2(x, y));
+                int key = SpatialHashMethods.Hash(new int2(x, y));
                 RemoveFromCell(key, value);
             }
         }
@@ -209,7 +209,7 @@ namespace CustomNativeCollections
 
         public readonly void QueryCell(int2 cell, NativeList<T> results)
         {
-            int key = SpatialHashMethod.Hash(cell);
+            int key = SpatialHashMethods.Hash(cell);
             if (!CellHeads.TryGetValue(key, out int head) || head < 0)
             {
                 return;
@@ -226,12 +226,12 @@ namespace CustomNativeCollections
 
         public readonly void QueryPoint(float2 p, NativeList<T> results)
         {
-            QueryCell(SpatialHashMethod.CellOf(p, _invCell), results);
+            QueryCell(SpatialHashMethods.CellOf(p, _invCell), results);
         }
 
         public readonly void QueryAABB(float2 min, float2 max, NativeList<T> results)
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, _invCell);
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
@@ -245,11 +245,11 @@ namespace CustomNativeCollections
         public readonly void ForEachInAABB<TProcessor>(float2 min, float2 max, ref TProcessor processor)
             where TProcessor : struct, ISpatialQueryProcessor<T>
         {
-            (int2 cMin, int2 cMax) = SpatialHashMethod.ToMinMax(min, max, _invCell);
+            (int2 cMin, int2 cMax) = SpatialHashMethods.ToMinMax(min, max, _invCell);
             for (int y = cMin.y; y <= cMax.y; y++)
             for (int x = cMin.x; x <= cMax.x; x++)
             {
-                int key = SpatialHashMethod.Hash(new int2(x, y));
+                int key = SpatialHashMethods.Hash(new int2(x, y));
 
                 if (!CellHeads.TryGetValue(key, out int head) || head < 0)
                 {
@@ -267,69 +267,5 @@ namespace CustomNativeCollections
         }
 
         #endregion
-    }
-
-    public static class SpatialHashMethod
-    {
-        public const int NODE_END = -1;
-        public const int NODE_EMPTY = -2;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int2 CellOf(float2 p, float invCell)
-            => new int2((int)math.floor(p.x * invCell), (int)math.floor(p.y * invCell));
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Hash(int2 cell)
-        {
-            unchecked
-            {
-                return (cell.y << 16) + cell.x;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static (int2 cMin, int2 cMax) ToMinMax(float2 a, float2 b, float invCell)
-        {
-            var cA = CellOf(a, invCell);
-            var cB = CellOf(b, invCell);
-            int2 cMin = math.min(cA, cB);
-            int2 cMax = math.max(cA, cB);
-            return (cMin, cMax);
-        }
-
-        /// <summary>
-        /// Iterate through objects at given area, values can be duplicated.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ForEachInAABB<TValue, TProcessor>(
-            float2 min,
-            float2 max,
-            float invCell,
-            in NativeHashMap<int, int> cellHeads,
-            in NativeArray<Node<TValue>> nodes,
-            ref TProcessor processor)
-            where TValue : unmanaged, IEquatable<TValue>
-            where TProcessor : struct, ISpatialQueryProcessor<TValue>
-        {
-            (int2 cMin, int2 cMax) = ToMinMax(min, max, invCell);
-            for (int y = cMin.y; y <= cMax.y; y++)
-            for (int x = cMin.x; x <= cMax.x; x++)
-            {
-                int key = Hash(new int2(x, y));
-
-                if (!cellHeads.TryGetValue(key, out int head) || head < 0)
-                {
-                    continue;
-                }
-
-                int current = head;
-                while (current >= 0)
-                {
-                    Node<TValue> node = nodes[current];
-                    processor.Process(node.Value);
-                    current = node.Next;
-                }
-            }
-        }
     }
 }

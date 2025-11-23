@@ -1,4 +1,5 @@
-﻿using System;
+﻿using andywiecko.BurstTriangulator;
+using CustomNativeCollections;
 using Navigation;
 using Unity.Burst;
 using Unity.Collections;
@@ -58,7 +59,6 @@ namespace ComplexNavigation
         {
         }
 
-        // [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             if (_updateQuery.IsEmpty)
@@ -110,6 +110,7 @@ namespace ComplexNavigation
         }
     }
 
+    [BurstCompile]
     public struct UpdateNavObstacleJob : IJob
     {
         public NavObstacles<IdAttribute> NavObstacles;
@@ -146,7 +147,7 @@ namespace ComplexNavigation
                     {
                         if (currentId >= 0)
                         {
-                            Debug.LogWarning("Entity to obstacle doesn't exist");
+                            Debug.LogWarning("Attempted to add obstacle that already exists");
                             break;
                         }
 
@@ -169,7 +170,7 @@ namespace ComplexNavigation
                     {
                         if (currentId < 0)
                         {
-                            Debug.LogWarning("Entity to obstacle doesn't exist");
+                            Debug.LogWarning("Attempted to remove obstacle that doesn't exist");
                             break;
                         }
 
