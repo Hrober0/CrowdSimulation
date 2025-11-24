@@ -29,8 +29,14 @@ namespace ComplexNavigation
                 });
                 AddComponent<Selected>(entity);
                 SetComponentEnabled<Selected>(entity, false);
-                AddComponent(entity, new TargetData { TargetPosition = new(5, 5) });
+                
+                AddComponent<TargetData>(entity);
                 SetComponentEnabled<TargetData>(entity, false);
+                
+                AddComponent<FindPathRequest>(entity);
+                SetComponentEnabled<FindPathRequest>(entity, false);
+                AddBuffer<PathBuffer>(entity);
+                AddComponent<AgentPathState>(entity);
             }
         }
     }

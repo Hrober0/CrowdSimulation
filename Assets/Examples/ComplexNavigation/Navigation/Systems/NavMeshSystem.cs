@@ -140,6 +140,8 @@ namespace ComplexNavigation
                 ExpandSize = 0f,
             }.Schedule(state.Dependency);
 
+            state.Dependency.Complete();
+            
             state.Dependency = new UpdateNavMeshJob<IdAttribute>
             {
                 NavMesh = navMeshSystemManaged.NavMesh,

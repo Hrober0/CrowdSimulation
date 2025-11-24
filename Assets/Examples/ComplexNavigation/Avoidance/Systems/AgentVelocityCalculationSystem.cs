@@ -32,11 +32,11 @@ namespace ComplexNavigation
     [BurstCompile]
     public partial struct VelocityUpdateJob : IJobEntity
     {
-        private const int MAX_AGENT_NEIGHBORS = 16;
-        private const float NEIGHBOR_QUERY_DIST = 2f;
-        private const float TIME_HORIZON_OBSTACLE = 2f;
-        private const float TIME_HORIZON_AGENT = 2f;
-        private const float MAX_SPEED = 10f;
+        private const int MAX_AGENT_NEIGHBORS = 8;
+        private const float NEIGHBOR_QUERY_DIST = 1f;
+        private const float TIME_HORIZON_OBSTACLE = 1f;
+        private const float TIME_HORIZON_AGENT = 1f;
+        private const float MAX_SPEED = 5f;
 
         [ReadOnly] public NativeSpatialHash<AgentCoreData> AgentSpatialHash;
         [ReadOnly] public NativeSpatialLookup<ObstacleVertex> ObstacleSpatialHash;

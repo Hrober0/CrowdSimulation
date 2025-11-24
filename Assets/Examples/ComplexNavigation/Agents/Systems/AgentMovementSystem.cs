@@ -1,3 +1,4 @@
+using Navigation;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -14,62 +15,64 @@ namespace ComplexNavigation
         {
             new DirectionCalculationJob()
                 .ScheduleParallel();
+        }
 
-            new PositionUpdateJob
+        [BurstCompile]
+        public partial struct DirectionCalculationJob : IJobEntity
+        {
+            public void Execute(
+                in LocalTransform localTransform,
+                ref AgentCoreData coreData,
+                in TargetData targetData,
+                in DynamicBuffer<PathBuffer> pathBuffer,
+                ref AgentPathState agentPathState)
+            {
+                float2 agentPosition = localTransform.Position.xy;
+
+                if (agentPathState.CurrentPathIndex < pathBuffer.Length)
                 {
-                    DeltaTime = SystemAPI.Time.DeltaTime,
+                    Portal portal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
+                    // DebugUtils.Draw(agentPosition, portal.Center, Color.black);
+
+                    if (GeometryUtils.Sign(agentPosition, portal.Left, portal.Right) > 0)
+                    {
+                        agentPathState.CurrentPathIndex++;
+                    }
                 }
-                .ScheduleParallel();
-        }
-    }
 
-    [BurstCompile]
-    public partial struct DirectionCalculationJob : IJobEntity
-    {
-        public void Execute(
-            in LocalTransform localTransform,
-            ref AgentCoreData coreData,
-            in TargetData targetData)
-        {
-            float2 moveDirection = targetData.TargetPosition - localTransform.Position.xy;
-            var distanceSq = math.lengthsq(moveDirection);
-            if (distanceSq < 0.1f)
-            {
-                coreData.PrefVelocity = float2.zero;
-                return;
+                if (agentPathState.CurrentPathIndex > pathBuffer.Length)
+                {
+                    // Target reached
+                    coreData.PrefVelocity = float2.zero;
+                    return;
+                }
+
+                if (agentPathState.CurrentPathIndex == pathBuffer.Length)
+                {
+                    // Last path
+                    float2 moveDirection = targetData.TargetPosition - localTransform.Position.xy;
+                    var distanceSq = math.lengthsq(moveDirection);
+                    if (distanceSq < 0.1f)
+                    {
+                        // Target reached
+                        agentPathState.CurrentPathIndex++;
+                        coreData.PrefVelocity = float2.zero;
+                        return;
+                    }
+
+                    coreData.PrefVelocity = moveDirection / math.sqrt(distanceSq);
+                    return;
+                }
+
+                float2 nextPathPoint = agentPathState.CurrentPathIndex + 1 < pathBuffer.Length
+                    ? pathBuffer[agentPathState.CurrentPathIndex + 1].Portal.Center
+                    : targetData.TargetPosition;
+                float2 direction = PathFinding.ComputeGuidanceVector(agentPosition,
+                    pathBuffer[agentPathState.CurrentPathIndex].Portal,
+                    nextPathPoint);
+
+                coreData.PrefVelocity = direction;
             }
-            coreData.PrefVelocity = moveDirection / math.sqrt(distanceSq);
-        }
-    }
-
-    [BurstCompile]
-    public partial struct PositionUpdateJob : IJobEntity
-    {
-        public float DeltaTime;
-
-        public void Execute(
-            ref LocalTransform localTransform,
-            ref AgentCoreData coreData,
-            in AgentMovementData movementData)
-        {
-            float2 velocity = coreData.Velocity;
-            float magnitude = math.length(velocity);
-            float moveThisFrame = movementData.MovementSpeed * DeltaTime;
-
-            // Prevent overshooting the target
-            if (magnitude < moveThisFrame)
-            {
-                return;
-            }
-
-            float3 fixedDirection = math.float3(velocity / magnitude, 0);
-            localTransform.Position += fixedDirection * moveThisFrame;
-
-            localTransform.Rotation = math.slerp(
-                localTransform.Rotation,
-                quaternion.RotateZ(math.atan2(fixedDirection.y, fixedDirection.x)),
-                movementData.RotationSpeed * DeltaTime
-            );
         }
     }
 }
