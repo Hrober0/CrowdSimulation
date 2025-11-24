@@ -1,8 +1,10 @@
 using CustomNativeCollections;
 using HCore.Shapes;
 using Navigation;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
@@ -74,62 +76,102 @@ namespace ComplexNavigation
         private static void SetTarget(Vector2 target)
         {
             var world = World.DefaultGameObjectInjectionWorld;
+            var entityManager = world.EntityManager;
             var navMeshSystem = world.GetExistingSystemManaged<NavMeshSystem>();
-            if (!navMeshSystem.NavMesh.TryGetNodeIndex(target, out var targetNodeIndex))
+
+            // Query selected agents
+            using EntityQuery query = new EntityQueryBuilder(Allocator.Temp)
+                                      .WithAll<LocalTransform, Selected>()
+                                      .WithAny<FindPathRequest, AgentPathState, TargetData>()
+                                      .Build(entityManager);
+            using var entities = query.ToEntityArray(Allocator.TempJob);
+            using var transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
+            
+            if (entities.Length == 0)
             {
-                Debug.LogWarning("Outside navmesh");
                 return;
             }
+            
+            // ECB for parallel writing
+            var ecbSystem = world.GetExistingSystemManaged<EndSimulationEntityCommandBufferSystem>();
+            var ecb = ecbSystem.CreateCommandBuffer();
 
-            EntityManager entityManager = world.EntityManager;
-            using EntityQuery query = new EntityQueryBuilder(Allocator.Temp)
-                                      .WithPresent<LocalTransform>()
-                                      .WithPresent<FindPathRequest>()
-                                      .WithAll<Selected>()
-                                      .Build(entityManager);
-
-            using NativeArray<Entity> entities = query.ToEntityArray(Allocator.Temp);
-            using NativeArray<LocalTransform> transforms = query.ToComponentDataArray<LocalTransform>(Allocator.Temp);
-
-            // Find target places
-            using var targetPlaces = new NativeList<float2>(entities.Length, Allocator.TempJob);
-            PathFinding.FindSpaces(target,
-                targetNodeIndex,
-                entities.Length,
-                .3f,
-                navMeshSystem.NavMesh.Nodes,
-                new SamplePathSeeker(),
-                targetPlaces);
-
-            // Find agents positions
-            var agentPositions = new NativeArray<float2>(entities.Length, Allocator.TempJob);
-            for (var index = 0; index < entities.Length; index++)
+            var job = new SetTargetJob
             {
-                agentPositions[index] = transforms[index].Position.xy;
-            }
+                Entities = entities,
+                AgentTransforms = transforms,
+                TargetPosition = target,
+                NavMesh = navMeshSystem.NavMesh,
+                Seeker = new SamplePathSeeker(),
+                ECB = ecb
+            };
 
-            // Assign optimal targets to agents 
-            using var assignedPositions = new NativeArray<float2>(entities.Length, Allocator.TempJob);
-            PathFinding.AssignTargets(agentPositions, targetPlaces.AsArray(), assignedPositions);
+            job.Schedule().Complete();
+        }
 
-            for (var index = 0; index < entities.Length; index++)
+        [BurstCompile]
+        public struct SetTargetJob : IJob
+        {
+            [ReadOnly] public NativeArray<Entity> Entities;
+            [ReadOnly] public NativeArray<LocalTransform> AgentTransforms;
+            [ReadOnly] public float2 TargetPosition;
+            [ReadOnly] public NavMesh<IdAttribute> NavMesh;
+            [ReadOnly] public SamplePathSeeker Seeker;
+
+            public EntityCommandBuffer ECB;
+
+            public void Execute()
             {
-                Entity entity = entities[index];
-                entityManager.SetComponentData(entity, new FindPathRequest
+                // Get target node index
+                if (!NavMesh.TryGetNodeIndex(TargetPosition, out int targetNodeIndex))
                 {
-                    TargetPosition = assignedPositions[index],
-                });
-                entityManager.SetComponentEnabled<FindPathRequest>(entity, true);
-                entityManager.SetComponentData<AgentPathState>(entity, new() { CurrentPathIndex = 0 });
+                    // outside navmesh; skip
+                    return;
+                }
+
+                int agentNumber = Entities.Length;
+
+                // Agent positions
+                var agentPositions = new NativeArray<float2>(agentNumber, Allocator.Temp);
+                for (int i = 0; i < agentNumber; i++)
+                {
+                    agentPositions[i] = AgentTransforms[i].Position.xy;
+                }
+
+                using var targetPlaces = new NativeList<float2>(agentNumber, Allocator.Temp);
+                PathFinding.FindSpaces(
+                    TargetPosition,
+                    targetNodeIndex,
+                    agentNumber,
+                    0.3f,
+                    NavMesh.Nodes,
+                    Seeker,
+                    targetPlaces
+                );
+
+                using var assignedPositions = new NativeArray<float2>(agentNumber, Allocator.Temp);
+                PathFinding.AssignTargets(agentPositions, targetPlaces.AsArray(), assignedPositions);
+
+                for (int i = 0; i < agentNumber; i++)
+                {
+                    Entity entity = Entities[i];
+
+                    // Set FindPathRequest
+                    var findPathRequest = new FindPathRequest { TargetPosition = assignedPositions[i] };
+                    ECB.SetComponentEnabled<FindPathRequest>(entity, true);
+                    ECB.SetComponent(entity, findPathRequest);
+
+                    // Reset AgentPathState
+                    ECB.SetComponent(entity, new AgentPathState { CurrentPathIndex = 0 });
+
+                    // Set TargetData
+                    var targetData = new TargetData { TargetPosition = assignedPositions[i] };
+                    ECB.SetComponentEnabled<TargetData>(entity, true);
+                    ECB.SetComponent(entity, targetData);
+                }
                 
-                entityManager.SetComponentData(entity, new TargetData
-                {
-                    TargetPosition = assignedPositions[index],
-                });
-                entityManager.SetComponentEnabled<TargetData>(entity, true);
+                agentPositions.Dispose();
             }
-
-            agentPositions.Dispose();
         }
     }
 }
