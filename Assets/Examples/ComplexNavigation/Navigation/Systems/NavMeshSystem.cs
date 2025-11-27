@@ -137,7 +137,7 @@ namespace ComplexNavigation
 
                 Request = updateRequests,
                 Vertices = updatedVertices,
-                ExpandSize = 0f,
+                ExpandSize = .1f,
             }.Schedule(state.Dependency);
 
             state.Dependency.Complete();
@@ -149,7 +149,7 @@ namespace ComplexNavigation
                 NavObstacles = navMeshSystemManaged.NavObstacles,
                 Request = updateRequests,
                 Vertices = updatedVertices,
-                ExpandSize = 0f,
+                ExpandSize = .1f,
             }.Schedule(state.Dependency);
 
             state.Dependency.Complete();

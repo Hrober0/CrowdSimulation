@@ -20,6 +20,7 @@ namespace ComplexNavigation
                 AddComponent(entity, new AgentCoreData
                 {
                     Entity = entity,
+                    MaxSpeed = 1,
                     Radius = authoring._radius,
                 });
                 AddComponent(entity, new AgentMovementData

@@ -27,7 +27,7 @@ namespace Tests.EditorTests.NavigationTests
             var start = new float2(0, 0);
             var end = new float2(0.5f, 2);
 
-            PathFinding.FunnelPath(start, end, portals.AsArray(), result);
+            FunnelPath(start, end, portals.AsArray(), result);
 
             result.Length.Should().BeGreaterOrEqualTo(2);
             result[0].Should().BeApproximately(start);
@@ -65,7 +65,7 @@ namespace Tests.EditorTests.NavigationTests
             var start = new float2(0, 0);
             var end = new float2(4, -1);
 
-            PathFinding.FunnelPath(start, end, portals.AsArray(), result);
+            FunnelPath(start, end, portals.AsArray(), result);
 
             // for (var index = 0; index < result.Length; index++)
             // {
@@ -83,6 +83,151 @@ namespace Tests.EditorTests.NavigationTests
             result.Dispose();
         }
 
+        private static void FunnelPath(float2 start, float2 end, NativeArray<Portal> portals, NativeList<float2> result)
+        {
+            PathFinding.FunnelPath(start, end, portals, result);
+            
+            if (TestConfig.DEBUG)
+            {
+                start.To3D().DrawPoint(Color.green, 5, .3f);
+                end.To3D().DrawPoint(Color.red, 5, .3f);
+
+                portals.ForEach(p => DebugUtils.Draw(p.Right, p.Left, Color.white, 5));
+                for (int i = 1; i < result.Length; i++)
+                {
+                    DebugUtils.Draw(result[i-1], result[i], Color.yellow, 5); 
+                }
+            }
+        }
+        
+        [Test]
+        public void FunnelPortals_StraightLine_ShouldReturnSingleStraightSegment()
+        {
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(0, 1), new(1, 1))
+            };
+            var result = new NativeArray<float2>(portals.Length, Allocator.Temp);
+
+            var start = new float2(0, 0);
+            var end = new float2(0.5f, 2);
+
+            FunnelPortals(start, end, portals.AsArray(), result);
+
+            result.Length.Should().BeGreaterOrEqualTo(1);
+            result[0].Should().BeApproximately(new(.25f, 1f));
+
+            portals.Dispose();
+            result.Dispose();
+        }
+
+        [Test]
+        public void FunnelPortals_StraightLine_ShouldCreatePointOnMultiplePortals()
+        {
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(0, 1), new(1, 1)),
+                new(new(0, 3), new(1, 1)),
+                new(new(0, 3), new(1, 3)),
+            };
+            var result = new NativeArray<float2>(portals.Length, Allocator.Temp);
+
+            var start = new float2(0, 0);
+            var end = new float2(1, 4);
+
+            FunnelPortals(start, end, portals.AsArray(), result);
+
+            result.Length.Should().BeGreaterOrEqualTo(3);
+            result[0].Should().BeApproximately(new(.25f, 1f));
+            result[1].Should().BeApproximately(new(.5f, 2f));
+            result[2].Should().BeApproximately(new(.75f, 3f));
+
+            portals.Dispose();
+            result.Dispose();
+        }
+        
+        
+        [Test]
+        public void FunnelPortals_NarrowTurns_ShouldFollowPortalsCorrectly()
+        {
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(2, 0), new(1, -2)), // /
+                new(new(2, 2), new(4, 2)), // _
+                new(new(3, 6), new(4, 4)), // \
+                new(new(6, 6), new(5, 2)), // /
+            };
+            var result = new NativeArray<float2>(portals.Length, Allocator.Temp);
+
+            //   Y ↑
+            //   6 |                     \          /
+            //   5 |                      \        /
+            //   4 |                       \      /
+            //   3 |                             /                       
+            //   2 |              ----------    /
+            //   1 |       
+            //   0 |  s         /                         
+            //  -1 |          /            e          
+            //  -2 |        /
+            //     +----------------------------------------→ X
+            //         0    1    2    3    4    5    6
+
+            var start = new float2(0, 0);
+            var end = new float2(4, -1);
+
+            FunnelPortals(start, end, portals.AsArray(), result);
+
+            result.Length.Should().Be(portals.Length);
+            result[0].Should().BeApproximately(new(2, 0));
+            result[1].Should().BeApproximately(new(3, 2));
+            result[2].Should().BeApproximately(new(4, 4));
+            result[3].Should().BeApproximately(new(5, 2));
+
+            portals.Dispose();
+            result.Dispose();
+        }
+        
+        [Test]
+        public void FunnelPortals_BigCurveWithConnectedEdges_ShouldFollowPortalsCorrectly()
+        {
+            var portals = new NativeList<Portal>(Allocator.Temp)
+            {
+                new(new(-3.2f, -5.4f), new(-8.2f, -4.0f)),
+                new(new(-11.7f, -6.7f), new(-8.2f, -4.0f)),
+                new(new(-11.7f, -6.7f), new(-8.7f, -2.7f)),
+                new(new(-11.7f, -6.7f), new(-8.7f, -2.3f)),
+            };
+            var result = new NativeArray<float2>(portals.Length, Allocator.Temp);
+
+            var start = new float2(-2, -2.5f);
+            var end = new float2(-9f, -2.5f);
+
+            FunnelPortals(start, end, portals.AsArray(), result);
+
+            result.Length.Should().Be(portals.Length);
+            result[0].Should().BeApproximately(new(-8.2F, -4F));
+            result[1].Should().BeApproximately(new(-8.2F, -4F));
+            result[2].Should().BeApproximately(new(-8.812987F, -2.85064936F));
+            result[3].Should().BeApproximately(new(-8.92818F, -2.63466358F));
+
+            portals.Dispose();
+            result.Dispose();
+        }
+
+        private static void FunnelPortals(float2 start, float2 end, NativeArray<Portal> portals, NativeArray<float2> result)
+        {
+            PathFinding.FunnelPortals(start, end, portals, result);
+            
+            if (TestConfig.DEBUG)
+            {
+                start.To3D().DrawPoint(Color.green, 5, .3f);
+                end.To3D().DrawPoint(Color.red, 5, .3f);
+
+                portals.ForEach(p => DebugUtils.Draw(p.Right, p.Left, Color.white, 5));
+                result.ForEach(p => p.To3D().DrawPoint(Color.yellow, 5, .3f));
+            }
+        }
+        
         [Test]
         public void CreatePortal_CCW_KeepsOrder()
         {

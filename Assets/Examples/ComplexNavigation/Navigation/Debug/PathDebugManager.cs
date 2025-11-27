@@ -42,6 +42,8 @@ namespace ComplexNavigation
 
                     Gizmos.color = Color.green;
                     Gizmos.DrawLine(left3, right3);
+
+                    portal.Path.To3D().DrawPoint(Color.magenta, null, 0.1f);
                 }
             }
         }

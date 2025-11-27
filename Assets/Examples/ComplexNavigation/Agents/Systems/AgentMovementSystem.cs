@@ -13,13 +13,18 @@ namespace ComplexNavigation
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            new DirectionCalculationJob()
+            new DirectionCalculationJob
+                {
+                    DeltaTime = SystemAPI.Time.DeltaTime,
+                }
                 .ScheduleParallel();
         }
 
         [BurstCompile]
         public partial struct DirectionCalculationJob : IJobEntity
         {
+            public float DeltaTime;
+            
             public void Execute(
                 in LocalTransform localTransform,
                 ref AgentCoreData coreData,
@@ -31,7 +36,7 @@ namespace ComplexNavigation
 
                 if (agentPathState.CurrentPathIndex < pathBuffer.Length)
                 {
-                    Portal portal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
+                    PathPortal portal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
                     // DebugUtils.Draw(agentPosition, portal.Center, Color.black);
 
                     if (GeometryUtils.Sign(agentPosition, portal.Left, portal.Right) > 0)
@@ -44,6 +49,7 @@ namespace ComplexNavigation
                 {
                     // Target reached
                     coreData.PrefVelocity = float2.zero;
+                    coreData.MaxSpeed = 1;
                     return;
                 }
 
@@ -64,14 +70,11 @@ namespace ComplexNavigation
                     return;
                 }
 
-                float2 nextPathPoint = agentPathState.CurrentPathIndex + 1 < pathBuffer.Length
-                    ? pathBuffer[agentPathState.CurrentPathIndex + 1].Portal.Center
-                    : targetData.TargetPosition;
-                float2 direction = PathFinding.ComputeGuidanceVector(agentPosition,
-                    pathBuffer[agentPathState.CurrentPathIndex].Portal,
-                    nextPathPoint);
-
-                coreData.PrefVelocity = direction;
+                PathPortal targetPortal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
+                float2 focusDirection = math.normalizesafe(targetPortal.Path - agentPosition);
+                float2 direction = math.normalizesafe(focusDirection + targetPortal.Direction);
+                // coreData.MaxSpeed = math.min(coreData.MaxSpeed + DeltaTime * 10, 10);
+                coreData.PrefVelocity = direction * coreData.MaxSpeed;
             }
         }
     }

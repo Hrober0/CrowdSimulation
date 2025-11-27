@@ -274,6 +274,14 @@ namespace Navigation
             return a + t * ab;
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float2 NormalizeSum(float2 v1, float2 v2)
+        {
+            float dot = math.dot(v1, v2);
+            float scale = 1.0f / (1.0f + dot);
+            return (v1 + v2) * scale;
+        }
+        
         /// <summary>
         /// Converts a 2D direction vector to an angle in degrees [0, 360).
         /// </summary>

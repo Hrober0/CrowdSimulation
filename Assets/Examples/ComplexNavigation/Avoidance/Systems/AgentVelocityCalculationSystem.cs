@@ -36,7 +36,6 @@ namespace ComplexNavigation
         private const float NEIGHBOR_QUERY_DIST = 1f;
         private const float TIME_HORIZON_OBSTACLE = 1f;
         private const float TIME_HORIZON_AGENT = 1f;
-        private const float MAX_SPEED = 5f;
 
         [ReadOnly] public NativeSpatialHash<AgentCoreData> AgentSpatialHash;
         [ReadOnly] public NativeSpatialLookup<ObstacleVertex> ObstacleSpatialHash;
@@ -202,7 +201,7 @@ namespace ComplexNavigation
                 Position = coreData.Position,
                 Velocity = coreData.Velocity,
                 PrefVelocity = coreData.PrefVelocity,
-                MaxSpeed = MAX_SPEED,
+                MaxSpeed = coreData.MaxSpeed,
                 Radius = coreData.Radius,
                 MaxNeighbors = MAX_AGENT_NEIGHBORS,
                 NeighborDist = NEIGHBOR_QUERY_DIST + coreData.Radius,

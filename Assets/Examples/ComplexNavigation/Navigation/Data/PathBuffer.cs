@@ -5,6 +5,6 @@ namespace ComplexNavigation
 {
     public struct PathBuffer : IBufferElementData
     {
-        public Portal Portal;
+        public PathPortal Portal;
     }
 }

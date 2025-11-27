@@ -57,7 +57,7 @@ namespace ComplexNavigation
                 reader.BeginForEachIndex(i);
                 while (reader.RemainingItemCount > 0)
                 {
-                    var portal = reader.Read<Portal>();
+                    var portal = reader.Read<PathPortal>();
                     buffer.Add(new PathBuffer { Portal = portal });  
                 }
                 reader.EndForEachIndex();

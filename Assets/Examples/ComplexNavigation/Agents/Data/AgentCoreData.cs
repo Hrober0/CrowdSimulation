@@ -11,6 +11,7 @@ namespace ComplexNavigation
         public float2 Position;
         public float2 Velocity;
         public float2 PrefVelocity;
+        public float MaxSpeed;
         public float Radius;
 
         public bool Equals(AgentCoreData other) => Entity.Equals(other.Entity);

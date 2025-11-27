@@ -91,6 +91,106 @@ namespace Navigation
             }
         }
 
+        public static void FunnelPortals(float2 start, float2 end, NativeArray<Portal> portals, NativeArray<float2> resultPath)
+        {
+            float2 apex = start;
+            float2 left = apex;
+            float2 right = apex;
+            int leftIndex = 0;
+            int rightIndex = 0;
+
+            for (int i = 0; i < portals.Length; i++)
+            {
+                float2 pLeft = portals[i].Left;
+                float2 pRight = portals[i].Right;
+                resultPath[i] = float2.zero; // path will be corrected in fix iteration
+
+                // Left check
+                if (Triangle.SignedArea(apex, right, pRight) >= 0f)
+                {
+                    if (GeometryUtils.NearlyEqual(apex, right) || Triangle.SignedArea(apex, left, pRight) < 0f)
+                    {
+                        right = pRight;
+                        rightIndex = i;
+                    }
+                    else
+                    {
+                        // Tight turn on left
+                        apex = left;
+                        right = apex;
+                        var apexIndex = leftIndex;
+                        leftIndex = apexIndex;
+                        rightIndex = apexIndex;
+                        i = apexIndex;
+                        resultPath[apexIndex] = apex;
+                        continue;
+                    }
+                }
+
+                // Right check
+                if (Triangle.SignedArea(apex, left, pLeft) <= 0f)
+                {
+                    if (GeometryUtils.NearlyEqual(apex, left) || Triangle.SignedArea(apex, right, pLeft) > 0f)
+                    {
+                        left = pLeft;
+                        leftIndex = i;
+                    }
+                    else
+                    {
+                        // Tight turn on right
+                        apex = right;
+                        left = apex;
+                        var apexIndex = rightIndex;
+                        leftIndex = apexIndex;
+                        rightIndex = apexIndex;
+                        i = apexIndex;
+                        resultPath[apexIndex] = apex;
+                        continue;
+                    }
+                }
+            }
+            
+            // Fix end
+            if (Triangle.SignedArea(apex, right, end) >= 0f && !GeometryUtils.NearlyEqual(apex, right) &&
+                !(Triangle.SignedArea(apex, left, end) < 0f))
+            {
+                resultPath[leftIndex] = left;
+            }
+            else if (Triangle.SignedArea(apex, left, end) <= 0f && !GeometryUtils.NearlyEqual(apex, left) &&
+                     !(Triangle.SignedArea(apex, right, end) > 0f))
+            {
+                resultPath[rightIndex] = right;
+            }
+
+            // Fix points on portals
+            int lastCornerPointIndex = -1;
+            float2 lastCornerPoint = start;
+            for (int i = 0; i < portals.Length; i++)
+            {
+                if (resultPath[i].Equals(float2.zero))
+                {
+                    continue;
+                }
+            
+                float2 secondCornerPoint = resultPath[i];
+                for (int j = lastCornerPointIndex + 1; j < i; j++)
+                {
+                    Portal portal = portals[j];
+                    // DebugUtils.Draw(lastCornerPoint, secondCornerPoint, Color.magenta, 5);
+                    resultPath[j] = GeometryUtils.IntersectionPoint(portal.Right, portal.Left, lastCornerPoint, secondCornerPoint);
+                }
+            
+                lastCornerPointIndex = i;
+                lastCornerPoint = resultPath[i];
+            }
+            for (int j = lastCornerPointIndex + 1; j < resultPath.Length; j++)
+            {
+                Portal portal = portals[j];
+                // DebugUtils.Draw(lastCornerPoint, end, Color.red, 5);
+                resultPath[j] = GeometryUtils.IntersectionPoint(portal.Right, portal.Left, lastCornerPoint, end);
+            }
+        }
+
         [BurstCompile]
         public static void FindPath<TAttribute, TSeeker>(
             float2 startPosition,
@@ -299,7 +399,7 @@ namespace Navigation
             using var foundPositions = new NativeHashSet<int2>(math.max(positionsToFind * 4, 16), Allocator.Temp);
 
             // TODO: If first node is invalid algorithm should find the closest valid node before start searching
-            
+
             var invSpacing = 1f / spacing;
             openSet.Enqueue(centerNodeIndex);
             while (!openSet.IsEmpty())
@@ -379,12 +479,13 @@ namespace Navigation
                 Debug.LogWarning($"Target count ({targetCount}) cannot be less than position count ({positionsCount}).");
                 return;
             }
-            
+
             float2 agentsCenter = float2.zero;
             for (int i = 0; i < positionsCount; i++)
             {
                 agentsCenter += positions[i];
             }
+
             agentsCenter /= positionsCount;
 
             float2 targetsCenter = float2.zero;
@@ -392,19 +493,20 @@ namespace Navigation
             {
                 targetsCenter += targets[i];
             }
+
             targetsCenter /= targetCount;
-            
+
             var relativeTargets = new NativeArray<float2>(targetCount, Allocator.Temp);
             for (int i = 0; i < targetCount; i++)
             {
                 relativeTargets[i] = targets[i] - targetsCenter;
             }
-            
+
             var relativeTargetsCount = relativeTargets.Length;
             for (int i = 0; i < positionsCount; i++)
             {
                 float2 relativePosition = positions[i] - agentsCenter;
-                
+
                 float bestCost = float.MaxValue;
                 int bestTarget = -1;
 
