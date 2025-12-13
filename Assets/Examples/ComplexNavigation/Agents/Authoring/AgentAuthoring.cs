@@ -1,4 +1,6 @@
 using Unity.Entities;
+using Unity.Mathematics;
+using Unity.Rendering;
 using UnityEngine;
 
 namespace ComplexNavigation
@@ -30,10 +32,15 @@ namespace ComplexNavigation
                 });
                 AddComponent<Selected>(entity);
                 SetComponentEnabled<Selected>(entity, false);
-                
+
+                AddComponent(entity, new URPMaterialPropertyBaseColor
+                {
+                    Value = new float4(1f, 1f, 1f, 1f)
+                });
+
                 AddComponent<TargetData>(entity);
                 SetComponentEnabled<TargetData>(entity, false);
-                
+
                 AddComponent<FindPathRequest>(entity);
                 SetComponentEnabled<FindPathRequest>(entity, false);
                 AddBuffer<PathBuffer>(entity);

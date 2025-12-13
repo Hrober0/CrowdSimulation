@@ -6,5 +6,6 @@ namespace ComplexNavigation
     public struct TargetData : IComponentData, IEnableableComponent
     {
         public float2 TargetPosition;
+        public double LastTargetUpdateTime;
     }
 }
