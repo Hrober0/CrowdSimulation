@@ -44,7 +44,7 @@ namespace ComplexNavigation
                 AddComponent<FindPathRequest>(entity);
                 SetComponentEnabled<FindPathRequest>(entity, false);
                 AddBuffer<PathBuffer>(entity);
-                AddComponent<AgentPathState>(entity);
+                AddComponent<PathIndex>(entity);
             }
         }
     }

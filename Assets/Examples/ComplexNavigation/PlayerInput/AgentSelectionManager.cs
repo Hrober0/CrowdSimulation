@@ -84,8 +84,8 @@ namespace ComplexNavigation
 
             foreach (AgentCoreData agent in resultAgents)
             {
-                float2 aMin = agent.Position + agent.Radius;
-                float2 aMax = agent.Position - agent.Radius;
+                float2 aMin = agent.Position - agent.Radius * .5f;
+                float2 aMax = agent.Position + agent.Radius * .5f;
                 if (aMin.x < selectMin.x || aMin.y < selectMin.y || aMax.x > selectMax.x || aMax.y > selectMax.y)
                 {
                     continue;

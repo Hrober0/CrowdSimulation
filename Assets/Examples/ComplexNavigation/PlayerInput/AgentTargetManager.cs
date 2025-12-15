@@ -28,7 +28,7 @@ namespace ComplexNavigation
             // Query selected agents
             using EntityQuery query = new EntityQueryBuilder(Allocator.Temp)
                                       .WithAll<LocalTransform, Selected>()
-                                      .WithAny<FindPathRequest, AgentPathState, TargetData>()
+                                      .WithAny<FindPathRequest, PathIndex, TargetData>()
                                       .Build(entityManager);
             using var entities = query.ToEntityArray(Allocator.TempJob);
             using var transforms = query.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
@@ -101,11 +101,6 @@ namespace ComplexNavigation
                 for (int i = 0; i < agentNumber; i++)
                 {
                     Entity entity = Entities[i];
-
-                    // Reset AgentPathState
-                    ECB.SetComponent(entity, new AgentPathState { CurrentPathIndex = 0 });
-
-                    // Set TargetData
                     ECB.SetComponentEnabled<TargetData>(entity, true);
                     ECB.SetComponent<TargetData>(entity, new() { TargetPosition = assignedPositions[i] });
                 }

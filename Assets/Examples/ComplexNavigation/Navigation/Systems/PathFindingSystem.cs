@@ -51,19 +51,25 @@ namespace ComplexNavigation
             var reader = stream.AsReader();
             for (int i = 0; i < entities.Length; i++)
             {
-                var buffer = entityManager.GetBuffer<PathBuffer>(entities[i]);
+                var entity = entities[i];
+
+                var buffer = entityManager.GetBuffer<PathBuffer>(entity);
                 buffer.Clear();
-                
+
                 reader.BeginForEachIndex(i);
                 while (reader.RemainingItemCount > 0)
                 {
                     var portal = reader.Read<PathPortal>();
-                    buffer.Add(new PathBuffer { Portal = portal });  
+                    buffer.Add(new PathBuffer { Portal = portal });
                 }
+
                 reader.EndForEachIndex();
 
+                // Rest path index
+                entityManager.SetComponentData<PathIndex>(entity, new() { Index = 0 });
+
                 // Disable the request after path is computed
-                entityManager.SetComponentEnabled<FindPathRequest>(entities[i], false);
+                entityManager.SetComponentEnabled<FindPathRequest>(entity, false);
             }
 
             // Dispose temporary arrays

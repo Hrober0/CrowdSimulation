@@ -18,7 +18,7 @@ namespace ComplexNavigation
                 }
                 .ScheduleParallel();
         }
-        
+
         [BurstCompile]
         public partial struct PositionUpdateJob : IJobEntity
         {
@@ -29,22 +29,11 @@ namespace ComplexNavigation
                 ref AgentCoreData coreData,
                 in AgentMovementData movementData)
             {
-                float2 velocity = coreData.Velocity;
-                float magnitude = math.length(velocity);
-                float moveThisFrame = movementData.MovementSpeed * DeltaTime;
-
-                // Prevent overshooting the target
-                if (magnitude < moveThisFrame)
-                {
-                    return;
-                }
-
-                float3 fixedDirection = math.float3(velocity / magnitude, 0);
-                localTransform.Position += fixedDirection * moveThisFrame;
+                localTransform.Position += math.float3(movementData.MovementSpeed * DeltaTime * coreData.Velocity, 0);
 
                 localTransform.Rotation = math.slerp(
                     localTransform.Rotation,
-                    quaternion.RotateZ(math.atan2(fixedDirection.y, fixedDirection.x)),
+                    quaternion.RotateZ(math.atan2(coreData.Velocity.y, coreData.Velocity.x)),
                     movementData.RotationSpeed * DeltaTime
                 );
             }

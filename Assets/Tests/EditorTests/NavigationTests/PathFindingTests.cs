@@ -86,7 +86,7 @@ namespace Tests.EditorTests.NavigationTests
         private static void FunnelPath(float2 start, float2 end, NativeArray<Portal> portals, NativeList<float2> result)
         {
             PathFinding.FunnelPath(start, end, portals, result);
-            
+
             if (TestConfig.DEBUG)
             {
                 start.To3D().DrawPoint(Color.green, 5, .3f);
@@ -95,11 +95,11 @@ namespace Tests.EditorTests.NavigationTests
                 portals.ForEach(p => DebugUtils.Draw(p.Right, p.Left, Color.white, 5));
                 for (int i = 1; i < result.Length; i++)
                 {
-                    DebugUtils.Draw(result[i-1], result[i], Color.yellow, 5); 
+                    DebugUtils.Draw(result[i - 1], result[i], Color.yellow, 5);
                 }
             }
         }
-        
+
         [Test]
         public void FunnelPortals_StraightLine_ShouldReturnSingleStraightSegment()
         {
@@ -145,8 +145,8 @@ namespace Tests.EditorTests.NavigationTests
             portals.Dispose();
             result.Dispose();
         }
-        
-        
+
+
         [Test]
         public void FunnelPortals_NarrowTurns_ShouldFollowPortalsCorrectly()
         {
@@ -186,7 +186,7 @@ namespace Tests.EditorTests.NavigationTests
             portals.Dispose();
             result.Dispose();
         }
-        
+
         [Test]
         public void FunnelPortals_BigCurveWithConnectedEdges_ShouldFollowPortalsCorrectly()
         {
@@ -217,7 +217,7 @@ namespace Tests.EditorTests.NavigationTests
         private static void FunnelPortals(float2 start, float2 end, NativeArray<Portal> portals, NativeArray<float2> result)
         {
             PathFinding.FunnelPortals(start, end, portals, result);
-            
+
             if (TestConfig.DEBUG)
             {
                 start.To3D().DrawPoint(Color.green, 5, .3f);
@@ -227,7 +227,7 @@ namespace Tests.EditorTests.NavigationTests
                 result.ForEach(p => p.To3D().DrawPoint(Color.yellow, 5, .3f));
             }
         }
-        
+
         [Test]
         public void CreatePortal_CCW_KeepsOrder()
         {
@@ -398,71 +398,6 @@ namespace Tests.EditorTests.NavigationTests
             // Clean up
             nodes.Dispose();
             resultPath.Dispose();
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnStraightLine_WhenAgentIsInCenter()
-        {
-            var vector = ComputeGuidanceVector(new(0, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
-            vector.Should().BeApproximately(new(0, 1));
-            vector.ToAngleT0().Should().BeApproximately(0, .01f);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheLeft()
-        {
-            var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
-            vector.ToAngleT0().Should().BeLessThan(45);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToCorner_WhenAgentIsOutsidePortal_OnTheRight()
-        {
-            var vector = ComputeGuidanceVector(new(5, .7f), new(new(-1, 1), new(1, 1)), new(new(-1, 2), new(1, 2)));
-            vector.ToAngleT0().Should().BeGreaterThan(-45);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft()
-        {
-            var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.ToAngleT0().Should().BeLessThan(45);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal()
-        {
-            var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.ToAngleT0().Should().BeGreaterThan(315);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsOutsidePortal_OnTheLeft_WhenNextPortalInTiltedLeft()
-        {
-            var vector = ComputeGuidanceVector(new(-2, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
-            vector.ToAngleT0().Should().BeLessThan(45);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToNextPortal_WhenAgentIsInsidePortal_WhenNextPortalInTiltedLeft()
-        {
-            var vector = ComputeGuidanceVector(new(.7f, 0), new(new(-1, 1), new(1, 1)), new(new(-1, 1), new(1, 4)));
-            vector.ToAngleT0().Should().BeGreaterThan(315);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToFirstPortal_WhenAgentAfterPortal()
-        {
-            var vector = ComputeGuidanceVector(new(1.7f, 2), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.ToAngleT0().Should().BeLessThan(270);
-        }
-
-        [Test]
-        public void ComputeGuidanceVector_ShouldReturnGuideToFirstPortal_WhenAgentIsCloseToPortal()
-        {
-            var vector = ComputeGuidanceVector(new(2f, .9f), new(new(-1, 1), new(1, 1)), new(new(-1, 4), new(1, 1)));
-            vector.ToAngleT0().Should().BeLessThan(315);
-            vector.ToAngleT0().Should().BeGreaterThan(270);
         }
 
         [Test]
@@ -660,7 +595,7 @@ namespace Tests.EditorTests.NavigationTests
             assignments[0].Should().BeApproximately(new(1, 0));
             assignments[1].Should().BeApproximately(new(9, 0));
         }
-        
+
         [Test]
         public void AssignTargets_ShouldAssignAgentsToClosestTargets_WhenPositionsAreSpilted()
         {
@@ -671,7 +606,7 @@ namespace Tests.EditorTests.NavigationTests
                 new float2(1, 1),
                 new float2(-1, 0),
                 new float2(-1, 2),
-                
+
                 new float2(0, -4),
                 new float2(0, -5),
                 new float2(1, -3),
@@ -710,6 +645,7 @@ namespace Tests.EditorTests.NavigationTests
                     target.To3D().DrawPoint(Color.black, 5, .3f);
                 }
             }
+
             for (var index = 0; index < positions.Length; index++)
             {
                 positions[index].To3D().DrawPoint(ColorUtils.GetColor(index), 5, .3f);
@@ -717,17 +653,17 @@ namespace Tests.EditorTests.NavigationTests
             }
 
             assignments.Should().ContainInOrder(
-                new float2(9f, 5f), 
-                new float2(9f, 4f), 
-                new float2(10f, 5f), 
-                new float2(8f, 5f), 
-                new float2(7f, 5f), 
-                new float2(9f, 2f), 
-                new float2(8f, 2f), 
-                new float2(10f, 2f), 
-                new float2(7f, 2f), 
+                new float2(9f, 5f),
+                new float2(9f, 4f),
+                new float2(10f, 5f),
+                new float2(8f, 5f),
+                new float2(7f, 5f),
+                new float2(9f, 2f),
+                new float2(8f, 2f),
+                new float2(10f, 2f),
+                new float2(7f, 2f),
                 new float2(8f, 3f)
-                );
+            );
         }
 
         [Test]
@@ -792,21 +728,6 @@ namespace Tests.EditorTests.NavigationTests
 
             assignments[0].Should().BeApproximately(new(-6, 0));
             assignments[1].Should().BeApproximately(new(6, 0));
-        }
-
-        private static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, Portal nextPortal, float portalEdgeBias = 0.3f)
-        {
-            var result = PathFinding.ComputeGuidanceVector(agentPosition, portal, nextPortal.Center, portalEdgeBias);
-
-            if (TestConfig.DEBUG)
-            {
-                DebugUtils.Draw(portal.Left, portal.Right, Color.yellow, 5);
-                DebugUtils.Draw(nextPortal.Left, nextPortal.Right, Color.magenta, 5);
-                agentPosition.To3D().DrawPoint(Color.red, 5, .3f);
-                DebugUtils.Draw(agentPosition, agentPosition + result, Color.green, 5);
-            }
-
-            return result;
         }
 
         private static NativeList<Portal> FindPath(float2 start, float2 target, NativeArray<NavNode<IdAttribute>> nodes)

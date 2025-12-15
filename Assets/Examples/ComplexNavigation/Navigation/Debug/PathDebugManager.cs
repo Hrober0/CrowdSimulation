@@ -1,4 +1,5 @@
 ﻿using HCore.Extensions;
+using Navigation;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
@@ -8,6 +9,7 @@ namespace ComplexNavigation
     public class PathDebugManager : MonoBehaviour
     {
         [SerializeField] private bool _drawPortals;
+        [SerializeField] private bool _drawPortalsRight;
 
         private void OnDrawGizmos()
         {
@@ -22,28 +24,28 @@ namespace ComplexNavigation
                 return;
             }
 
-            EntityManager em = world.EntityManager;
+            EntityManager entityManager = world.EntityManager;
 
-            EntityQuery query = em.CreateEntityQuery(
-                ComponentType.ReadOnly<Selected>(),
-                ComponentType.ReadOnly<PathBuffer>()
-            );
+            using EntityQuery query = new EntityQueryBuilder(Allocator.Temp)
+                                      .WithAll<Selected, PathBuffer>()
+                                      .Build(entityManager);
 
             using var entities = query.ToEntityArray(Allocator.Temp);
             foreach (Entity entity in entities)
             {
-                DynamicBuffer<PathBuffer> path = em.GetBuffer<PathBuffer>(entity);
+                DynamicBuffer<PathBuffer> path = entityManager.GetBuffer<PathBuffer>(entity);
                 for (int i = 0; i < path.Length; i++)
                 {
                     var portal = path[i].Portal;
 
-                    var left3 = portal.Left.To3D();
-                    var right3 = portal.Right.To3D();
+                    DebugUtils.Draw(portal.Left, portal.Right, Color.green);
 
-                    Gizmos.color = Color.green;
-                    Gizmos.DrawLine(left3, right3);
+                    portal.PathPoint.To3D().DrawPoint(Color.magenta, null, 0.1f);
 
-                    portal.Path.To3D().DrawPoint(Color.magenta, null, 0.1f);
+                    if (_drawPortalsRight)
+                    {
+                        portal.Right.To3D().DrawPoint(Color.red, null, 0.1f);
+                    }
                 }
             }
         }
