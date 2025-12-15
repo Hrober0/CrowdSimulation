@@ -1,7 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
 using CustomNativeCollections;
-using HCore.Extensions;
-using HCore.Shapes;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -149,7 +147,7 @@ namespace Navigation
                     }
                 }
             }
-            
+
             // Fix end
             if (Triangle.SignedArea(apex, right, end) >= 0f && !GeometryUtils.NearlyEqual(apex, right) &&
                 !(Triangle.SignedArea(apex, left, end) < 0f))
@@ -171,7 +169,7 @@ namespace Navigation
                 {
                     continue;
                 }
-            
+
                 float2 secondCornerPoint = resultPath[i];
                 for (int j = lastCornerPointIndex + 1; j < i; j++)
                 {
@@ -179,10 +177,11 @@ namespace Navigation
                     // DebugUtils.Draw(lastCornerPoint, secondCornerPoint, Color.magenta, 5);
                     resultPath[j] = GeometryUtils.IntersectionPoint(portal.Right, portal.Left, lastCornerPoint, secondCornerPoint);
                 }
-            
+
                 lastCornerPointIndex = i;
                 lastCornerPoint = resultPath[i];
             }
+
             for (int j = lastCornerPointIndex + 1; j < resultPath.Length; j++)
             {
                 Portal portal = portals[j];
@@ -347,33 +346,6 @@ namespace Navigation
                 ? new(p1, p2)
                 : new(p2, p1);
             return portal;
-        }
-
-        public static float2 ComputeGuidanceVector(float2 agentPosition, Portal portal, float2 nextPoint, float portalEdgeBias = 0.5f)
-        {
-            // Forward term: head toward next portal center
-            float2 forwardDir = math.normalize(nextPoint - agentPosition);
-
-            // Corridor basis
-            float2 portalDir = math.normalize(portal.Right - portal.Left);
-            float2 portalNormal = new(-portalDir.y, portalDir.x);
-
-            // Signed distance from corridor center line
-            float2 portalCenter = (portal.Left + portal.Right) * 0.5f;
-            float offset = math.dot(agentPosition - portalCenter, portalNormal);
-
-            // Corridor half width
-            float halfWidth = math.length(portal.Right - portal.Left) * 0.5f;
-
-            // Normalized lateral offset (clamped)
-            float normalizedOffset = offset / math.max(halfWidth, 0.001f);
-            normalizedOffset = math.clamp(normalizedOffset, -1f, 1f);
-
-            // Lateral correction (toward center)
-            float2 lateralDir = -portalNormal * normalizedOffset * portalEdgeBias;
-
-            // Combine forward and lateral
-            return math.normalize(forwardDir + lateralDir);
         }
 
         [BurstCompile]

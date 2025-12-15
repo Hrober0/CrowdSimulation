@@ -42,20 +42,22 @@ namespace Navigation
             for (var i = 0; i < portals.Length; i++)
             {
                 Portal portal = portals[i];
-                Portal lastPortal = i > 0 ? portals[i - 1] : new Portal(startPosition, startPosition);
-
-                float2 dirRight = math.normalizesafe(portal.Right - lastPortal.Right);
-                float2 dirLeft = math.normalizesafe(portal.Left - lastPortal.Left);
-                float2 flowDirection = GeometryUtils.NormalizeSum(dirRight, dirLeft);
-
                 ResultPaths.Write(new PathPortal
                 {
                     Left = portal.Left,
                     Right = portal.Right,
-                    Path = pathPoints[i] + flowDirection * 0.1f,
-                    Direction = flowDirection,
+                    PathPoint = pathPoints[i],
                 });
             }
+
+            float2 lastPoint = pathPoints.Length > 0 ? pathPoints[^1] : startPosition;
+            float2 perp = math.normalize(new float2(targetPosition.y - lastPoint.y, lastPoint.x - targetPosition.x));
+            ResultPaths.Write(new PathPortal
+            {
+                Left = targetPosition - perp,
+                Right = targetPosition + perp,
+                PathPoint = targetPosition,
+            });
 
             ResultPaths.EndForEachIndex();
         }

@@ -16,19 +16,20 @@ namespace PathFindingTest
             FollowPath,
             FollowPathToPortal,
         }
-        
+
         [SerializeField] private NavMeshVisualTests _meshVisual;
-        
+
         [Space]
         [SerializeField] private Transform _pathOrigin;
+
         [SerializeField] private Transform _pathTarget;
 
         [Space]
         [SerializeField] private bool _drawPortals;
-        
+
         [Space]
         [SerializeField] private TestType _testType = TestType.FollowPathToPortal;
-        
+
         private void Start()
         {
             switch (_testType)
@@ -46,7 +47,7 @@ namespace PathFindingTest
                     throw new ArgumentOutOfRangeException();
             }
         }
-        
+
         private async Awaitable UpdatePath()
         {
             while (true)
@@ -66,31 +67,31 @@ namespace PathFindingTest
                 DrawPath(from, to, resultPath, Color.green, 5);
             }
         }
-        
+
         private async Awaitable FollowPath()
         {
             while (true)
             {
                 await DebugUtils.WaitForClick();
                 await Awaitable.NextFrameAsync();
-                
+
                 while (!Input.GetKeyDown(KeyCode.Space))
                 {
                     await Awaitable.NextFrameAsync();
-                    
+
                     var seaker = (float2)(Vector2)_pathOrigin.position;
                     var target = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
                     if (math.lengthsq(target - seaker) < 0.01f)
                     {
                         continue;
                     }
-                    
+
                     using var portals = FindPath(seaker, target);
                     using var path = new NativeList<float2>(Allocator.Temp);
                     PathFinding.FunnelPath(seaker, target, portals.AsArray(), path);
                     var closeTarget = path.Length > 1 ? path[1] : target;
                     _pathOrigin.position += (Vector3)(Vector2)math.normalize(closeTarget - seaker) * Time.deltaTime * 2;
-                    
+
                     if (_drawPortals)
                     {
                         foreach (Portal p in portals)
@@ -101,41 +102,58 @@ namespace PathFindingTest
                 }
             }
         }
-        
+
         private async Awaitable FollowPathToPortal()
         {
             await DebugUtils.WaitForClick();
             while (true)
             {
                 await Awaitable.NextFrameAsync();
-                
+
                 using var savedPortals = new NativeList<Portal>(Allocator.Persistent);
-                
+
                 while (true)
                 {
                     await Awaitable.NextFrameAsync();
-                    
+
                     var seaker = (float2)(Vector2)_pathOrigin.position;
                     var target = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
                     if (math.lengthsq(target - seaker) < 0.01f)
                     {
                         continue;
                     }
-                    
+
                     using var portals = FindPath(seaker, target);
-                    portals.Add(new(target, target));
-                    float2 direction;
-                    if (portals.Length > 1)
+
+                    using var pathPoints = new NativeArray<float2>(portals.Length, Allocator.Temp);
+                    PathFinding.FunnelPortals(seaker, target, portals.AsArray(), pathPoints);
+
+                    var pathPortals = new NativeArray<PathPortal>(pathPoints.Length + 1, Allocator.Temp);
+                    for (var i = 0; i < pathPortals.Length; i++)
                     {
-                        direction = PathFinding.ComputeGuidanceVector(seaker, portals[0], portals[1].Center);
+                        Portal portal = portals[i];
+                        pathPortals[i] = new PathPortal
+                        {
+                            Left = portal.Left,
+                            Right = portal.Right,
+                            PathPoint = pathPoints[i],
+                        };
                     }
-                    else
+
+                    float2 lastPoint = pathPoints.Length > 0 ? pathPoints[^1] : seaker;
+                    float2 perp = math.normalize(new float2(target.y - lastPoint.y, lastPoint.x - target.x));
+                    pathPortals[^1] = new PathPortal
                     {
-                        direction = math.normalize(target - seaker);
-                    }
+                        Left = target - perp,
+                        Right = target + perp,
+                        PathPoint = target,
+                    };
+                    
+                    float2  direction = math.normalize(pathPortals[0].PathPoint - seaker);
+
                     // DebugUtils.Draw(seaker, seaker + direction, Color.yellow);
                     _pathOrigin.position += (Vector3)(Vector2)direction * Time.deltaTime * 2;
-                    
+
                     if (_drawPortals)
                     {
                         foreach (Portal p in portals)
@@ -156,7 +174,7 @@ namespace PathFindingTest
                 while (true)
                 {
                     await Awaitable.NextFrameAsync();
-                    
+
                     if (_drawPortals)
                     {
                         foreach (Portal p in savedPortals)
@@ -164,17 +182,16 @@ namespace PathFindingTest
                             Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
                         }
                     }
-                    
+
                     if (Input.GetKeyDown(KeyCode.Space))
                     {
                         await Awaitable.NextFrameAsync();
                         break;
                     }
                 }
-                
             }
         }
-        
+
         private NativeList<Portal> FindPath(float2 from, float2 to)
         {
             var resultPath = new NativeList<Portal>(Allocator.TempJob);

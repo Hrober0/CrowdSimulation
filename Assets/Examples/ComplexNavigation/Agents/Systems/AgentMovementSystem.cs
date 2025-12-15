@@ -2,7 +2,6 @@ using Navigation;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 namespace ComplexNavigation
 {
@@ -24,28 +23,13 @@ namespace ComplexNavigation
         public partial struct DirectionCalculationJob : IJobEntity
         {
             public float DeltaTime;
-            
+
             public void Execute(
-                in LocalTransform localTransform,
                 ref AgentCoreData coreData,
-                in TargetData targetData,
                 in DynamicBuffer<PathBuffer> pathBuffer,
-                ref AgentPathState agentPathState)
+                ref PathIndex pathIndex)
             {
-                float2 agentPosition = localTransform.Position.xy;
-
-                if (agentPathState.CurrentPathIndex < pathBuffer.Length)
-                {
-                    PathPortal portal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
-                    // DebugUtils.Draw(agentPosition, portal.Center, Color.black);
-
-                    if (GeometryUtils.Sign(agentPosition, portal.Left, portal.Right) > 0)
-                    {
-                        agentPathState.CurrentPathIndex++;
-                    }
-                }
-
-                if (agentPathState.CurrentPathIndex > pathBuffer.Length)
+                if (pathIndex.Index >= pathBuffer.Length)
                 {
                     // Target reached
                     coreData.PrefVelocity = float2.zero;
@@ -53,28 +37,71 @@ namespace ComplexNavigation
                     return;
                 }
 
-                if (agentPathState.CurrentPathIndex == pathBuffer.Length)
+                float2 agentPosition = coreData.Position;
+                PathPortal currentPortal = pathBuffer[pathIndex.Index].Portal;
+                // DebugUtils.Draw(agentPosition, portal.Center, Color.black);
+
+                if (GeometryUtils.Sign(agentPosition, currentPortal.Left, currentPortal.Right) > 0)
                 {
-                    // Last path
-                    float2 moveDirection = targetData.TargetPosition - localTransform.Position.xy;
-                    var distanceSq = math.lengthsq(moveDirection);
-                    if (distanceSq < 0.1f)
+                    pathIndex.Index++;
+                    if (pathIndex.Index == pathBuffer.Length)
                     {
-                        // Target reached
-                        agentPathState.CurrentPathIndex++;
-                        coreData.PrefVelocity = float2.zero;
+                        return;
+                    }
+                }
+
+                var index = pathIndex.Index;
+                GetLookAheadPoint(agentPosition, pathBuffer, ref index, .2f, out float2 lookTarget);
+                
+                float2 currentTargetPosition = index + 1 < pathBuffer.Length
+                    ? agentPosition + math.normalize(lookTarget - agentPosition)
+                    : pathBuffer[^1].Portal.PathPoint;
+
+                float2 preferredVelocity =
+                    PathMovement.ComputePreferredVelocity(
+                        agentPosition,
+                        coreData.Velocity,
+                        currentTargetPosition,
+                        coreData.MaxSpeed,
+                        1,
+                        .5f,
+                        DeltaTime
+                    );
+
+                coreData.PrefVelocity = preferredVelocity;
+            }
+
+            private static void GetLookAheadPoint(
+                float2 position,
+                in DynamicBuffer<PathBuffer> pathBuffer,
+                ref int index,
+                float lookAhead,
+                out float2 lookAheadTarget)
+            {
+                float2 current = position;
+                float remaining = lookAhead;
+
+                // Walk forward through path segments
+                for (; index < pathBuffer.Length; index++)
+                {
+                    float2 next = pathBuffer[index].Portal.PathPoint;
+                    float2 segment = next - current;
+                    float segLen = math.length(segment);
+
+                    if (segLen >= remaining)
+                    {
+                        // We can place the lookahead point inside this segment
+                        float2 direction = segment / math.max(segLen, math.EPSILON);
+                        lookAheadTarget = current + direction * remaining;
                         return;
                     }
 
-                    coreData.PrefVelocity = moveDirection / math.sqrt(distanceSq);
-                    return;
+                    remaining -= segLen;
+                    current = next;
                 }
 
-                PathPortal targetPortal = pathBuffer[agentPathState.CurrentPathIndex].Portal;
-                float2 focusDirection = math.normalizesafe(targetPortal.Path - agentPosition);
-                float2 direction = math.normalizesafe(focusDirection + targetPortal.Direction);
-                // coreData.MaxSpeed = math.min(coreData.MaxSpeed + DeltaTime * 10, 10);
-                coreData.PrefVelocity = direction * coreData.MaxSpeed;
+                // End of path
+                lookAheadTarget = pathBuffer[^1].Portal.PathPoint;
             }
         }
     }
