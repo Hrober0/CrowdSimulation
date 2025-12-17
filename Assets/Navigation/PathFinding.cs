@@ -407,7 +407,7 @@ namespace Navigation
                     }
                 }
 
-                if (foundPositions.Count >= positionsToFind)
+                if (foundPositions.Count >= positionsToFind && closedSet.Count > 9)
                 {
                     break;
                 }
