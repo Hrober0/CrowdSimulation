@@ -23,6 +23,29 @@ namespace Navigation
             }
         }
 
+        public static void DrawLoop(this NativeArray<float2> points, Color color, float? duration = null)
+        {
+            float2? start = null;
+            float2 last = float2.zero;
+            foreach (var point in points)
+            {
+                if (!start.HasValue)
+                {
+                    start = point;
+                }
+                else
+                {
+                    Draw(point, last, color, duration);
+                }
+                last = point;
+            }
+
+            if (start != null)
+            {
+                Draw(last, start.Value, color, duration);
+            }
+        }
+        
         public static void DrawLoop(this IEnumerable<float2> points, Color color, float? duration = null)
         {
             float2? start = null;
@@ -55,6 +78,20 @@ namespace Navigation
             else
             {
                 Debug.DrawLine(p.To3D(), p2.To3D(), color);
+            }
+        }
+        
+        public static void DrawWithOffset(float2 p, float2 p2, float2 center, Color color, float? duration = null)
+        {
+            var p1v = (p + math.normalize(p - center) * .1f).To3D();
+            var p2v = (p2 + math.normalize(p2 - center) * .1f).To3D();
+            if (duration.HasValue)
+            {
+                Debug.DrawLine(p1v, p2v, color, duration.Value);
+            }
+            else
+            {
+                Debug.DrawLine(p1v, p2v, color);
             }
         }
 

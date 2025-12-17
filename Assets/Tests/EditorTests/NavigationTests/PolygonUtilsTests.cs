@@ -286,6 +286,8 @@ namespace Tests.EditorTests.NavigationTests
             edges.Length.Should().Be(0);
         }
 
+        #region CutIntersectingEdges
+
         [Test]
         public void CutIntersectingEdges_ShouldSplitIntoThree_WhenTwoIntersectionsOnSameEdge()
         {
@@ -298,19 +300,16 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
             // EXPECTED: horizontal line should be split into 3 subedges
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(3, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(3, 0), new(7, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(10, 0), new(7, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(3, 0)));
+            result.Should_ContainKey(new EdgeKey(new(3, 0), new(7, 0)));
+            result.Should_ContainKey(new EdgeKey(new(10, 0), new(7, 0)));
 
             // Actual: with your current implementation → only one split survives
-            result.AsArray().Should().HaveCount(7, "because the current algorithm overwrites one split with another");
+            result.Should().HaveCount(7, "because the current algorithm overwrites one split with another");
         }
 
         [Test]
@@ -324,19 +323,17 @@ namespace Tests.EditorTests.NavigationTests
                 new Edge(new(8, -1), new(8, 1)), // vertical at 8
             };
 
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            // Act
+            var result = CutIntersectingEdges(edges);
 
             // Horizontal should be split into 4 pieces
-            result.AsArray().Should_ContainKey(new EdgeKey(new(10, 0), new(8, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(8, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(2, 0), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
+            result.Should_ContainKey(new EdgeKey(new(10, 0), new(8, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(8, 0)));
+            result.Should_ContainKey(new EdgeKey(new(2, 0), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
 
             // So total should be 4 + 2 + 2 + 2 = 10 edges
-            result.AsArray().Should().HaveCount(10);
+            result.Should().HaveCount(10);
         }
 
         [Test]
@@ -350,25 +347,23 @@ namespace Tests.EditorTests.NavigationTests
                 new Edge(new(6, -1), new(4, 1)), // \ at 5
             };
 
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            // Act
+            var result = CutIntersectingEdges(edges);
 
             // Horizontal should be split into 4 pieces
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(0, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(10, 0), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(0, 0)));
+            result.Should_ContainKey(new EdgeKey(new(10, 0), new(5, 0)));
 
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, -1), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(5, 1)));
+            result.Should_ContainKey(new EdgeKey(new(5, -1), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(5, 1)));
 
-            result.AsArray().Should_ContainKey(new EdgeKey(new(4, -1), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(6, 1)));
+            result.Should_ContainKey(new EdgeKey(new(4, -1), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(6, 1)));
 
-            result.AsArray().Should_ContainKey(new EdgeKey(new(6, -1), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(4, 1)));
+            result.Should_ContainKey(new EdgeKey(new(6, -1), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(4, 1)));
 
-            result.AsArray().Should().HaveCount(8);
+            result.Should().HaveCount(8);
         }
 
         [Test]
@@ -382,17 +377,14 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(10, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, -1), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, -1), new(5, 0)));
 
-            result.AsArray().Should().HaveCount(3);
+            result.Should().HaveCount(3);
         }
 
         [Test]
@@ -406,17 +398,14 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(5, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(5, 0), new(10, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(10, 0), new(15, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(5, 0)));
+            result.Should_ContainKey(new EdgeKey(new(5, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(10, 0), new(15, 0)));
 
-            result.AsArray().Should().HaveCount(3);
+            result.Should().HaveCount(3);
         }
 
         [Test]
@@ -430,19 +419,16 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(3, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(3, 0), new(7, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(7, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(3, 0)));
+            result.Should_ContainKey(new EdgeKey(new(3, 0), new(7, 0)));
+            result.Should_ContainKey(new EdgeKey(new(7, 0), new(10, 0)));
 
-            result.AsArray().Should().HaveCount(3);
+            result.Should().HaveCount(3);
         }
-        
+
         [Test]
         public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge()
         {
@@ -454,18 +440,15 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(2, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
+            result.Should_ContainKey(new EdgeKey(new(2, 0), new(10, 0)));
 
-            result.AsArray().Should().HaveCount(2);
+            result.Should().HaveCount(2);
         }
-        
+
         [Test]
         public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge_Multiple()
         {
@@ -478,49 +461,42 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(2, 0), new(8, 0)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(8, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(2, 0)));
+            result.Should_ContainKey(new EdgeKey(new(2, 0), new(8, 0)));
+            result.Should_ContainKey(new EdgeKey(new(8, 0), new(10, 0)));
 
-            result.AsArray().Should().HaveCount(3);
+            result.Should().HaveCount(3);
         }
-        
+
         [Test]
-        public void CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge_Multiple_AndHaveAdditionalCommonPoint()
+        public void
+            CutIntersectingEdges_ShouldCutOverlappingCompletely_WhenEdgeIsInside_AndCommonEdge_Multiple_AndHaveAdditionalCommonPoint()
         {
             // Arrange
             var edges = new List<Edge>
             {
-
-                
                 new Edge(new(9, 0), new(9, 2)),
                 new Edge(new(9, 5), new(9, 7)),
-                
+
                 new Edge(new(9, 0), new(10, 7)),
-                
+
                 new Edge(new(9, 7), new(9, 0)),
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 0), new(9, 2)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 2), new(9, 5)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(9, 5), new(9, 7)));
+            result.Should_ContainKey(new EdgeKey(new(9, 0), new(9, 2)));
+            result.Should_ContainKey(new EdgeKey(new(9, 2), new(9, 5)));
+            result.Should_ContainKey(new EdgeKey(new(9, 5), new(9, 7)));
 
-            result.AsArray().Should().HaveCount(4);
+            result.Should().HaveCount(4);
         }
-        
+
         [Test]
         public void CutIntersectingEdges_ShouldCutOverlapping_Complex()
         {
@@ -547,17 +523,17 @@ namespace Tests.EditorTests.NavigationTests
                 new Edge(new(10, 10), new(0, 10)),
                 new Edge(new(0, 10), new(0, 0)),
                 new Edge(new(0, 0), new(10, 0)),
-                
+
                 // Triangle 1
                 new Edge(new(0, 2), new(1, 0)),
                 new Edge(new(1, 0), new(1, 2)),
                 new Edge(new(1, 2), new(0, 2)),
-                
+
                 // Triangle 2
                 new Edge(new(0, 7), new(1, 5)),
                 new Edge(new(1, 5), new(1, 7)),
                 new Edge(new(1, 7), new(0, 7)),
-                
+
                 // Triangle 3
                 new Edge(new(1, 7), new(1, 0)),
                 new Edge(new(1, 0), new(2, 7)),
@@ -565,17 +541,14 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result, .0005f);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 0), new(1, 2)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 2), new(1, 5)));
-            result.AsArray().Should_ContainKey(new EdgeKey(new(1, 5), new(1, 7)));
+            result.Should_ContainKey(new EdgeKey(new(1, 0), new(1, 2)));
+            result.Should_ContainKey(new EdgeKey(new(1, 2), new(1, 5)));
+            result.Should_ContainKey(new EdgeKey(new(1, 5), new(1, 7)));
 
-            result.AsArray().Should().HaveCount(16);
+            result.Should().HaveCount(16);
         }
 
         [Test]
@@ -589,15 +562,12 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges);
 
             // Assert
-            result.AsArray().Should_ContainKey(new EdgeKey(new(0, 0), new(10, 0)));
+            result.Should_ContainKey(new EdgeKey(new(0, 0), new(10, 0)));
 
-            result.AsArray().Should().HaveCount(1);
+            result.Should().HaveCount(1);
         }
 
         [Test]
@@ -611,13 +581,10 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result, tolerance: 0);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges, tolerance: 0);
 
             // Assert
-            result.AsArray().Should().HaveCount(2);
+            result.Should().HaveCount(2);
         }
 
         [Test]
@@ -631,14 +598,51 @@ namespace Tests.EditorTests.NavigationTests
             };
 
             // Act
-            using var result = ToNative(edges);
-            PolygonUtils.CutIntersectingEdges(result, tolerance: 0.001f);
-
-            Draw(result);
+            var result = CutIntersectingEdges(edges, tolerance: 0.001f);
 
             // Assert
-            result.AsArray().Should().HaveCount(3);
+            result.Should().HaveCount(3);
         }
+
+        [Test]
+        public void CutIntersectingEdges_ShouldRemoveNoLengthEdges()
+        {
+            // Arrange
+            var edges = new List<Edge>
+            {
+                new Edge(new(0f, 0f), new(1f, 2f)),
+                new Edge(new(1f, 2f), new(9f, 0f)),
+                new Edge(new(1f, 7f), new(1f, 2f)),
+                new Edge(new(1f, 2f), new(1f, 2f)), // point
+                new Edge(new(0f, 0f), new(0f, 0f)), // point
+                new Edge(new(0f, 0f), new(0f, 0f)), // point
+                new Edge(new(1f, 7f), new(0f, 0f)),
+                new Edge(new(9f, 0f), new(1f, 2f)),
+                new Edge(new(9f, 0f), new(9f, 0f)), // point
+                new Edge(new(1f, 2f), new(1f, 2f)), // point
+                new Edge(new(1f, 2f), new(1f, 2f)), // point
+                new Edge(new(9f, 5f), new(1f, 7f)),
+                new Edge(new(1f, 5f), new(9f, 5f)),
+                new Edge(new(1f, 7f), new(1f, 5f)),
+            };
+
+            // Act
+            var result = CutIntersectingEdges(edges);
+
+            // Assert
+            result.Should().HaveCount(7);
+        }
+
+        private Edge[] CutIntersectingEdges(List<Edge> edges, float tolerance = 1E-05F)
+        {
+            using var result = ToNative(edges);
+            Draw(result, new float2(11, 0));
+            PolygonUtils.CutIntersectingEdges(result, tolerance);
+            Draw(result);
+            return result.AsArray().ToArray();
+        }
+
+        #endregion
 
         [Test]
         public void ExpandSquare_ShouldIncreaseTriangleSize()
@@ -653,7 +657,7 @@ namespace Tests.EditorTests.NavigationTests
             Draw(polygon, Color.white);
             PolygonUtils.ExpandPolygon(polygon, .5f);
             Draw(polygon, Color.red);
-            
+
             // Expect square expanded outward -> each corner offset
             polygon.Length.Should().Be(3);
 
@@ -661,7 +665,7 @@ namespace Tests.EditorTests.NavigationTests
             polygon[1].Should().BeApproximately(new(1, 1.70710671f));
             polygon[2].Should().BeApproximately(new(3.20710659f, -0.5f));
         }
-        
+
         [Test]
         public void ExpandSquare_ShouldIncreaseRectangleSize()
         {
@@ -676,7 +680,7 @@ namespace Tests.EditorTests.NavigationTests
             Draw(polygon, Color.white);
             PolygonUtils.ExpandPolygon(polygon, 1);
             Draw(polygon, Color.red);
-            
+
             // Expect square expanded outward -> each corner offset
             polygon.Length.Should().Be(4);
 
@@ -699,7 +703,7 @@ namespace Tests.EditorTests.NavigationTests
             Draw(polygon, Color.white);
             PolygonUtils.ExpandPolygon(polygon, 0.5f);
             Draw(polygon, Color.red);
-            
+
             // Should remain CCW
             float area = Triangle.SignedArea(polygon[0], polygon[1], polygon[2]);
             area.Should().BeLessThan(0);
@@ -722,7 +726,7 @@ namespace Tests.EditorTests.NavigationTests
             Draw(polygon, Color.white);
             PolygonUtils.ExpandPolygon(polygon, 0f);
             Draw(polygon, Color.red);
-            
+
             for (int i = 0; i < 4; i++)
             {
                 polygon[i].Should().BeApproximately(original[i]);
@@ -806,7 +810,7 @@ namespace Tests.EditorTests.NavigationTests
 
         #region Helpers
 
-        private void Draw(in NativeList<Edge> edges)
+        private void Draw(in NativeList<Edge> edges, float2 offset = default)
         {
             if (!TestConfig.DEBUG)
             {
@@ -815,11 +819,11 @@ namespace Tests.EditorTests.NavigationTests
 
             foreach (var edge in edges)
             {
-                Debug.DrawLine(edge.A.To3D(), edge.B.To3D(), Color.white, 5);
-                edge.Center.To3D().DrawPoint(Color.red, 5, 0.1f);
+                Debug.DrawLine((edge.A + offset).To3D(), (edge.B + offset).To3D(), Color.white, 5);
+                (edge.Center + offset).To3D().DrawPoint(Color.red, 5, 0.1f);
             }
         }
-        
+
         private void Draw(in NativeList<float2> verts, Color color)
         {
             if (!TestConfig.DEBUG)

@@ -268,6 +268,15 @@ namespace Navigation
         /// </summary>
         public static void CutIntersectingEdges(NativeList<Edge> edges, float tolerance = GeometryUtils.EPSILON)
         {
+            for (int i = 0; i < edges.Length; i++)
+            {
+                if (GeometryUtils.NearlyEqual(edges[i].A, edges[i].B))
+                {
+                    edges.RemoveAtSwapBack(i);
+                    i--;
+                }
+            }
+            
             for (int ai = 0; ai < edges.Length; ai++)
             {
                 for (int bi = ai + 1; bi < edges.Length; bi++)
