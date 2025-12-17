@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using FluentAssertions;
 using HCore;
 using HCore.Extensions;
@@ -10,7 +9,6 @@ using Unity.Mathematics;
 using UnityEngine;
 using HCore.Shapes;
 using Tests.TestsUtilities;
-using Unity.Jobs;
 using Triangle = Navigation.Triangle;
 
 namespace Tests.EditorTests.NavigationTests
@@ -523,7 +521,7 @@ namespace Tests.EditorTests.NavigationTests
                     .Should().HaveCount(1);
             _navMesh.GetActiveNodes.Should().HaveCount(21);
         }
-        
+
         [Test]
         public void Update_ShouldCutLineOnMultipleParts()
         {
@@ -540,14 +538,14 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └────────────────────────────────────────────────────────────────────▶ X
             //       0     1     2     3     4     5     6     7     8     9    10   
-            
+
             // Considered error
             // [Triangulator]: ConstraintEdges[4] = (6, 7) = <(1, 7), (1, 2)> and Positions[9] = <(1, 5)> are collinear!
-            
+
             _navObstacles.AddObstacle(new(1), new(0, 2), new(1, 0), new(1, 2));
             _navObstacles.AddObstacle(new(2), new(0, 7), new(1, 5), new(1, 7));
             _navObstacles.AddObstacle(new(3), new(1, 7), new(1, 0), new(2, 7));
-            
+
             RunUpdate();
 
             Draw(_navMesh.Nodes);
@@ -558,7 +556,7 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
             _navMesh.GetActiveNodes.Should().HaveCount(13);
         }
-        
+
         [Test]
         public void Update_ShouldCreateBorder()
         {
@@ -567,7 +565,7 @@ namespace Tests.EditorTests.NavigationTests
             //  7 |  *----*------------------------------------------------*----*  
             //  6 |  | 1 /| 7                    \                       8 | 3 /|     
             //  5 |  |  / *------------------------------------------------*  / |
-            //  4 |  |  / |                     9                          |  / |
+            //  4 |  |  / |                                                |  / |
             //  3 |  | /  |                                                | /  |
             //  2 |  | /  *------------------------------------------------* /  |
             //  1 |  |/ 2 | 5                    \                       6 |/ 4 |
@@ -575,7 +573,7 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └────────────────────────────────────────────────────────────────────▶ X
             //       0     1     2     3     4     5     6     7     8     9    10   
-            
+
             // Left column
             _navObstacles.AddObstacle(new(1), new(0, 0), new(0, 7), new(1, 7));
             _navObstacles.AddObstacle(new(2), new(0, 0), new(1, 0), new(1, 7));
@@ -587,11 +585,11 @@ namespace Tests.EditorTests.NavigationTests
             // Middle-top block
             _navObstacles.AddObstacle(new(7), new(1, 5), new(9, 5), new(1, 7));
             _navObstacles.AddObstacle(new(8), new(1, 7), new(9, 5), new(9, 7));
-            
+
             // Right column
             _navObstacles.AddObstacle(new(3), new(9, 0), new(10, 7), new(9, 7));
             _navObstacles.AddObstacle(new(4), new(9, 0), new(10, 0), new(10, 7));
-            
+
             // Act create border
             RunUpdate();
 
@@ -602,15 +600,68 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(1);
-            
+
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(1);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(18);
         }
         
+        [Test]
+        public void Update_ShouldCreateBorder_WhenPartiallyUpdate()
+        {
+            //    Y                    
+            //    ▲
+            //  7 |  *----*------------------------------------------------*----*  
+            //  6 |  | 1 /| 7                    \                       8 | 3 /|     
+            //  5 |  |  / *------------------------------------------------*  / |
+            //  4 |  |  / |                                                |  / |
+            //  3 |  | /  |                                                | /  |
+            //  2 |  | /  *------------------------------------------------* /  |
+            //  1 |  |/ 2 | 5                    \                       6 |/ 4 |
+            //  0 |  *----*------------------------------------------------*----*
+            //    |  
+            //    └────────────────────────────────────────────────────────────────────▶ X
+            //       0     1     2     3     4     5     6     7     8     9    10   
+
+            // Left column
+            _navObstacles.AddObstacle(new(1), new(0, 0), new(0, 7), new(1, 7));
+            _navObstacles.AddObstacle(new(2), new(0, 0), new(1, 0), new(1, 7));
+            RunUpdate(new float2(0, 0), new float2(1, 7));
+
+            // Middle-bottom block
+            _navObstacles.AddObstacle(new(5), new(1, 0), new(9, 0), new(1, 2));
+            _navObstacles.AddObstacle(new(6), new(1, 2), new(9, 0), new(9, 2));
+            RunUpdate(new float2(1, 0), new float2(9, 2));
+            
+            // Middle-top block
+            _navObstacles.AddObstacle(new(7), new(1, 5), new(9, 5), new(1, 7));
+            _navObstacles.AddObstacle(new(8), new(1, 7), new(9, 5), new(9, 7));
+            RunUpdate(new float2(1, 5), new float2(9, 7));
+            
+            // Right column
+            _navObstacles.AddObstacle(new(3), new(9, 0), new(10, 7), new(9, 7));
+            _navObstacles.AddObstacle(new(4), new(9, 0), new(10, 0), new(10, 7));
+            RunUpdate(new float2(9, 0), new float2(10, 7));
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(1);
+
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(1);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(1);
+
+            _navMesh.GetActiveNodes.Should().HaveCount(18);
+        }
+
         [Test]
         public void Update_ShouldCreateBorder_AndPutObstacleInside()
         {
@@ -627,7 +678,7 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └────────────────────────────────────────────────────────────────────▶ X
             //       0     1     2     3     4     5     6     7     8     9    10   
-            
+
             // Left column
             _navObstacles.AddObstacle(new(1), new(0, 0), new(0, 7), new(1, 7));
             _navObstacles.AddObstacle(new(2), new(0, 0), new(1, 0), new(1, 7));
@@ -639,11 +690,11 @@ namespace Tests.EditorTests.NavigationTests
             // Middle-top block
             _navObstacles.AddObstacle(new(7), new(1, 5), new(9, 5), new(1, 7));
             _navObstacles.AddObstacle(new(8), new(1, 7), new(9, 5), new(9, 7));
-            
+
             // Right column
             _navObstacles.AddObstacle(new(3), new(9, 0), new(10, 7), new(9, 7));
             _navObstacles.AddObstacle(new(4), new(9, 0), new(10, 0), new(10, 7));
-            
+
             // Act create border
             RunUpdate();
 
@@ -654,37 +705,145 @@ namespace Tests.EditorTests.NavigationTests
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(1);
-            
+
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(1);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(18);
-            
+
             // Act add item in center
             _navObstacles.AddObstacle(new(9), new(4, 3), new(5, 3), new(5, 4));
             RunUpdate();
-            
+
             Draw(_navMesh.Nodes);
-            
+
             // Assert no changes
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(3);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(1);
-            
+
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(1);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(1);
-            
+
             // Assert new
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(9)).Should().HaveCount(1);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(24);
         }
-        
+
+        [Test]
+        public void Update_ShouldCreateBorder_WhenExpended()
+        {
+            //    Y                    
+            //    ▲
+            //  7 |  *----*------------------------------------------------*----*  
+            //  6 |  | 1 /| 7                    \                       8 | 3 /|     
+            //  5 |  |  / *------------------------------------------------*  / |
+            //  4 |  |  / |                                                |  / |
+            //  3 |  | /  |                                                | /  |
+            //  2 |  | /  *------------------------------------------------* /  |
+            //  1 |  |/ 2 | 5                    \                       6 |/ 4 |
+            //  0 |  *----*------------------------------------------------*----*
+            //    |  
+            //    └────────────────────────────────────────────────────────────────────▶ X
+            //       0     1     2     3     4     5     6     7     8     9    10   
+
+            // Left column
+            _navObstacles.AddObstacle(new(1), new(.1f, .1f), new(.1f, 7.1f), new(1.1f, 7.1f));
+            _navObstacles.AddObstacle(new(2), new(.1f, .1f), new(1.1f, .1f), new(1.1f, 7.1f));
+
+            // Middle-bottom block
+            _navObstacles.AddObstacle(new(5), new(1, 0), new(9, 0), new(1, 2));
+            _navObstacles.AddObstacle(new(6), new(1, 2), new(9, 0), new(9, 2));
+
+            // Middle-top block
+            _navObstacles.AddObstacle(new(7), new(1, 5), new(9, 5), new(1, 7));
+            _navObstacles.AddObstacle(new(8), new(1, 7), new(9, 5), new(9, 7));
+
+            // Right column
+            _navObstacles.AddObstacle(new(3), new(8.9f, .1f), new(9.9f, 7.1f), new(8.9f, 7.1f));
+            _navObstacles.AddObstacle(new(4), new(8.9f, .1f), new(9.9f, .1f), new(9.9f, 7.1f));
+
+            // Act create border
+            RunUpdate();
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(5);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(9);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(11);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(3);
+
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(5);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(6);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(3);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(4);
+
+            _navMesh.GetActiveNodes.Should().HaveCount(52);
+        }
+
+        [Test]
+        public void Update_ShouldCreateBorder_WhenExpended_WhenPartiallyUpdate()
+        {
+            //    Y                    
+            //    ▲
+            //  7 |  *----*------------------------------------------------*----*  
+            //  6 |  | 1 /| 7                    \                       8 | 3 /|     
+            //  5 |  |  / *------------------------------------------------*  / |
+            //  4 |  |  / |                                                |  / |
+            //  3 |  | /  |                                                | /  |
+            //  2 |  | /  *------------------------------------------------* /  |
+            //  1 |  |/ 2 | 5                    \                       6 |/ 4 |
+            //  0 |  *----*------------------------------------------------*----*
+            //    |  
+            //    └────────────────────────────────────────────────────────────────────▶ X
+            //       0     1     2     3     4     5     6     7     8     9    10   
+
+            // Left column
+            _navObstacles.AddObstacle(new(1), new(.1f, .1f), new(.1f, 7.1f), new(1.1f, 7.1f));
+            _navObstacles.AddObstacle(new(2), new(.1f, .1f), new(1.1f, .1f), new(1.1f, 7.1f));
+            RunUpdate(new float2(0, 0), new float2(5, 5)); // to reduce update area
+
+            // Middle-bottom block
+            _navObstacles.AddObstacle(new(5), new(1, 0), new(9, 0), new(1, 2));
+            _navObstacles.AddObstacle(new(6), new(1, 2), new(9, 0), new(9, 2));
+
+            // Middle-top block
+            _navObstacles.AddObstacle(new(7), new(1, 5), new(9, 5), new(1, 7));
+            _navObstacles.AddObstacle(new(8), new(1, 7), new(9, 5), new(9, 7));
+
+            // Right column
+            _navObstacles.AddObstacle(new(3), new(8.9f, .1f), new(9.9f, 7.1f), new(8.9f, 7.1f));
+            _navObstacles.AddObstacle(new(4), new(8.9f, .1f), new(9.9f, .1f), new(9.9f, 7.1f));
+
+            // Act create border
+            RunUpdate(new float2(0, 0), new float2(5, 5));
+            RunUpdate(new float2(5, 0), new float2(10, 5));
+            RunUpdate(new float2(0, 5), new float2(5, 10));
+            RunUpdate(new float2(5, 5), new float2(10, 10));
+
+            Draw(_navMesh.Nodes);
+
+            // Assert
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(5);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(9);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(3)).Should().HaveCount(11);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(4)).Should().HaveCount(3);
+            
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(5)).Should().HaveCount(5);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(6)).Should().HaveCount(6);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(7)).Should().HaveCount(4);
+            _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(8)).Should().HaveCount(3);
+
+            _navMesh.GetActiveNodes.Should().HaveCount(52);
+        }
+
         [Test]
         public void Update_ShouldIncludeObjectThatIsBiggerThenArea()
         {
@@ -699,9 +858,9 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └───────────────────────────────────────────────────────────▶ X
             //       -2     0     2     4     6     8     10     12   
-            
+
             _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
-            
+
             // Act create border
             RunUpdate();
 
@@ -709,10 +868,10 @@ namespace Tests.EditorTests.NavigationTests
 
             // Assert
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(2);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(6);
         }
-        
+
         [Test]
         public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasCrossing()
         {
@@ -727,10 +886,10 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └───────────────────────────────────────────────────────────▶ X
             //       -2     0     2     4     6     8     10     12   
-            
+
             _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
             _navObstacles.AddObstacle(new(2), new(4, 0), new(6, 0), new(6, 12));
-            
+
             // Act create border
             RunUpdate();
 
@@ -739,10 +898,10 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(6);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(6);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(18);
         }
-        
+
         [Test]
         public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasOvverlapingCrossing()
         {
@@ -757,10 +916,10 @@ namespace Tests.EditorTests.NavigationTests
             //    |  
             //    └───────────────────────────────────────────────────────────▶ X
             //       -2     0     2     4     6     8     10     12   
-            
+
             _navObstacles.AddObstacle(new(1), new(-2, 2), new(12, 2), new(-2, 4));
             _navObstacles.AddObstacle(new(2), new(4, 2), new(6, 2), new(6, 10));
-            
+
             // Act create border
             RunUpdate();
 
@@ -769,7 +928,7 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(6);
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(2)).Should().HaveCount(3);
-            
+
             _navMesh.GetActiveNodes.Should().HaveCount(15);
         }
 
@@ -777,7 +936,7 @@ namespace Tests.EditorTests.NavigationTests
 
         private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float offsetX) => Draw(nodes, new float2(offsetX, 0));
 
-        private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float2 offset = default)
+        private void Draw(NativeArray<NavNode<IdAttribute>> nodes, float2 offset = default, float time = 10)
         {
             if (!TestConfig.DEBUG)
             {
@@ -786,9 +945,9 @@ namespace Tests.EditorTests.NavigationTests
 
             foreach (var node in nodes)
             {
-                new Triangle(node.Triangle.A + offset, node.Triangle.B + offset, node.Triangle.C + offset).DrawBorder(Color.white, 3);
+                new Triangle(node.Triangle.A + offset, node.Triangle.B + offset, node.Triangle.C + offset).DrawBorder(Color.white, time);
                 var color = node.Attributes.Entries > 0 ? ColorUtils.GetColor(node.Attributes.Entries) : Color.gray;
-                (node.Center + offset).To3D().DrawPoint(color, 3, .1f);
+                (node.Center + offset).To3D().DrawPoint(color, time, .1f);
             }
         }
 

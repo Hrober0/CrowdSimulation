@@ -1,6 +1,7 @@
 ﻿using System.Runtime.CompilerServices;
 using andywiecko.BurstTriangulator;
 using andywiecko.BurstTriangulator.LowLevel.Unsafe;
+using HCore.Extensions;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -37,8 +38,14 @@ namespace Navigation
             // Get removed area border
             using var unorderedBorderEdges = new NativeList<EdgeKey>(DEFAULT_CAPACITY, Allocator.Temp);
             PolygonUtils.GetEdgesUnordered(in removedNodes, unorderedBorderEdges, tolerance: MIN_POINT_DISTANCE);
+            
+            // Create CCS border points
             using var borderPointsCCW = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
             var isLoopClose = PolygonUtils.GetPointsCCW(in unorderedBorderEdges, borderPointsCCW);
+
+            // DebugBorder(unorderedBorderEdges, borderPointsCCW);
+            
+            // Validate border creation
             if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
             {
                 Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {unorderedBorderEdges.Length}");
@@ -52,12 +59,23 @@ namespace Navigation
                 return;
             }
             
+            // Create CCS border points
             using var borderEdgesCCW = new NativeList<Edge>(unorderedBorderEdges.Length, Allocator.Temp);
             PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, toleration: MIN_POINT_DISTANCE);
             
+            // Fix min max
+            float2 newUpdateMin = borderEdgesCCW[0].A;
+            float2 newUpdateMax = newUpdateMin;
+            for (var i = 1; i < borderEdgesCCW.Length; i++)
+            {
+                Edge b = borderEdgesCCW[i];
+                newUpdateMin = math.min(newUpdateMin, b.A);
+                newUpdateMax = math.max(newUpdateMax, b.A);
+            }
+            
             // Get obstacle inside border
             using var obstaclesParts = new NativeList<NavObstacles<T>.IndexedTriangle>(DEFAULT_CAPACITY, Allocator.Temp);
-            NavObstacles.ObstacleLookup.QueryAABB(UpdateMin, UpdateMax, obstaclesParts);
+            NavObstacles.ObstacleLookup.QueryAABB(newUpdateMin, newUpdateMax, obstaclesParts);
             using var obstacleIndexes = new NativeHashSet<int>(obstaclesParts.Length, Allocator.Temp);
             foreach (var indexedTriangle in obstaclesParts)
             {
@@ -72,6 +90,7 @@ namespace Navigation
             insideEdges.CopyFrom(in borderEdgesCCW);
             
             // Add obstacle edges to insideEdges
+            // TODO: this can produce 0 length edges, this is fixed in CutIntersectingEdges but it should be resolved
             using var intersectionBuffer = new NativeList<float2>(borderEdgesCCW.Length, Allocator.Temp);
             foreach (var obstacleIndex in obstacleIndexes)
             {
@@ -324,6 +343,29 @@ namespace Navigation
                 }
                 
                 NavMesh.AddNode(new(triangle, attributes));
+            }
+        }
+
+        private static void DebugBorder(NativeList<EdgeKey> unorderedBorderEdges, NativeList<float2> borderPointsCCW)
+        {
+            var center = float2.zero;
+            foreach (EdgeKey edge in unorderedBorderEdges)
+            {
+                center += edge.A;
+                center += edge.B;
+            }
+            center /= math.max(unorderedBorderEdges.Length * 2, 1);
+            center.To3D().DrawPoint(Color.cyan, 15, .1f);
+            Debug.Log($"Update Center: {center}");
+            foreach (EdgeKey edge in unorderedBorderEdges)
+            {
+                DebugUtils.DrawWithOffset(edge.A, edge.B, center, Color.cyan, 15);
+                Debug.Log($"Edge {edge.A} - {edge.B}");
+            }
+            borderPointsCCW.AsArray().DrawLoop(Color.green, 5);
+            foreach (var p in borderPointsCCW)
+            {
+                Debug.Log($"P {p}");
             }
         }
     }
