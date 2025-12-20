@@ -198,9 +198,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 449967ddc7de42b5a16407cb276181ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _drawPortals: 1
+  _drawPortals: 0
   _drawPortalsRight: 0
-  _drawPortalsFlow: 1
 --- !u!114 &344164994
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -216,8 +215,8 @@ MonoBehaviour:
   _drawEdges: 0
   _drawLookup: 0
   _drawNodes: 1
-  _drawNodesCenters: 0
-  _drawConnections: 0
+  _drawNodesCenters: 1
+  _drawConnections: 1
 --- !u!114 &344164995
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -230,7 +229,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2503130a369417b4b9f6612f4390a3f1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _drawVelocities: 1
+  _drawVelocities: 0
 --- !u!1 &439831815
 GameObject:
   m_ObjectHideFlags: 0

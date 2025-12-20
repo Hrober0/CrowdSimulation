@@ -52,6 +52,9 @@ namespace Navigation
             var points = new NativeList<float2>(triangles.Length * 3, Allocator.Temp);
             var edgeCounts = new NativeHashMap<EdgeKey, int>(triangles.Length * 3, Allocator.Temp);
 
+            var si = "Input: ";
+            var so = "Output: ";
+            
             // Count all triangle edges
             foreach (Triangle tr in triangles)
             {
@@ -59,6 +62,7 @@ namespace Navigation
                 AddEdge(tr.B, tr.C);
                 AddEdge(tr.C, tr.A);
                 // tr.GetCenter.To3D().DrawPoint(Color.cyan, size: 0.3f);
+                si += $";\n ({tr.A}, {tr.B}, {tr.C})";
             }
 
             // Gather unique boundary points (appear only once)
@@ -71,7 +75,12 @@ namespace Navigation
 
                 // var c = kvp.Value == 1 ? Color.green : Color.magenta;
                 // Debug.DrawLine(math.float3(kvp.Key.A, 0), math.float3(kvp.Key.B, 0), c);
+                so += $";\n {kvp.Value} - {kvp.Key}";
             }
+            
+            Debug.Log(si);
+            Debug.Log(so);
+            
             
             edgeCounts.Dispose();
             return;

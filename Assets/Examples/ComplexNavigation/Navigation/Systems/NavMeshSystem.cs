@@ -1,5 +1,6 @@
 ﻿using andywiecko.BurstTriangulator;
 using CustomNativeCollections;
+using HCore.Extensions;
 using Navigation;
 using Unity.Burst;
 using Unity.Collections;
@@ -281,6 +282,8 @@ namespace ComplexNavigation
                 float2 min = SpatialHashMethods.CellMin(area, CHUNK_SIZE_INV);
                 float2 max = min + CHUNK_SIZE;
                 // Debug.Log($"Update {min} {max}");
+                Debug.DrawLine(min.To3D(), max.To3D(), Color.red, 5);
+                Debug.DrawLine(new float2(max.x, min.y).To3D(), new float2(min.x, max.y).To3D(), Color.red, 5);
                 new NavMeshUpdateJob<T>
                 {
                     NavMesh = NavMesh,

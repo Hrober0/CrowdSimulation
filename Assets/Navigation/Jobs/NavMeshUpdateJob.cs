@@ -43,7 +43,7 @@ namespace Navigation
             using var borderPointsCCW = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
             var isLoopClose = PolygonUtils.GetPointsCCW(in unorderedBorderEdges, borderPointsCCW);
 
-            // DebugBorder(unorderedBorderEdges, borderPointsCCW);
+            DebugBorder(unorderedBorderEdges, borderPointsCCW);
             
             // Validate border creation
             if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
@@ -98,7 +98,7 @@ namespace Navigation
                 {
                     bool isAInside = IsPointInPolygon(in obstacleEdge.A, in removedNodes);
                     bool isBInside = IsPointInPolygon(in obstacleEdge.B, in removedNodes);
-
+                    // Debug.Log($"OBST {obstacleIndex} Edge {obstacleEdge.A} - {obstacleEdge.B} {isAInside} {isBInside}");
                     if (isAInside && isBInside)
                     {
                         // Inside polygon
@@ -119,7 +119,7 @@ namespace Navigation
                     {
                         if (intersectionBuffer.Length == 0)
                         {
-                            Debug.LogWarning($"Edge {obstacleEdge} should intersect border, because have one of the endpoint inside ({isAInside} {isBInside})");
+                            Debug.LogWarning($"Edge {obstacleEdge.A} {obstacleEdge.B} should intersect border, because have one of the endpoint inside ({isAInside} {isBInside})");
                             continue;
                         }
                         
@@ -201,11 +201,12 @@ namespace Navigation
                 constraintEdges.Add(bi);
             }
 
+            // Debug constraints
             // for (var index = 0; index < constraintEdges.Length; index+=2)
             // {
             //     var p1 = positions[constraintEdges[index]];
             //     var p2 = positions[constraintEdges[index + 1]];
-            //     Debug.DrawLine(p1.To3D(), p2.To3D(), Color.green);
+            //     Debug.DrawLine(p1.To3D(), p2.To3D(), Color.green, 5);
             // }
             // foreach (var p in positions)
             // {
@@ -286,12 +287,6 @@ namespace Navigation
                 newNodes.Add(triangle);
             }
             AddNodes(in newNodes);
-            
-            // Debug
-            // foreach (var e in borderEdges)
-            // {
-            //     Debug.DrawLine(math.float3(e.A, 0), math.float3(e.B, 0), Color.green);
-            // }
 
             return;
 
