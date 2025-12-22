@@ -43,7 +43,7 @@ namespace Navigation
             using var borderPointsCCW = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
             var isLoopClose = PolygonUtils.GetPointsCCW(in unorderedBorderEdges, borderPointsCCW);
 
-            DebugBorder(unorderedBorderEdges, borderPointsCCW);
+            // DebugBorder(unorderedBorderEdges, borderPointsCCW);
             
             // Validate border creation
             if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
@@ -61,7 +61,7 @@ namespace Navigation
             
             // Create CCS border points
             using var borderEdgesCCW = new NativeList<Edge>(unorderedBorderEdges.Length, Allocator.Temp);
-            PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, toleration: MIN_POINT_DISTANCE);
+            PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, UpdateMin, UpdateMax, toleration: MIN_POINT_DISTANCE);
             
             // Fix min max
             float2 newUpdateMin = borderEdgesCCW[0].A;

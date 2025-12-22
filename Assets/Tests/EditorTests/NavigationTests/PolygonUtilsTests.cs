@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using FluentAssertions;
 using HCore.Extensions;
+using HCore.Shapes;
 using Navigation;
 using NUnit.Framework;
 using Tests.TestsUtilities;
@@ -8,67 +9,91 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using Color = UnityEngine.Color;
+using Triangle = Navigation.Triangle;
 
 namespace Tests.EditorTests.NavigationTests
 {
     public class PolygonUtilsTests
     {
+        #region GetEdgesUnordered
+        
         [Test]
         public void GetEdgesUnordered_ShouldReturn3Edges_FromSingleTriangle()
         {
             // Arrange
-            using var triangles = new NativeList<Triangle>(Allocator.Temp)
+            var triangles = new List<Triangle>()
             {
                 new(new(0, 0), new(1, 0), new(0, 1)),
             };
 
             // Act
-            using var edges = new NativeList<EdgeKey>(Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(triangles, edges);
+            var edges = GetEdgesUnordered(triangles);
 
             // Assert
             edges.Length.Should().Be(3);
-            edges.AsArray().Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
-            edges.AsArray().Should().Contain(new EdgeKey(new(1, 0), new(0, 1)));
-            edges.AsArray().Should().Contain(new EdgeKey(new(0, 1), new(0, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(1, 0), new(0, 1)));
+            edges.Should().Contain(new EdgeKey(new(0, 1), new(0, 0)));
         }
 
         [Test]
         public void GetEdgesUnordered_ShouldReturn4_FromTwoAdjacentTriangles()
         {
             // Arrange: with common edge (1,0)-(0,1)
-            using var triangles = new NativeList<Triangle>(Allocator.Temp)
+            var triangles = new List<Triangle>()
             {
                 new(new(0, 0), new(1, 0), new(0, 1)),
                 new(new(1, 0), new(1, 1), new(0, 1)),
             };
 
             // Act
-            using var edges = new NativeList<EdgeKey>(Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(triangles, edges);
+            var edges = GetEdgesUnordered(triangles);
 
             // Assert
             edges.Length.Should().Be(4);
-            edges.AsArray().Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
-            edges.AsArray().Should().Contain(new EdgeKey(new(0, 1), new(0, 0)));
-            edges.AsArray().Should().Contain(new EdgeKey(new(1, 0), new(1, 1)));
-            edges.AsArray().Should().Contain(new EdgeKey(new(0, 1), new(1, 1)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 1), new(0, 0)));
+            edges.Should().Contain(new EdgeKey(new(1, 0), new(1, 1)));
+            edges.Should().Contain(new EdgeKey(new(0, 1), new(1, 1)));
         }
 
         [Test]
         public void GetEdgesUnordered_ShouldReturnEmptyEdges_FromEmptyList()
         {
             // Arrange
-            using var triangles = new NativeList<Triangle>(Allocator.Temp);
+            var triangles = new List<Triangle>();
 
             // Act
-            using var edges = new NativeList<EdgeKey>(Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(triangles, edges);
+            var edges = GetEdgesUnordered(triangles);
 
             // Assert
             edges.Length.Should().Be(0);
         }
 
+
+        private static EdgeKey[] GetEdgesUnordered(List<Triangle> triangles)
+        {
+            using var nativeTriangles = new NativeList<Triangle>(triangles.Count,Allocator.Temp);
+            triangles.ForEach(t => nativeTriangles.Add(t));
+            
+            using var edges = new NativeList<EdgeKey>(Allocator.Temp);
+            PolygonUtils.GetEdgesUnordered(nativeTriangles, edges);
+
+            if (TestConfig.DEBUG)
+            {
+                triangles.ForEach(t => nativeTriangles.Add(t));
+                triangles.ForEach(t => t.GetCenter.To3D().DrawPoint(Color.white, 10, .03f));
+                triangles.ForEach(t => t.DrawBorder(Color.gray, 10));
+                edges.AsArray().ForEach(e => DebugUtils.Draw(e.A, e.B, Color.cyan, 10));
+            }
+
+            return edges.AsArray().ToArray();
+        }
+        
+        #endregion
+
+        #region GetPointsCCW
+        
         [Test]
         public void GetPointsCCW_ShouldReturnSamePoints_ForOneEdge()
         {
@@ -209,32 +234,39 @@ namespace Tests.EditorTests.NavigationTests
             // Assert
             points.AsArray().Should().ContainInOrderLooped(new(-1, 1), new(-1, 2), new(-1, 3), new(1, 0), new(1, 1), new(0, 1), new(0, 0));
         }
+        
+        #endregion
+
+        #region ReduceEdges
 
         [Test]
         public void ReduceEdges_ShouldPreserveSquare()
         {
-            using var points = new NativeList<float2>(Allocator.Temp)
+            // Arrange
+            var points = new List<float2>()
             {
                 new float2(0, 0),
                 new float2(1, 0),
                 new float2(1, 1),
                 new float2(0, 1)
             };
-            using var edges = new NativeList<Edge>(Allocator.Temp);
 
-            PolygonUtils.ReduceEdges(points, edges);
+            // Act
+            var edges = ReduceEdges(points);
 
+            // Assert
             edges.Length.Should().Be(4);
-            edges.AsArray().Should_ContainKey(new(new(0, 0), new(1, 0)));
-            edges.AsArray().Should_ContainKey(new(new(1, 0), new(1, 1)));
-            edges.AsArray().Should_ContainKey(new(new(1, 1), new(0, 1)));
-            edges.AsArray().Should_ContainKey(new(new(0, 1), new(0, 0)));
+            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should_ContainKey(new(new(1, 0), new(1, 1)));
+            edges.Should_ContainKey(new(new(1, 1), new(0, 1)));
+            edges.Should_ContainKey(new(new(0, 1), new(0, 0)));
         }
 
         [Test]
         public void ReduceEdges_ShouldRemoveCollinearPointOnSquareSide()
         {
-            using var points = new NativeList<float2>(Allocator.Temp)
+            // Arrange
+            var points = new List<float2>()
             {
                 new(0, 0),
                 new(0.5f, 0), // collinear, redundant
@@ -242,18 +274,20 @@ namespace Tests.EditorTests.NavigationTests
                 new(1, 1),
                 new(0, 1)
             };
-            using var edges = new NativeList<Edge>(Allocator.Temp);
+            
+            // Act
+            var edges = ReduceEdges(points);
 
-            PolygonUtils.ReduceEdges(points, edges);
-
+            // Assert
             edges.Length.Should().Be(4, "collinear point should be removed");
-            edges.AsArray().Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
         }
 
         [Test]
         public void ReduceEdges_ShouldRemoveMultipleCollinearPoints()
         {
-            using var points = new NativeList<float2>(Allocator.Temp)
+            // Arrange
+            var points = new List<float2>()
             {
                 new(0, 0),
                 new(0.25f, 0),
@@ -263,28 +297,79 @@ namespace Tests.EditorTests.NavigationTests
                 new(1, 1),
                 new(0, 1)
             };
-            using var edges = new NativeList<Edge>(Allocator.Temp);
+            
+            // Act
+            var edges = ReduceEdges(points);
 
-            PolygonUtils.ReduceEdges(points, edges);
-
+            // Assert
             edges.Length.Should().Be(4, "all redundant collinear points should be removed");
-            edges.AsArray().Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
         }
 
         [Test]
         public void ReduceEdges_ShouldReturnEmpty_WhenLessThan3Points()
         {
-            using var points = new NativeList<float2>(Allocator.Temp)
+            // Arrange
+            var points = new List<float2>()
             {
                 new(0, 0),
                 new(1, 0)
             };
-            using var edges = new NativeList<Edge>(Allocator.Temp);
+            
+            // Act
+            var edges = ReduceEdges(points);
 
-            PolygonUtils.ReduceEdges(points, edges);
-
+            // Assert
             edges.Length.Should().Be(0);
         }
+        
+        [Test]
+        public void ReduceEdges_ShouldNotReducePointOutsideArea()
+        {
+            // Arrange
+            var points = new List<float2>()
+            {
+                new(0, 0),
+                new(0.5f, 0), // collinear, inside area
+                new(1, 0),
+                new(1, 1),
+                new(0.5f, 1), // collinear, outside area
+                new(0, 1)
+            };
+            
+            // Act
+            var edges = ReduceEdges(points, new float2(0, 0), new float2(1, .5f));
+
+            // Assert
+            edges.Length.Should().Be(5);
+            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
+        }
+
+        private static Edge[] ReduceEdges(List<float2> points, float2? min = null, float2? max = null, float tolerance = GeometryUtils.EPSILON)
+        {
+            using var nativePoints = new NativeList<float2>(points.Count, Allocator.Temp);
+            points.ForEach(p => nativePoints.Add(p));
+                
+            min ??= new float2(-100000000, -100000000);
+            max ??= new float2(100000000, 100000000);
+            
+            using var edges = new NativeList<Edge>(Allocator.Temp);
+            PolygonUtils.ReduceEdges(nativePoints, edges, min.Value, max.Value, tolerance);
+            var result = edges.AsArray().ToArray();
+            
+            if (TestConfig.DEBUG)
+            {
+                result.ForEach(e => DebugUtils.Draw(e.A, e.B, Color.gray, 10));
+                points.ForEach(p => p.To3D().DrawPoint(
+                    color: result.Exist(e => GeometryUtils.NearlyEqual(e.A, p) || GeometryUtils.NearlyEqual(e.B, p)) ? Color.green : Color.red, 
+                    duration: 10,
+                    size: .1f));
+            }
+
+            return result;
+        }
+        
+        #endregion
 
         #region CutIntersectingEdges
 
@@ -644,6 +729,8 @@ namespace Tests.EditorTests.NavigationTests
 
         #endregion
 
+        #region ExpandSquare
+        
         [Test]
         public void ExpandSquare_ShouldIncreaseTriangleSize()
         {
@@ -733,6 +820,8 @@ namespace Tests.EditorTests.NavigationTests
             }
         }
 
+        #endregion
+        
         // [Test]
         // public void PolygonIntersection_ShouldReturnEmpty_WhenNoOverlap()
         // {

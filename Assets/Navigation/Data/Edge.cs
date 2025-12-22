@@ -24,6 +24,6 @@ namespace Navigation
             yield return B;
         }
 
-        public override string ToString() => $"({A}, {B})";
+        public override string ToString() => $"({A.x}, {A.y})({B.x}, {B.y})";
     }
 }

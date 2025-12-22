@@ -32,6 +32,7 @@ namespace Navigation
         
             return (crossings % 2) == 1;
         }
+        
         //
         // public static float2 PolygonCenter(List<EdgeKey> polygon)
         // {
@@ -52,8 +53,8 @@ namespace Navigation
             var points = new NativeList<float2>(triangles.Length * 3, Allocator.Temp);
             var edgeCounts = new NativeHashMap<EdgeKey, int>(triangles.Length * 3, Allocator.Temp);
 
-            var si = "Input: ";
-            var so = "Output: ";
+            // var si = "Input: ";
+            // var so = "Output: ";
             
             // Count all triangle edges
             foreach (Triangle tr in triangles)
@@ -62,7 +63,7 @@ namespace Navigation
                 AddEdge(tr.B, tr.C);
                 AddEdge(tr.C, tr.A);
                 // tr.GetCenter.To3D().DrawPoint(Color.cyan, size: 0.3f);
-                si += $";\n ({tr.A}, {tr.B}, {tr.C})";
+                // si += $";\n ({tr.A}, {tr.B}, {tr.C})";
             }
 
             // Gather unique boundary points (appear only once)
@@ -75,11 +76,11 @@ namespace Navigation
 
                 // var c = kvp.Value == 1 ? Color.green : Color.magenta;
                 // Debug.DrawLine(math.float3(kvp.Key.A, 0), math.float3(kvp.Key.B, 0), c);
-                so += $";\n {kvp.Value} - {kvp.Key}";
+                // so += $";\n {kvp.Value} - {kvp.Key}";
             }
             
-            Debug.Log(si);
-            Debug.Log(so);
+            // Debug.Log(si);
+            // Debug.Log(so);
             
             
             edgeCounts.Dispose();
@@ -229,8 +230,10 @@ namespace Navigation
         /// </summary>
         /// <param name="orderedPoints">Points forming a closed loop (must be ordered CCW or CW).</param>
         /// <param name="edges">List where reduced edges will be added.</param>
-        /// <param name="toleration"></param>
-        public static void ReduceEdges(in NativeList<float2> orderedPoints, NativeList<Edge> edges, float toleration = GeometryUtils.EPSILON)
+        /// <param name="reduceMin">Reduce point if is inside range (exclusive)</param>
+        /// <param name="reduceMax">Reduce point if is inside range (exclusive)</param>
+        /// <param name="toleration">Threshold to reduce point, if higher point are more likely to be reduced</param>
+        public static void ReduceEdges(in NativeList<float2> orderedPoints, NativeList<Edge> edges, float2 reduceMin, float2 reduceMax, float toleration = GeometryUtils.EPSILON)
         {
             if (orderedPoints.Length < 3)
             {
@@ -242,8 +245,14 @@ namespace Navigation
             var l = orderedPoints.Length;
             for (int i = 0; i < l; i++)
             {
-                float2 prev = orderedPoints[(i - 1 + l) % l];
                 float2 curr = orderedPoints[i];
+                if (curr.x < reduceMin.x || curr.y < reduceMin.y || curr.x > reduceMax.x || curr.y > reduceMax.y)
+                {
+                    reduced.Add(curr);
+                    continue;
+                }
+                
+                float2 prev = orderedPoints[(i - 1 + l) % l];
                 float2 next = orderedPoints[(i + 1) % l];
 
                 if (!GeometryUtils.Collinear(prev, curr, next, toleration))

@@ -35,6 +35,16 @@ namespace HCore.Extensions
                 action(item);
             }
         }
+        
+        public static void ForEach<T>(this IEnumerable<T> enumerable, Action<int, T> action)
+        {
+            int i = 0;
+            foreach (var item in enumerable)
+            {
+                action(i, item);
+                i++;
+            }
+        }
 
         public static T Find<T>(this IEnumerable<T> enumerable, Predicate<T> predicate)
         {
