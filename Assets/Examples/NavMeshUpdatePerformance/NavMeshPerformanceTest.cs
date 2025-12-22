@@ -310,8 +310,8 @@ namespace NavMeshPerformance
             {
                 NavMesh = _navMesh,
                 NavObstacles = _navObstacles,
-                UpdateMin = new(0f, -36f),
-                UpdateMax = new(48f, 0f),
+                UpdateMin = new(-50, -50f),
+                UpdateMax = new(50f, 50f),
             }.Run();
         }
         

@@ -14,7 +14,6 @@ namespace PathFindingTest
         {
             UpdatePath,
             FollowPath,
-            FollowPathToPortal,
         }
 
         [SerializeField] private NavMeshVisualTests _meshVisual;
@@ -28,7 +27,7 @@ namespace PathFindingTest
         [SerializeField] private bool _drawPortals;
 
         [Space]
-        [SerializeField] private TestType _testType = TestType.FollowPathToPortal;
+        [SerializeField] private TestType _testType = TestType.FollowPath;
 
         private void Start()
         {
@@ -39,9 +38,6 @@ namespace PathFindingTest
                     break;
                 case TestType.FollowPath:
                     _ = FollowPath();
-                    break;
-                case TestType.FollowPathToPortal:
-                    _ = FollowPathToPortal();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -98,95 +94,6 @@ namespace PathFindingTest
                         {
                             Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
                         }
-                    }
-                }
-            }
-        }
-
-        private async Awaitable FollowPathToPortal()
-        {
-            await DebugUtils.WaitForClick();
-            while (true)
-            {
-                await Awaitable.NextFrameAsync();
-
-                using var savedPortals = new NativeList<Portal>(Allocator.Persistent);
-
-                while (true)
-                {
-                    await Awaitable.NextFrameAsync();
-
-                    var seaker = (float2)(Vector2)_pathOrigin.position;
-                    var target = (float2)Camera.main.ScreenToWorldPoint(Input.mousePosition).To2D();
-                    if (math.lengthsq(target - seaker) < 0.01f)
-                    {
-                        continue;
-                    }
-
-                    using var portals = FindPath(seaker, target);
-
-                    using var pathPoints = new NativeArray<float2>(portals.Length, Allocator.Temp);
-                    PathFinding.FunnelPortals(seaker, target, portals.AsArray(), pathPoints);
-
-                    var pathPortals = new NativeArray<PathPortal>(pathPoints.Length + 1, Allocator.Temp);
-                    for (var i = 0; i < pathPortals.Length; i++)
-                    {
-                        Portal portal = portals[i];
-                        pathPortals[i] = new PathPortal
-                        {
-                            Left = portal.Left,
-                            Right = portal.Right,
-                            PathPoint = pathPoints[i],
-                        };
-                    }
-
-                    float2 lastPoint = pathPoints.Length > 0 ? pathPoints[^1] : seaker;
-                    float2 perp = math.normalize(new float2(target.y - lastPoint.y, lastPoint.x - target.x));
-                    pathPortals[^1] = new PathPortal
-                    {
-                        Left = target - perp,
-                        Right = target + perp,
-                        PathPoint = target,
-                    };
-                    
-                    float2  direction = math.normalize(pathPortals[0].PathPoint - seaker);
-
-                    // DebugUtils.Draw(seaker, seaker + direction, Color.yellow);
-                    _pathOrigin.position += (Vector3)(Vector2)direction * Time.deltaTime * 2;
-
-                    if (_drawPortals)
-                    {
-                        foreach (Portal p in portals)
-                        {
-                            Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
-                        }
-                    }
-
-                    if (Input.GetKeyDown(KeyCode.Space))
-                    {
-                        savedPortals.Clear();
-                        savedPortals.AddRange(portals.AsArray());
-                        await Awaitable.NextFrameAsync();
-                        break;
-                    }
-                }
-
-                while (true)
-                {
-                    await Awaitable.NextFrameAsync();
-
-                    if (_drawPortals)
-                    {
-                        foreach (Portal p in savedPortals)
-                        {
-                            Debug.DrawLine(p.Left.To3D(), p.Right.To3D(), Color.green);
-                        }
-                    }
-
-                    if (Input.GetKeyDown(KeyCode.Space))
-                    {
-                        await Awaitable.NextFrameAsync();
-                        break;
                     }
                 }
             }

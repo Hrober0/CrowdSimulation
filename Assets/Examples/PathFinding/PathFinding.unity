@@ -2449,7 +2449,7 @@ MonoBehaviour:
   _pathOrigin: {fileID: 1384091004}
   _pathTarget: {fileID: 331588197}
   _drawPortals: 1
-  _testType: 2
+  _testType: 1
 --- !u!114 &1498023234
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2502,7 +2502,7 @@ MonoBehaviour:
   _drawNodesCenters: 0
   _drawObstacleTriangle: 0
   _drawObstacleBorder: 1
-  _testType: 2
+  _testType: 1
 --- !u!1 &1544908853
 GameObject:
   m_ObjectHideFlags: 0
