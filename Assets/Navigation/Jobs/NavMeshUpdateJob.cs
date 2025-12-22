@@ -36,19 +36,20 @@ namespace Navigation
             }
 
             // Get removed area border
-            using var unorderedBorderEdges = new NativeList<EdgeKey>(DEFAULT_CAPACITY, Allocator.Temp);
-            PolygonUtils.GetEdgesUnordered(in removedNodes, unorderedBorderEdges, tolerance: MIN_POINT_DISTANCE);
+            using var borderEdges = new NativeList<EdgeKey>(DEFAULT_CAPACITY, Allocator.Temp);
+            PolygonUtils.GetEdgesUnordered(in removedNodes, borderEdges, tolerance: MIN_POINT_DISTANCE);
             
             // Create CCS border points
             using var borderPointsCCW = new NativeList<float2>(DEFAULT_CAPACITY, Allocator.Temp);
-            var isLoopClose = PolygonUtils.GetPointsCCW(in unorderedBorderEdges, borderPointsCCW);
+            var isLoopClose = PolygonUtils.GetPointsCCW(in borderEdges, borderPointsCCW, false);
 
-            // DebugBorder(unorderedBorderEdges, borderPointsCCW);
+            // DebugBorder(borderEdges);
+            // DebugBorder(borderEdges);
             
             // Validate border creation
-            if (borderPointsCCW.Length < unorderedBorderEdges.Length - 1)
+            if (borderPointsCCW.Length < borderEdges.Length - 1)
             {
-                Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {unorderedBorderEdges.Length}");
+                Debug.LogWarning($"Border points count is less than border points {borderPointsCCW.Length} < {borderEdges.Length}");
                 AddNodes(in removedNodes);
                 return;
             }
@@ -60,18 +61,20 @@ namespace Navigation
             }
             
             // Create CCS border points
-            using var borderEdgesCCW = new NativeList<Edge>(unorderedBorderEdges.Length, Allocator.Temp);
-            PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdgesCCW, UpdateMin, UpdateMax, toleration: MIN_POINT_DISTANCE);
+            borderEdges.Clear();
+            PolygonUtils.ReduceEdges(in borderPointsCCW, borderEdges, UpdateMin, UpdateMax, toleration: MIN_POINT_DISTANCE);
             
             // Fix min max
-            float2 newUpdateMin = borderEdgesCCW[0].A;
-            float2 newUpdateMax = newUpdateMin;
-            for (var i = 1; i < borderEdgesCCW.Length; i++)
+            float2 newUpdateMin = math.min(borderEdges[0].A, borderEdges[0].B);
+            float2 newUpdateMax = math.max(borderEdges[0].A, borderEdges[0].B);
+            for (var i = 1; i < borderEdges.Length; i++)
             {
-                Edge b = borderEdgesCCW[i];
-                newUpdateMin = math.min(newUpdateMin, b.A);
-                newUpdateMax = math.max(newUpdateMax, b.A);
+                EdgeKey b = borderEdges[i];
+                newUpdateMin = math.min(newUpdateMin, math.min(b.A, b.B));
+                newUpdateMax = math.max(newUpdateMax, math.max(b.A, b.B));
             }
+            
+            // DebugBorder(borderEdges);
             
             // Get obstacle inside border
             using var obstaclesParts = new NativeList<NavObstacles<T>.IndexedTriangle>(DEFAULT_CAPACITY, Allocator.Temp);
@@ -83,95 +86,37 @@ namespace Navigation
             }
             
             // Inside edges should reflect obstacle and border at removed area
-            var expectedInsideEdgesCapacity = obstacleIndexes.Count * AVERAGE_OBSTACLE_VERTICES_CAPACITY + borderEdgesCCW.Length;
+            var expectedInsideEdgesCapacity = obstacleIndexes.Count * AVERAGE_OBSTACLE_VERTICES_CAPACITY + borderEdges.Length;
             using var insideEdges = new NativeList<Edge>(expectedInsideEdgesCapacity, Allocator.Temp);
             
             // Add borderEdges to insideEdges
-            insideEdges.CopyFrom(in borderEdgesCCW);
+            foreach (var edge in borderEdges)
+            {
+                insideEdges.Add(new(edge.A, edge.B));    
+            }
             
             // Add obstacle edges to insideEdges
-            // TODO: this can produce 0 length edges, this is fixed in CutIntersectingEdges but it should be resolved
-            using var intersectionBuffer = new NativeList<float2>(borderEdgesCCW.Length, Allocator.Temp);
+            using var intersectionBuffer = new NativeList<float2>(borderEdges.Length, Allocator.Temp);
             foreach (var obstacleIndex in obstacleIndexes)
             {
                 foreach (Edge obstacleEdge in NavObstacles.ObstacleEdges.GetValuesForKey(obstacleIndex))
                 {
-                    bool isAInside = IsPointInPolygon(in obstacleEdge.A, in removedNodes);
-                    bool isBInside = IsPointInPolygon(in obstacleEdge.B, in removedNodes);
-                    // Debug.Log($"OBST {obstacleIndex} Edge {obstacleEdge.A} - {obstacleEdge.B} {isAInside} {isBInside}");
-                    if (isAInside && isBInside)
-                    {
-                        // Inside polygon
-                        insideEdges.Add(new Edge(obstacleEdge.A, obstacleEdge.B));
-                        continue;
-                    }
-                    
-                    intersectionBuffer.Clear();
-                    foreach (Edge borderEdge in borderEdgesCCW)
-                    {
-                        if (GeometryUtils.TryIntersect(borderEdge.A, borderEdge.B, obstacleEdge.A, obstacleEdge.B, out float2 intersectionPoint))
-                        {
-                            intersectionBuffer.Add(intersectionPoint);
-                        }
-                    }
-                    
-                    if (isAInside || isBInside)
-                    {
-                        if (intersectionBuffer.Length == 0)
-                        {
-                            Debug.LogWarning($"Edge {obstacleEdge.A} {obstacleEdge.B} should intersect border, because have one of the endpoint inside ({isAInside} {isBInside})");
-                            continue;
-                        }
-                        
-                        // start with point inside it is one of the edge ends points
-                        float2 startPoint = isAInside ? obstacleEdge.A : obstacleEdge.B;
-                        
-                        if (intersectionBuffer.Length == 1)
-                        {
-                            // exist without sorting (happens often and allow to avoid additional computation)
-                            insideEdges.Add(new Edge(startPoint, intersectionBuffer[0]));
-                            continue;
-                        }
-                        
-                        intersectionBuffer.Add(startPoint);
-                        intersectionBuffer.Sort(new PointDistanceComparer(startPoint));
-                        for (int i = 0; i < intersectionBuffer.Length - 1; i++)
-                        {
-                            insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
-                        }
-                    }
-                    else
-                    {
-                        if (intersectionBuffer.Length == 0)
-                        {
-                            // It is possible that edge does not intersect area
-                            continue;
-                        }
-                        
-                        if (intersectionBuffer.Length == 2)
-                        {
-                            // exist without sorting (happens often and allow to avoid additional computation)
-                            insideEdges.Add(new Edge(intersectionBuffer[0], intersectionBuffer[1]));
-                            continue;
-                        }
-                        
-                        intersectionBuffer.Sort(new PointDistanceComparer(intersectionBuffer[0]));
-                        for (int i = 0; i < intersectionBuffer.Length - 1; i++)
-                        {
-                            insideEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
-                        }
-                    }
+                    PolygonUtils.CutEdgeToArea(obstacleEdge, borderEdges, insideEdges, intersectionBuffer);
                 }
             }
+
+            // DebugInsideEdges(insideEdges);
             
             // Cut edges to avoid intersection
             PolygonUtils.CutIntersectingEdges(insideEdges, MIN_POINT_DISTANCE * 0.5f);
+            
+            // DebugInsideEdges(insideEdges);
             
             // Prepare triangulation input
             using var positions = new NativeList<float2>(insideEdges.Length * 2, Allocator.Temp);
             using var constraintEdges = new NativeList<int>(insideEdges.Length * 4, Allocator.Temp);
             using var constrainCheck = new NativeHashSet<EdgeKey>(insideEdges.Length, Allocator.Temp);
-            foreach (var edge in borderEdgesCCW)
+            foreach (var edge in borderEdges)
             {
                 // First add border points to make sure that they will not be aligned to other points
                 AddPosition(edge.A);
@@ -200,18 +145,8 @@ namespace Navigation
                 constraintEdges.Add(ai);
                 constraintEdges.Add(bi);
             }
-
-            // Debug constraints
-            // for (var index = 0; index < constraintEdges.Length; index+=2)
-            // {
-            //     var p1 = positions[constraintEdges[index]];
-            //     var p2 = positions[constraintEdges[index + 1]];
-            //     Debug.DrawLine(p1.To3D(), p2.To3D(), Color.green, 5);
-            // }
-            // foreach (var p in positions)
-            // {
-            //     p.To3D().DrawPoint(Color.blue, 5, .1f);
-            // }
+            
+            // DebugConstraints(constraintEdges, positions);
 
             // Triangulate
             using var outputTriangles = new NativeList<int>(positions.Length * 3, Allocator.Temp);
@@ -237,23 +172,6 @@ namespace Navigation
             if (triangulationStatus.Value != Status.OK)
             {
                 Debug.LogWarning($"Triangulation status returned {triangulationStatus.Value}");
-                
-                // string pos = "";
-                // foreach (var position in positions.AsArray())
-                // {
-                //     var x = $"{position.x:g9}f".Replace(",", ".");
-                //     var y = $"{position.y:g9}f".Replace(",", ".");
-                //     pos += $"new({x}, {y}),\n";
-                // }
-                // Debug.Log($"Positions: \n{pos}");
-                //
-                // var cons = "";
-                // foreach (var edge in constraintEdges)
-                // {
-                //     cons += edge + ", ";
-                // }
-                // Debug.Log($"Constrains: \n{cons}");
-
                 AddNodes(in removedNodes);
                 return;
             }
@@ -278,7 +196,7 @@ namespace Navigation
                 // triangle.GetCenter.To3D().DrawPoint(Color.green, 5, .1f);
 
                 // Do not add triangles outside border
-                if (!PolygonUtils.IsPointInPolygon(triangle.GetCenter, in unorderedBorderEdges))
+                if (!PolygonUtils.IsPointInPolygon(triangle.GetCenter, in borderEdges))
                 {
                     // triangle.GetCenter.To3D().DrawPoint(Color.red, 2, .5f);
                     continue;
@@ -306,19 +224,6 @@ namespace Navigation
             }
         }
         
-        private static bool IsPointInPolygon(in float2 point, in NativeList<Triangle> triangles)
-        {
-            foreach (Triangle areaTriangle in triangles)
-            {
-                if (Triangle.PointIn(point, areaTriangle.A, areaTriangle.B, areaTriangle.C))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        
         private void AddNodes(in NativeList<Triangle> newNodes)
         {
             using var obstaclesAtNode = new NativeList<NavObstacles<T>.IndexedTriangle>(16,Allocator.Temp);
@@ -341,26 +246,53 @@ namespace Navigation
             }
         }
 
-        private static void DebugBorder(NativeList<EdgeKey> unorderedBorderEdges, NativeList<float2> borderPointsCCW)
+        private static void DebugBorder(NativeList<EdgeKey> borderEdges)
         {
             var center = float2.zero;
-            foreach (EdgeKey edge in unorderedBorderEdges)
+            foreach (EdgeKey edge in borderEdges)
             {
                 center += edge.A;
                 center += edge.B;
             }
-            center /= math.max(unorderedBorderEdges.Length * 2, 1);
+            center /= math.max(borderEdges.Length * 2, 1);
             center.To3D().DrawPoint(Color.cyan, 15, .1f);
             Debug.Log($"Update Center: {center}");
-            foreach (EdgeKey edge in unorderedBorderEdges)
+            foreach (EdgeKey edge in borderEdges)
             {
                 DebugUtils.DrawWithOffset(edge.A, edge.B, center, Color.cyan, 15);
                 Debug.Log($"Edge {edge.A} - {edge.B}");
             }
-            borderPointsCCW.AsArray().DrawLoop(Color.green, 5);
-            foreach (var p in borderPointsCCW)
+        }
+        
+        private static void DebugInsideEdges(NativeList<Edge> edges)
+        {
+            foreach (Edge edge in edges)
+            {
+                DebugUtils.Draw(edge.A, edge.B, Color.magenta, 15);
+                Debug.Log($"Edge {edge.A} - {edge.B}");
+            }
+        }
+        
+        private static void DebugBorder(NativeList<float2> borderPoints)
+        {
+            borderPoints.AsArray().DrawLoop(Color.green, 5);
+            foreach (var p in borderPoints)
             {
                 Debug.Log($"P {p}");
+            }
+        }
+
+        private static void DebugConstraints(NativeList<int> constraintEdges, NativeList<float2> positions)
+        {
+            for (var index = 0; index < constraintEdges.Length; index+=2)
+            {
+                var p1 = positions[constraintEdges[index]];
+                var p2 = positions[constraintEdges[index + 1]];
+                Debug.DrawLine(p1.To3D(), p2.To3D(), Color.red, 5);
+            }
+            foreach (var p in positions)
+            {
+                p.To3D().DrawPoint(Color.blue, 5, .1f);
             }
         }
     }

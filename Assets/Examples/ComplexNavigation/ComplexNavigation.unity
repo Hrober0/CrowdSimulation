@@ -214,9 +214,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _drawEdges: 0
   _drawLookup: 0
-  _drawNodes: 1
-  _drawNodesCenters: 1
-  _drawConnections: 1
+  _drawNodes: 0
+  _drawNodesCenters: 0
+  _drawConnections: 0
 --- !u!114 &344164995
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -710,6 +710,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _selectionRect: {fileID: 674000218}
+  _canvas: {fileID: 1541721619}
 --- !u!114 &1541721618
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -772,13 +773,14 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!224 &1689693967
-RectTransform:
+--- !u!4 &1689693967
+Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1689693966}
+  serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
@@ -787,11 +789,6 @@ RectTransform:
   - {fileID: 1541721616}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 960, y: 540}
-  m_SizeDelta: {x: 100, y: 100}
-  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1725118642
 GameObject:
   m_ObjectHideFlags: 0
@@ -944,6 +941,6 @@ SceneRoots:
   - {fileID: 619394802}
   - {fileID: 214714864}
   - {fileID: 5981491886057065178}
-  - {fileID: 1689693967}
   - {fileID: 1334912205}
+  - {fileID: 1689693967}
   - {fileID: 439831817}

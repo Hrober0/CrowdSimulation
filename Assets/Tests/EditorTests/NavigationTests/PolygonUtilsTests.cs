@@ -7,14 +7,106 @@ using NUnit.Framework;
 using Tests.TestsUtilities;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEditor.Graphs;
 using UnityEngine;
 using Color = UnityEngine.Color;
+using Edge = Navigation.Edge;
 using Triangle = Navigation.Triangle;
 
 namespace Tests.EditorTests.NavigationTests
 {
     public class PolygonUtilsTests
     {
+        #region IsPointInPolygon
+        
+        [Test]
+        public void IsPointInPolygon_ShouldReturnsTrue_WhenPointStrictlyInside()
+        {
+            // Arrange
+            float2 point = new float2(5, 5);
+
+            // Act
+            bool result = IsPointInPolygon(point);
+
+            // Assert
+            result.Should().BeTrue();
+        }
+        
+        [Test]
+        public void IsPointInPolygon_ShouldReturnsFalse_WhenPointOutside()
+        {
+            // Arrange
+            float2 point = new float2(15, 5);
+
+            // Act
+            bool result = IsPointInPolygon(point);
+
+            // Assert
+            result.Should().BeFalse();
+        }
+        
+        [Test]
+        public void IsPointInPolygon_ShouldReturnsFalse_WhenPointOnEdge()
+        {
+            // Arrange
+            float2 point = new float2(5, 0); // bottom edge
+
+            // Act
+            bool result = IsPointInPolygon(point);
+
+            // Assert
+            result.Should().BeFalse();
+        }
+        
+        [Test]
+        public void IsPointInPolygon_ShouldReturnsFalse_WhenPointOnEdge_Reversed()
+        {
+            // Arrange
+            float2 point = new float2(5, 10); // top edge
+
+            // Act
+            bool result = IsPointInPolygon(point);
+
+            // Assert
+            result.Should().BeFalse();
+        }
+        
+        [Test]
+        public void IsPointInPolygon_ShouldReturnsFalse_WhenPointOnVertex()
+        {
+            // Arrange
+            float2 point = new float2(0, 0);
+
+            // Act
+            bool result = IsPointInPolygon(point);
+
+            // Assert
+            result.Should().BeFalse();
+        }
+
+        private static bool IsPointInPolygon(float2 point)
+        {
+            using var polygon = new NativeList<EdgeKey>(Allocator.Temp);
+
+            // Square: (0,0) → (10,0) → (10,10) → (0,10)
+            polygon.Add(new EdgeKey(new float2(0, 0), new float2(10, 0)));
+            polygon.Add(new EdgeKey(new float2(10, 0), new float2(10, 10)));
+            polygon.Add(new EdgeKey(new float2(10, 10), new float2(0, 10)));
+            polygon.Add(new EdgeKey(new float2(0, 10), new float2(0, 0)));
+            
+            bool result = PolygonUtils.IsPointInPolygon(point, polygon);
+
+            if (TestConfig.DEBUG)
+            {
+                polygon.AsArray().ForEach(e => e.DrawBorder(Color.yellow, 10));
+                point.To3D().DrawPoint(result ? Color.green : Color.red, 10, .1f);
+            }
+            
+            return result;
+        }
+
+        #endregion
+        
         #region GetEdgesUnordered
         
         [Test]
@@ -70,6 +162,57 @@ namespace Tests.EditorTests.NavigationTests
             edges.Length.Should().Be(0);
         }
 
+        /*[Test]
+        public void GetEdgesUnordered_ShouldReturnBorderEdges_WithEdgesInside_WhenTrainsglesAreNotConnected()
+        {
+            // Arrange
+            var triangles = new List<Triangle>()
+            {
+                 new (new (-13f, -8f), new (-11.9f, 6.700001f), new (0.6952697f, -0.8311253f)),
+                 new (new (0.6952697f, -0.8311253f), new (3.255538f, 0.3106158f), new (1.004897f, -1.30791f)),
+                 new (new (0.6952697f, -0.8311253f), new (-11.9f, 6.700001f), new (3.235538f, 2.149116f)),
+                 new (new (0.6952697f, -0.8311253f), new (3.235538f, 2.149116f), new (3.235538f, 1.580616f)),
+                 new (new (0.6952697f, -0.8311253f), new (3.235538f, 1.580616f), new (3.247418f, 0.8262588f)),
+                 new (new (0.6952697f, -0.8311253f), new (3.247418f, 0.8262588f), new (3.255538f, 0.3106158f)),
+                 new (new (6.465677f, 0.3106158f), new (13f, -8f), new (1.004897f, -1.30791f)),
+                 new (new (3.497208f, 0.3106158f), new (6.465677f, 0.3106158f), new (1.004897f, -1.30791f)),
+                 new (new (3.255538f, 0.3106158f), new (3.497208f, 0.3106158f), new (1.004897f, -1.30791f)),
+                 new (new (3.247418f, 0.8262588f), new (3.255538f, 0.8791158f), new (3.255538f, 0.3106158f)),
+                 new (new (3.235538f, 1.580616f), new (3.255538f, 0.8791158f), new (3.247418f, 0.8262588f)),
+                 new (new (6.445677f, 1.580616f), new (3.412277f, 0.8791158f), new (3.235538f, 1.580616f)),
+                 new (new (3.697146f, 0.440457f), new (6.465677f, 0.3106158f), new (3.497208f, 0.3106158f)),
+                 new (new (3.697146f, 0.440457f), new (3.412277f, 0.8791158f), new (6.465677f, 0.8791158f)),
+                 new (new (6.465677f, 0.8791158f), new (6.465677f, 0.3106158f), new (3.697146f, 0.440457f)),
+                 new (new (3.387519f, 0.9172412f), new (3.235538f, 1.580616f), new (3.412277f, 0.8791158f)),
+                 new (new (3.255538f, 0.8791158f), new (3.235538f, 1.580616f), new (3.387519f, 0.9172412f)),
+                 new (new (3.255538f, 0.8791158f), new (3.387519f, 0.9172412f), new (3.328811f, 0.8791158f)),
+                 new (new (6.445677f, 1.580616f), new (6.465677f, 0.8791158f), new (3.412277f, 0.8791158f)),
+                 new (new (3.328811f, 0.8791158f), new (3.387519f, 0.9172412f), new (3.412277f, 0.8791158f)),
+                 new (new (3.412277f, 0.8791158f), new (3.697146f, 0.440457f), new (3.497208f, 0.3106158f)),
+                 new (new (3.328811f, 0.8791158f), new (3.412277f, 0.8791158f), new (3.255538f, 0.8315324f)),
+                 new (new (3.255538f, 0.8791158f), new (3.328811f, 0.8791158f), new (3.255538f, 0.8315324f)),
+                 new (new (3.255538f, 0.8315324f), new (3.412277f, 0.8791158f), new (3.497208f, 0.3106158f)),
+                 new (new (3.255538f, 0.3106158f), new (3.255538f, 0.8315324f), new (3.497208f, 0.3106158f)),
+                 new (new (11.9f, 6.700001f), new (13f, -8f), new (6.465677f, 0.3106158f)),
+                 new (new (6.465677f, 0.8791158f), new (11.9f, 6.700001f), new (6.465677f, 0.3106158f)),
+                 new (new (6.445677f, 1.580616f), new (11.9f, 6.700001f), new (6.465677f, 0.8791158f)),
+                 new (new (3.235538f, 2.149116f), new (6.445677f, 1.580616f), new (3.235538f, 1.580616f)),
+                 new (new (3.235538f, 2.149116f), new (6.445677f, 2.149116f), new (6.445677f, 1.580616f)),
+                 new (new (6.445677f, 2.149116f), new (11.9f, 6.700001f), new (6.445677f, 1.580616f)),
+                 new (new (-11.9f, 6.700001f), new (6.445677f, 2.149116f), new (3.235538f, 2.149116f)),
+                 new (new (-11.9f, 6.700001f), new (11.9f, 6.700001f), new (6.445677f, 2.149116f)),
+                 new (new (-11.9f, 6.700001f), new (-11.9f, 7.1f), new (11.9f, 7.1f)),
+                 new (new (11.9f, 7.1f), new (11.9f, 6.700001f), new (-11.9f, 6.700001f)),
+                 new (new (-11.9f, 7.1f), new (-13f, 8f), new (13f, 8f)),
+                 new (new (-11.9f, 7.1f), new (13f, 8f), new (11.9f, 7.1f))
+            };
+
+            // Act
+            var edges = GetEdgesUnordered(triangles);
+
+            // Assert
+            edges.Length.Should().Be(11);
+        }*/
 
         private static EdgeKey[] GetEdgesUnordered(List<Triangle> triangles)
         {
@@ -256,10 +399,10 @@ namespace Tests.EditorTests.NavigationTests
 
             // Assert
             edges.Length.Should().Be(4);
-            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
-            edges.Should_ContainKey(new(new(1, 0), new(1, 1)));
-            edges.Should_ContainKey(new(new(1, 1), new(0, 1)));
-            edges.Should_ContainKey(new(new(0, 1), new(0, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(1, 0), new(1, 1)));
+            edges.Should().Contain(new EdgeKey(new(1, 1), new(0, 1)));
+            edges.Should().Contain(new EdgeKey(new(0, 1), new(0, 0)));
         }
 
         [Test]
@@ -280,7 +423,7 @@ namespace Tests.EditorTests.NavigationTests
 
             // Assert
             edges.Length.Should().Be(4, "collinear point should be removed");
-            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
         }
 
         [Test]
@@ -303,7 +446,7 @@ namespace Tests.EditorTests.NavigationTests
 
             // Assert
             edges.Length.Should().Be(4, "all redundant collinear points should be removed");
-            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
         }
 
         [Test]
@@ -338,14 +481,14 @@ namespace Tests.EditorTests.NavigationTests
             };
             
             // Act
-            var edges = ReduceEdges(points, new float2(0, 0), new float2(1, .5f));
+            var edges = ReduceEdges(points, new float2(0, -.1f), new float2(1, .5f));
 
             // Assert
             edges.Length.Should().Be(5);
-            edges.Should_ContainKey(new(new(0, 0), new(1, 0)));
+            edges.Should().Contain(new EdgeKey(new(0, 0), new(1, 0)));
         }
 
-        private static Edge[] ReduceEdges(List<float2> points, float2? min = null, float2? max = null, float tolerance = GeometryUtils.EPSILON)
+        private static EdgeKey[] ReduceEdges(List<float2> points, float2? min = null, float2? max = null, float tolerance = GeometryUtils.EPSILON)
         {
             using var nativePoints = new NativeList<float2>(points.Count, Allocator.Temp);
             points.ForEach(p => nativePoints.Add(p));
@@ -353,7 +496,7 @@ namespace Tests.EditorTests.NavigationTests
             min ??= new float2(-100000000, -100000000);
             max ??= new float2(100000000, 100000000);
             
-            using var edges = new NativeList<Edge>(Allocator.Temp);
+            using var edges = new NativeList<EdgeKey>(Allocator.Temp);
             PolygonUtils.ReduceEdges(nativePoints, edges, min.Value, max.Value, tolerance);
             var result = edges.AsArray().ToArray();
             
@@ -725,6 +868,192 @@ namespace Tests.EditorTests.NavigationTests
             PolygonUtils.CutIntersectingEdges(result, tolerance);
             Draw(result);
             return result.AsArray().ToArray();
+        }
+
+        #endregion
+
+        #region CutEdgeToArea
+
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsOriginalEdge_WhenBothEndpointsInside()
+        {
+            // Arrange
+            var edge = new Edge(new float2(2, 2), new float2(8, 8));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].Should().Be(edge);
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsOriginalEdge_WhenBothEndpointsOnBorders()
+        {
+            // Arrange
+            var edge = new Edge(new float2(0, 2), new float2(10, 8));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].ToEdgeKey().Should().Be(edge.ToEdgeKey());
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsOriginalEdge_WhenBothEndpointsOnBorders_Reversed()
+        {
+            // Arrange
+            var edge = new Edge(new float2(10, 2), new float2(0, 8));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].Should().Be(edge);
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsPartOfEdge_WhenOneEndpointsInside()
+        {
+            // Arrange
+            var edge = new Edge(new float2(5, 5), new float2(15, 5));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(5, 5), new float2(10, 5)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsPartOfEdge_WhenOneEndpointsInside_AndSecondOnTheEdge()
+        {
+            // Arrange
+            var edge = new Edge(new float2(5, 0), new float2(5, 12));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(5, 8), new float2(5, 0)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsPartOfEdge_WhenOneEndpointsInside_AndSecondOnTheEdge_Reversed()
+        {
+            // Arrange
+            var edge = new Edge(new float2(5, 12), new float2(5, 0));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(5, 8), new float2(5, 0)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsTwoPartOfEdge_WhenBothEndpointsOutside_ButIntersectionInTwoPlaces()
+        {
+            // Arrange
+            var edge = new Edge(new float2(-5, 9), new float2(15, 9));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(2);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(0, 9), new float2(2.5f, 9)));
+            result[1].ToEdgeKey().Should().Be(new EdgeKey(new float2(7.5f, 9), new float2(10, 9)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsTwoPartOfEdge_WhenBothEndpointsInside_ButIntersectionInTwoPlaces()
+        {
+            // Arrange
+            var edge = new Edge(new float2(1, 9), new float2(9, 9));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(2);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(1, 9), new float2(2.5f, 9)));
+            result[1].ToEdgeKey().Should().Be(new EdgeKey(new float2(7.5f, 9), new float2(9, 9)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsPartOfEdge_WhenBothEndpointsOutside_ButIntersection()
+        {
+            // Arrange
+            var edge = new Edge(new float2(-5, 5), new float2(15, 5));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().HaveCount(1);
+            result[0].ToEdgeKey().Should().Be(new EdgeKey(new float2(0, 5), new float2(10, 5)));
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsNoEdge_WhenEdgeIntersectionOnlyByItsEnd()
+        {
+            // Arrange
+            var edge = new Edge(new float2(10, 5), new float2(12, 5));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().BeEmpty();
+        }
+        
+        [Test]
+        public void CutEdgeToArea_ShouldReturnsNoEdge_WhenNoIntersection()
+        {
+            // Arrange
+            var edge = new Edge(new float2(-5, -5), new float2(-1, -1));
+
+            // Act
+            var result = CutEdgeToArea(edge);
+
+            // Assert
+            result.Should().BeEmpty();
+        }
+        
+        private static Edge[] CutEdgeToArea(Edge edge)
+        {
+            using var border = new NativeList<EdgeKey>(Allocator.Temp);
+            
+            // Square: (0,0) -> (10,0) -> (10,10) -> (0,10) but with M top
+            border.Add(new EdgeKey(new float2(0, 0), new float2(10, 0)));
+            border.Add(new EdgeKey(new float2(10, 0), new float2(10, 10)));
+            border.Add(new EdgeKey(new float2(10, 10), new float2(5, 8)));
+            border.Add(new EdgeKey(new float2(5, 8), new float2(0, 10)));
+            border.Add(new EdgeKey(new float2(0, 10), new float2(0, 0)));
+            
+            using var nativeResult = new NativeList<Edge>(Allocator.Temp);
+            using var buffer = new NativeList<float2>(Allocator.Temp);
+            
+            PolygonUtils.CutEdgeToArea(edge, border, nativeResult, buffer);
+            var result = nativeResult.AsArray().ToArray();
+
+            if (TestConfig.DEBUG)
+            {
+                border.AsArray().ForEach(b => b.DrawBorder(Color.yellow, 10));
+                edge.DrawBorder(Color.magenta, 10);
+                result.ForEach(e => e.DrawBorder(Color.green, 10));
+                result.ForEach(e => e.Center.To3D().DrawPoint(Color.blue, 10, .1f));
+            }
+
+            return result;
         }
 
         #endregion

@@ -379,7 +379,7 @@ namespace Tests.EditorTests.NavigationTests
             int obstacleId = _navObstacles.AddObstacle(new(1), new float2(15, -9), new float2(15, -4), new float2(17, -8)); // obst
             RunUpdate(new(15, -9), new(17, -4));
 
-            Draw(_navMesh.Nodes, 15);
+            Draw(_navMesh.Nodes, 20);
 
             // Assert Add
             {
@@ -893,7 +893,7 @@ namespace Tests.EditorTests.NavigationTests
             // Act create border
             RunUpdate();
 
-            Draw(_navMesh.Nodes);
+            Draw(_navMesh.Nodes, 15);
 
             // Assert
             _navMesh.Nodes.Where(node => node.Attributes.GetIds().Contains(1)).Should().HaveCount(6);
@@ -903,7 +903,7 @@ namespace Tests.EditorTests.NavigationTests
         }
 
         [Test]
-        public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasOvverlapingCrossing()
+        public void Update_ShouldIncludeObjectThatIsBiggerThenArea_AndHasOverlapingCrossing()
         {
             //    Y                    
             //    ▲                       |  |

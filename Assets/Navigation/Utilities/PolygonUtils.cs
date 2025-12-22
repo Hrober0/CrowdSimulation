@@ -8,29 +8,62 @@ namespace Navigation
 {
     public static class PolygonUtils
     {
+        /// <summary>
+        /// Determines whether a point lies strictly inside a polygon using a
+        /// ray-casting (even–odd rule) algorithm.
+        /// </summary>
+        /// <remarks>
+        /// The test is <b>exclusive</b>:
+        /// <list type="bullet">
+        /// <item>Points strictly inside the polygon return <c>true</c>.</item>
+        /// <item>Points lying exactly on polygon edges or vertices return <c>false</c>.</item>
+        /// </list>
+        /// </remarks>
+        /// <param name="point">
+        /// The point to test.
+        /// </param>
+        /// <param name="polygon">
+        /// The polygon defined as a list of edges.
+        /// </param>
+        /// <returns>
+        /// <c>true</c> if the point is strictly inside the polygon; otherwise <c>false</c>.
+        /// </returns>
         public static bool IsPointInPolygon(float2 point, in NativeList<EdgeKey> polygon)
         {
-            int crossings = 0;
-        
+            bool inside = false;
+
             for (int i = 0; i < polygon.Length; i++)
             {
                 float2 a = polygon[i].A;
                 float2 b = polygon[i].B;
-        
-                // Check if point.x is between a.x and b.x (ray could intersect this edge)
-                if (point.x > a.x && point.x <= b.x && point.y < Mathf.Max(a.y, b.y))
+
+                // ---- 1. Explicit boundary rejection (edge or vertex)
+                float2 ab = b - a;
+                float2 ap = point - a;
+
+                float cross = GeometryUtils.Cross(ab, ap);
+                if (math.abs(cross) < 1e-6f)
                 {
-                    // Compute y intersection of vertical ray at point.x with edge (a → b)
-                    float yIntersection = (point.x - a.x) * (b.y - a.y) / (b.x - a.x + float.Epsilon) + a.y;
-        
-                    if (point.y < yIntersection)
+                    float dot = math.dot(ap, ab);
+                    if (dot >= 0f && dot <= math.dot(ab, ab))
                     {
-                        crossings++;
+                        return false;
                     }
                 }
+
+                // ---- 2. Ray casting (strictly interior)
+                // Half-open in Y to avoid double counting
+                bool intersects =
+                    ((a.y > point.y) != (b.y > point.y)) &&
+                    (point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x);
+
+                if (intersects)
+                {
+                    inside = !inside;
+                }
             }
-        
-            return (crossings % 2) == 1;
+
+            return inside;
         }
         
         //
@@ -233,7 +266,7 @@ namespace Navigation
         /// <param name="reduceMin">Reduce point if is inside range (exclusive)</param>
         /// <param name="reduceMax">Reduce point if is inside range (exclusive)</param>
         /// <param name="toleration">Threshold to reduce point, if higher point are more likely to be reduced</param>
-        public static void ReduceEdges(in NativeList<float2> orderedPoints, NativeList<Edge> edges, float2 reduceMin, float2 reduceMax, float toleration = GeometryUtils.EPSILON)
+        public static void ReduceEdges(in NativeList<float2> orderedPoints, NativeList<EdgeKey> edges, float2 reduceMin, float2 reduceMax, float toleration = GeometryUtils.EPSILON)
         {
             if (orderedPoints.Length < 3)
             {
@@ -246,7 +279,7 @@ namespace Navigation
             for (int i = 0; i < l; i++)
             {
                 float2 curr = orderedPoints[i];
-                if (curr.x < reduceMin.x || curr.y < reduceMin.y || curr.x > reduceMax.x || curr.y > reduceMax.y)
+                if (curr.x <= reduceMin.x || curr.y <= reduceMin.y || curr.x >= reduceMax.x || curr.y >= reduceMax.y)
                 {
                     reduced.Add(curr);
                     continue;
@@ -266,7 +299,7 @@ namespace Navigation
             {
                 float2 a = reduced[i];
                 float2 b = reduced[(i + 1) % reduced.Length];
-                edges.Add(new Edge(a, b));
+                edges.Add(new EdgeKey(a, b));
             }
             
             // foreach (var p in edges)
@@ -392,6 +425,130 @@ namespace Navigation
             }
         }
 
+        /// <summary>
+        /// Clips a line segment to the area defined by a closed polygon (border),
+        /// producing zero or more edge segments that lie inside the polygon.
+        /// Method can return zero length segments!
+        /// </summary>
+        /// <remarks>
+        /// The method performs a geometric clipping operation:
+        /// <list type="bullet">
+        /// <item>
+        /// If both endpoints of <paramref name="edge"/> lie inside the polygon,
+        /// the original edge is returned unchanged.
+        /// </item>
+        /// <item>
+        /// If exactly one endpoint lies inside the polygon, the edge is cut at the
+        /// polygon boundary and a single clipped segment is returned.
+        /// </item>
+        /// <item>
+        /// If both endpoints lie outside the polygon but the edge intersects the
+        /// polygon, the portion inside the polygon is returned.
+        /// </item>
+        /// <item>
+        /// If the edge does not intersect the polygon at all, no result edges are produced.
+        /// </item>
+        /// </list>
+        ///
+        /// The polygon is defined by <paramref name="border"/> and is assumed to be:
+        /// <list type="bullet">
+        /// <item>Closed</item>
+        /// <item>Simple (non self-intersecting)</item>
+        /// <item>Defined in consistent winding order</item>
+        /// </list>
+        ///
+        /// The method does not clear <paramref name="resultEdges"/>; callers are responsible
+        /// for managing its lifetime and contents. The <paramref name="intersectionBuffer"/>
+        /// is cleared internally and reused to avoid allocations.
+        /// </remarks>
+        /// <param name="edge">
+        /// The input edge to be clipped against the polygon area.
+        /// </param>
+        /// <param name="border">
+        /// A list of polygon edges defining the clipping area.
+        /// </param>
+        /// <param name="resultEdges">
+        /// Output collection receiving zero or more edges representing the portion
+        /// of <paramref name="edge"/> inside the polygon.
+        /// </param>
+        /// <param name="intersectionBuffer">
+        /// Temporary buffer used for storing intersection points; will be cleared
+        /// and reused by the method.
+        /// </param>
+        public static void CutEdgeToArea(in Edge edge, in NativeList<EdgeKey> border, NativeList<Edge> resultEdges, NativeList<float2> intersectionBuffer)
+        {
+            bool isAInside = IsPointInPolygon(edge.A, in border);
+            bool isBInside = IsPointInPolygon(edge.B, in border);
+            // Debug.Log($"OBST {obstacleIndex} Edge {obstacleEdge.A} - {obstacleEdge.B} {isAInside} {isBInside}");
+            
+            intersectionBuffer.Clear();
+            foreach (EdgeKey borderEdge in border)
+            {
+                if (GeometryUtils.TryIntersect(borderEdge.A, borderEdge.B, edge.A, edge.B, out float2 intersectionPoint))
+                {
+                    intersectionBuffer.Add(intersectionPoint);
+                }
+            }
+            
+            if (isAInside && isBInside)
+            {
+                if (intersectionBuffer.Length == 0)
+                {
+                    resultEdges.Add(new Edge(edge.A, edge.B));
+                    return;
+                }
+                
+                intersectionBuffer.Add(edge.A);
+                intersectionBuffer.Add(edge.B);
+            }
+            else if (isAInside || isBInside)
+            {
+                if (intersectionBuffer.Length == 0)
+                {
+                    Debug.LogWarning($"Edge {edge.A} {edge.B} should intersect border, because have ONE of the endpoints inside ({isAInside} {isBInside})");
+                    return;
+                }
+                
+                // start with point inside it is one of the edge ends points
+                float2 startPoint = isAInside ? edge.A : edge.B;
+                intersectionBuffer.Add(startPoint);
+            }
+            else
+            {
+                if (intersectionBuffer.Length == 0)
+                {
+                    // It is possible that edge does not intersect area
+                    return;
+                }
+            }
+            
+            if (intersectionBuffer.Length == 2)
+            {
+                // fast exist (happens often and allow to avoid additional computation)
+                resultEdges.Add(new Edge(intersectionBuffer[0], intersectionBuffer[1]));
+                return;
+            }
+
+            intersectionBuffer.Sort(new PointDistanceComparer(edge.A));
+            
+            // remove duplicated points
+            for (int i = 1; i < intersectionBuffer.Length; i++)
+            {
+                if (GeometryUtils.NearlyEqual(intersectionBuffer[i - 1], intersectionBuffer[i]))
+                {
+                    intersectionBuffer.RemoveAt(i);
+                    i--;
+                }
+            }
+            
+            // add edges
+            // skip even indexes because when intersection appears
+            for (int i = 0; i < intersectionBuffer.Length - 1; i += 2) 
+            {
+                resultEdges.Add(new Edge(intersectionBuffer[i], intersectionBuffer[i + 1]));
+            }
+        }
+        
         /// <summary>
         /// Expands (offsets) a simple polygon outward by given radius.
         /// For clockwise verts and positive radius polygon will be expanded.
