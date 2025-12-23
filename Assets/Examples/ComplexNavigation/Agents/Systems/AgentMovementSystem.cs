@@ -25,6 +25,7 @@ namespace ComplexNavigation
             public float DeltaTime;
 
             public void Execute(
+                EnabledRefRW<TargetData> enabledTarget,
                 ref AgentCoreData coreData,
                 in DynamicBuffer<PathBuffer> pathBuffer,
                 ref PathIndex pathIndex)
@@ -33,7 +34,7 @@ namespace ComplexNavigation
                 {
                     // Target reached
                     coreData.PrefVelocity = float2.zero;
-                    coreData.MaxSpeed = 1;
+                    enabledTarget.ValueRW = false;
                     return;
                 }
 
@@ -63,7 +64,7 @@ namespace ComplexNavigation
                         coreData.Velocity,
                         currentTargetPosition,
                         coreData.MaxSpeed,
-                        1,
+                        3,
                         .5f,
                         DeltaTime
                     );
