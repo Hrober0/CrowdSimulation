@@ -4,6 +4,7 @@ using CustomNativeCollections;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace ComplexNavigation
@@ -12,38 +13,96 @@ namespace ComplexNavigation
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     public partial class AgentVelocityCalculationSystem : SystemBase
     {
+        private const float UPDATE_INTERVAL = 0.05f;
+        
+        private int _nextAgentIndex;
+        private NativeAvgDeltaTime _deltaTime;
+        
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            _deltaTime = new NativeAvgDeltaTime(Allocator.Persistent, 0.0001f);
+        }
+        
+        protected override void OnDestroy()
+        {
+            _deltaTime.Dispose();
+
+            base.OnDestroy();
+        }
+        
         [BurstCompile]
         protected override void OnUpdate()
         {
+            _deltaTime.Update(SystemAPI.Time.DeltaTime);
+            
+            var query = SystemAPI.QueryBuilder().WithAllRW<AgentCoreData>().Build();
+
+            int agentCount = query.CalculateEntityCount();
+            if (agentCount == 0)
+            {
+                return;
+            }
+
+            float dt = _deltaTime.EverageDeltaTime;
+            float updatesPerSecond = 1f / UPDATE_INTERVAL;
+            float agentsPerSecond = agentCount * updatesPerSecond;
+            int batchSize = math.max(1, (int)math.ceil(agentsPerSecond * dt));
+            
+            if (_nextAgentIndex >= agentCount)
+            {
+                _nextAgentIndex = 0;
+            }
+            
+            int startIndex = _nextAgentIndex;
+            int updateSize = math.min(batchSize, agentCount - startIndex);
+            
+            _nextAgentIndex += updateSize;
+
+            var entities = query.ToEntityArray(Allocator.TempJob);
             var agentHashSystem = World.GetExistingSystemManaged<AgentSpatialHashSystem>();
             var obstacleHashSystem = World.GetExistingSystemManaged<AvoidanceObstacleLookupSystem>();
-
+            
             Dependency = new VelocityUpdateJob
                 {
+                    Entities = entities,
+                    StartIndex = startIndex,
+                    AgentLookup = GetComponentLookup<AgentCoreData>(),
                     AgentSpatialHash = agentHashSystem.SpatialHash,
                     ObstacleSpatialHash = obstacleHashSystem.SpatialLookup,
                     TimeStamp = SystemAPI.Time.DeltaTime,
                 }
-                .ScheduleParallel(Dependency);
+                .ScheduleParallel(updateSize , 64, Dependency);
             Dependency.Complete();
+            
+            Dependency = entities.Dispose(Dependency);
+            // Debug.Log($"{startIndex} + {updateSize} = {startIndex+updateSize} / {agentCount} dt {dt}");
         }
     }
 
     [BurstCompile]
-    public partial struct VelocityUpdateJob : IJobEntity
+    public struct VelocityUpdateJob : IJobFor
     {
         private const int MAX_AGENT_NEIGHBORS = 8;
         private const float NEIGHBOR_QUERY_DIST = 1f;
         private const float TIME_HORIZON_OBSTACLE = 1f;
         private const float TIME_HORIZON_AGENT = 1f;
-
+        
+        [ReadOnly] public NativeArray<Entity> Entities;
+        [ReadOnly] public int StartIndex;
+        
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<AgentCoreData> AgentLookup;
+            
         [ReadOnly] public NativeSpatialHash<AgentCoreData> AgentSpatialHash;
         [ReadOnly] public NativeSpatialLookup<ObstacleVertex> ObstacleSpatialHash;
         [ReadOnly] public float TimeStamp;
 
-        public void Execute(ref AgentCoreData agentCoreData)
+        public void Execute(int jobIndex)
         {
-            var timeStampInv = 1f / TimeStamp;
+            var entity = Entities[StartIndex + jobIndex];
+            var agentCoreData = AgentLookup[entity]; 
             var agent = ToAgent(agentCoreData);
 
             // Compute agent neighbours
@@ -82,7 +141,7 @@ namespace ComplexNavigation
             var orcaLines = new NativeList<Line>(Allocator.Temp);
             Linear.AddObstacleLine(agent, orcaLines, obstacleNeighbors, ObstacleSpatialHash.Values);
             int numObstLines = orcaLines.Length;
-            Linear.AddAgentLine(agent, orcaLines, agentNeighbors, timeStampInv);
+            Linear.AddAgentLine(agent, orcaLines, agentNeighbors, 1f / TimeStamp);
 
             // Compute velocity
             var newVelocity = agent.Velocity;
@@ -101,6 +160,7 @@ namespace ComplexNavigation
 
             // Apply
             agentCoreData.Velocity = newVelocity;
+            AgentLookup[entity] = agentCoreData;
 
             agentNeighbors.Dispose();
             orcaLines.Dispose();

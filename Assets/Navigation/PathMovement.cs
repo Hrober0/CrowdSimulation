@@ -53,9 +53,7 @@ namespace Navigation
                 return float2.zero;
             }
 
-            float desiredSpeed =
-                maxSpeed * math.saturate(toTargetLength / slowDownDistance);
-
+            float desiredSpeed = maxSpeed * math.saturate(toTargetLength / slowDownDistance);
             float2 desiredVel = toTarget / toTargetLength * desiredSpeed;
 
             float2 dv = desiredVel - velocity;
