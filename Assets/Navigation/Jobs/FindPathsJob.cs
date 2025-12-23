@@ -22,13 +22,13 @@ namespace Navigation
             var (startPosition, targetPosition) = StartAndTargetEntry[index];
             if (!NavMesh.TryGetNodeIndex(startPosition, out int startNodeIndex))
             {
-                Debug.LogWarning($"{startPosition} not found in NavMesh");
+                Debug.LogWarning($"Could not find path from ({startPosition.x}, {startPosition.y}) because this point does not belong to NavMesh, pleas extend NavMesh to e able to use this space.");
                 return;
             }
 
             if (!NavMesh.TryGetNodeIndex(targetPosition, out int targetNodeIndex))
             {
-                Debug.LogWarning($"{targetPosition} not found in NavMesh");
+                Debug.LogWarning($"Could not find path to ({startPosition.x}, {startPosition.y}) because this point does not belong to NavMesh, pleas extend NavMesh to e able to use this space.");
                 return;
             }
 
