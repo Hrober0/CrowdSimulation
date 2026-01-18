@@ -8,15 +8,15 @@ namespace Benchmarks
 {
     public class DefaultObstacleProvider : MonoBehaviour, IObstacleProvider
     {
-        [SerializeField] private Transform _foor;
+        [SerializeField] private Transform _floor;
         [SerializeField] private List<GameObject> _spawned = new();
 
         [SerializeField] private int _notWalkableArea = 1;
 
         public void Initialize(float2 size)
         {
-            _foor.position = new Vector3(size.x / 2, 0, size.y / 2);
-            _foor.localScale = new Vector3(size.x / 10, 1, size.y / 10);
+            _floor.position = new Vector3(size.x / 2, 0, size.y / 2);
+            _floor.localScale = new Vector3(size.x / 10, 1, size.y / 10);
         }
 
         public void SpawnObstacle(float2 position, float size)
