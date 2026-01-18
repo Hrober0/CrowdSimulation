@@ -11,7 +11,11 @@ namespace Benchmarks
 
         private NavMeshPath _path;
 
-        public override void Update(float2 min, float2 max)
+        public override void Initialize(float2 size)
+        {
+        }
+
+        public override void UpdateNavMesh(float2 min, float2 max)
         {
             _surface.BuildNavMesh();
         }

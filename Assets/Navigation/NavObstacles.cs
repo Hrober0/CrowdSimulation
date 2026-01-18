@@ -20,6 +20,8 @@ namespace Navigation
         public NativeSpatialHash<IndexedTriangle> ObstacleLookup;
         public NativeParallelMultiHashMap<int, Edge> ObstacleEdges;
 
+        public bool IsCreated => Obstacles.IsCreated;
+        
         public NavObstacles(float chunkSize, int capacity = 512, int averageVerticesPerObstacle = 4, Allocator allocator = Allocator.Persistent)
         {
             Obstacles = new(capacity, allocator);
@@ -29,9 +31,12 @@ namespace Navigation
 
         public void Dispose()
         {
-            Obstacles.Dispose();
-            ObstacleLookup.Dispose();
-            ObstacleEdges.Dispose();
+            if (IsCreated)
+            {
+                Obstacles.Dispose();
+                ObstacleLookup.Dispose();
+                ObstacleEdges.Dispose();
+            }
         }
 
         public int AddObstacle(in NativeList<float2> border, T attributes)

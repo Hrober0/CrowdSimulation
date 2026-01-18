@@ -411,7 +411,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _world: {fileID: 1496971345}
-  _navMeshBenchmarkProvider: {fileID: 1132369207}
+  _navMeshBenchmarkProvider: {fileID: 2092151333}
   _queryCount: 500
   _iterations: 20
   _seed: 777
@@ -428,10 +428,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _world: {fileID: 1496971345}
-  _navMeshBenchmarkProvider: {fileID: 1132369207}
+  _navMeshBenchmarkProvider: {fileID: 2092151333}
   _updateSize: {x: 1, y: 3}
-  _iterations: 100
+  _iterations: 10
   _seed: 777
+  _updateAll: 0
 --- !u!1 &1040684102
 GameObject:
   m_ObjectHideFlags: 0
@@ -510,7 +511,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 2092151334}
   m_Father: {fileID: 828346011}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1132369207
@@ -588,8 +590,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _seed: 777220444
-  _terrainSize: {x: 500, y: 500}
-  _obstacleCount: 1000
+  _terrainSize: {x: 100, y: 100}
+  _obstacleCount: 600
   _obstacleSizeRange: {x: 0.2, y: 5}
   _obstacleProviderBehaviour: {fileID: 312371171}
 --- !u!4 &1496971346
@@ -608,6 +610,51 @@ Transform:
   - {fileID: 1040684104}
   - {fileID: 312371172}
   m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2092151332
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2092151334}
+  - component: {fileID: 2092151333}
+  m_Layer: 0
+  m_Name: CustomNavigation
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2092151333
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2092151332}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41e0d558acf940f5ba311b99f1b051af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _obstacleProvider: {fileID: 312371171}
+--- !u!4 &2092151334
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2092151332}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1132369206}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

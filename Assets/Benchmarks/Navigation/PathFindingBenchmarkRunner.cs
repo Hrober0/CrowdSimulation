@@ -55,7 +55,8 @@ namespace Benchmarks
         public double RunPathFindingBenchmark()
         {
             _world.Generate();
-            _navMeshBenchmarkProvider.Update( float2.zero,_world.TerrainSize);
+            _navMeshBenchmarkProvider.Initialize(_world.TerrainSize);
+            _navMeshBenchmarkProvider.UpdateNavMesh(float2.zero,_world.TerrainSize);
 
             var queries = GeneratePath(
                 _seed,

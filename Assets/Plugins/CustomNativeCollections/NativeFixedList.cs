@@ -17,6 +17,7 @@ namespace CustomNativeCollections
 
         private NativeList<int> _freeIndexes;
 
+        public bool IsCreated => _list.IsCreated;
         public NativeList<T> DirtyList => _list;
         public int Length => _list.Length - _freeIndexes.Length;
 
@@ -28,13 +29,9 @@ namespace CustomNativeCollections
         
         public void Dispose()
         {
-            if (_list.IsCreated)
+            if (IsCreated)
             {
                 _list.Dispose();
-            }
-
-            if (_freeIndexes.IsCreated)
-            {
                 _freeIndexes.Dispose();
             }
         }
