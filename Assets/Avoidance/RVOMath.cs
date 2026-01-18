@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     public struct RVOMath
     {

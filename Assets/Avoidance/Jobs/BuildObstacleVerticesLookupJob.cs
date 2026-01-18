@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     [BurstCompile]
     public struct BuildObstacleVerticesLookupJob : IJobParallelFor

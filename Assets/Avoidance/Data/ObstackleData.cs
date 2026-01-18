@@ -1,7 +1,7 @@
 using System;
 using Unity.Mathematics;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     public struct ObstacleVertex : IEquatable<ObstacleVertex>
     {

@@ -6,7 +6,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     public struct ObstacleLookup : IDisposable
     {

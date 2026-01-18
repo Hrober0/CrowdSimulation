@@ -1,7 +1,7 @@
 ﻿using Unity.Collections;
 using Unity.Mathematics;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     public static class Linear
     {

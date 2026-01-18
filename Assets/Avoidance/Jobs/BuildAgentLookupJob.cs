@@ -2,7 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     [BurstCompile]
     public struct BuildAgentLookupJob : IJobParallelFor

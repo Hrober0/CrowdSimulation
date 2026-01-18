@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace AgentSimulation
+namespace Avoidance
 {
     [BurstCompile]
     public struct UpdateAgentJobParallel : IJobParallelFor
