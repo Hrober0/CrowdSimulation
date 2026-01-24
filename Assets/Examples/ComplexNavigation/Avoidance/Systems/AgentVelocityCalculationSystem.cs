@@ -11,73 +11,33 @@ namespace ComplexNavigation
 {
     [BurstCompile]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
-    public partial class AgentVelocityCalculationSystem : SystemBase
+    public partial struct AgentVelocityCalculationSystem : ISystem
     {
-        private const float UPDATE_INTERVAL = 0.05f;
-        
-        private int _nextAgentIndex;
-        private NativeAvgDeltaTime _deltaTime;
-        
-        protected override void OnCreate()
+        public void OnUpdate(ref SystemState state)
         {
-            base.OnCreate();
-
-            _deltaTime = new NativeAvgDeltaTime(Allocator.Persistent, 0.0001f);
-        }
-        
-        protected override void OnDestroy()
-        {
-            _deltaTime.Dispose();
-
-            base.OnDestroy();
-        }
-        
-        [BurstCompile]
-        protected override void OnUpdate()
-        {
-            _deltaTime.Update(SystemAPI.Time.DeltaTime);
-            
             var query = SystemAPI.QueryBuilder().WithAllRW<AgentCoreData>().Build();
-
             int agentCount = query.CalculateEntityCount();
             if (agentCount == 0)
             {
                 return;
             }
-
-            float dt = _deltaTime.EverageDeltaTime;
-            float updatesPerSecond = 1f / UPDATE_INTERVAL;
-            float agentsPerSecond = agentCount * updatesPerSecond;
-            int batchSize = math.max(1, (int)math.ceil(agentsPerSecond * dt));
             
-            if (_nextAgentIndex >= agentCount)
-            {
-                _nextAgentIndex = 0;
-            }
-            
-            int startIndex = _nextAgentIndex;
-            int updateSize = math.min(batchSize, agentCount - startIndex);
-            
-            _nextAgentIndex += updateSize;
-
             var entities = query.ToEntityArray(Allocator.TempJob);
-            var agentHashSystem = World.GetExistingSystemManaged<AgentSpatialHashSystem>();
-            var obstacleHashSystem = World.GetExistingSystemManaged<AvoidanceObstacleLookupSystem>();
+            var agentHashSystem = state.World.GetExistingSystemManaged<AgentSpatialHashSystem>();
+            var obstacleHashSystem = state.World.GetExistingSystemManaged<AvoidanceObstacleLookupSystem>();
             
-            Dependency = new VelocityUpdateJob
+            state.Dependency = new VelocityUpdateJob
                 {
                     Entities = entities,
-                    StartIndex = startIndex,
-                    AgentLookup = GetComponentLookup<AgentCoreData>(),
+                    AgentLookup = state.GetComponentLookup<AgentCoreData>(),
                     AgentSpatialHash = agentHashSystem.SpatialHash,
                     ObstacleSpatialHash = obstacleHashSystem.SpatialLookup,
                     TimeStamp = SystemAPI.Time.DeltaTime,
                 }
-                .ScheduleParallel(updateSize , 64, Dependency);
-            Dependency.Complete();
+                .ScheduleParallel(agentCount , 64, state.Dependency);
+            state.Dependency.Complete();
             
-            Dependency = entities.Dispose(Dependency);
-            // Debug.Log($"{startIndex} + {updateSize} = {startIndex+updateSize} / {agentCount} dt {dt}");
+            state.Dependency = entities.Dispose(state.Dependency);
         }
     }
 
@@ -90,7 +50,6 @@ namespace ComplexNavigation
         private const float TIME_HORIZON_AGENT = 1f;
         
         [ReadOnly] public NativeArray<Entity> Entities;
-        [ReadOnly] public int StartIndex;
         
         [NativeDisableParallelForRestriction]
         public ComponentLookup<AgentCoreData> AgentLookup;
@@ -101,7 +60,7 @@ namespace ComplexNavigation
 
         public void Execute(int jobIndex)
         {
-            var entity = Entities[StartIndex + jobIndex];
+            var entity = Entities[jobIndex];
             var agentCoreData = AgentLookup[entity]; 
             var agent = ToAgent(agentCoreData);
 

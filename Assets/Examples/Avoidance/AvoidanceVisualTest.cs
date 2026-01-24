@@ -77,7 +77,7 @@ namespace AvoidanceTest
 
                 _agentLookup.UpdateAgentLookup();
 
-                new UpdateAgentJobParallel
+                new UpdateAgentVelocitiesJobParallel
                     {
                         Agents = _agentLookup.Agents,
                         AgentLookup = _agentLookup.AgentsLookup,

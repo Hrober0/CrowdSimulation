@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using System.Diagnostics;
 using Unity.Mathematics;
 using Debug = UnityEngine.Debug;
@@ -56,18 +57,40 @@ namespace Benchmarks
         [ContextMenu("Run Build Benchmark")]
         public double RunBuildBenchmark()
         {
-            _world.Generate();
-
             var updateAreas = _updateAll
                 ? GenerateFullUpdateAreas(_iterations, _world.TerrainSize)
                 : GenerateUpdateAreas(_seed, _iterations, _updateSize, _world.TerrainSize);
-            
+            return RunBuildBenchmark(updateAreas);
+        }
+
+        [ContextMenu("Run Build Benchmark with changing size")]
+        public void RunBuildBenchmarkWithChangingSize()
+        {
+            var output = "";
+            for (var i = 0; i < 70; i++)
+            {
+                var center = _world.TerrainSize / 2;
+                var offset = new Vector2(i, i) * 5;
+                var area = new UpdateArea(center - offset, center + offset);
+                var areas = new UpdateArea[_iterations];
+                Array.Fill(areas, area);
+                var result = RunBuildBenchmark(areas);
+                output += $"{result:F4}\n";
+            }
+
+            Debug.Log(output);
+        }
+
+        public double RunBuildBenchmark(UpdateArea[] updateAreas)
+        {
+            _world.Generate();
+
             _navMeshBenchmarkProvider.Initialize(_world.TerrainSize);
 
             // Warm-up
             for (int i = 0; i < _iterations; i++)
                 _navMeshBenchmarkProvider.UpdateNavMesh(updateAreas[i].Min, updateAreas[i].Max);
-            
+
             long totalTicks = 0;
 
             for (int i = 0; i < _iterations; i++)

@@ -7,7 +7,7 @@ using Unity.Mathematics;
 namespace Avoidance
 {
     [BurstCompile]
-    public struct UpdateAgentJobParallel : IJobParallelFor
+    public struct UpdateAgentVelocitiesJobParallel : IJobParallelFor
     {
         [NativeDisableContainerSafetyRestriction]
         public NativeList<Agent> Agents;

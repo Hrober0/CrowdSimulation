@@ -18,17 +18,17 @@ namespace HCore
 
             // Yellows
             new Color(1f, 1f, 0.2f),     // light yellow
-            new Color(0.6f, 0.6f, 0f),       // yellow
+            new Color(0.6f, 0.6f, 0f),   // yellow
             new Color(0.3f, 0.3f, 0f),   // dark yellow
 
             // Greens
             new Color(0.4f, 1f, 0.4f),   // light green
-            new Color(0f, 0.7f, 0f),       // green
+            new Color(0f, 0.7f, 0f),     // green
             new Color(0f, 0.2f, 0f),     // dark green
 
             // Cyans / Teals
             new Color(0.4f, 1f, 1f),     // light cyan
-            new Color(0f, 0.6f, 1f),       // cyan
+            new Color(0f, 0.6f, 1f),     // cyan
             new Color(0f, 0.4f, 0.4f),   // teal
 
             // Blues
@@ -42,9 +42,9 @@ namespace HCore
             new Color(0.4f, 0f, 0.4f),   // dark violet
 
             // Magentas / Pinks
-            new Color(1f, 0.4f, 1f),    // pink
-            new Color(.7f, 0f, .7f),    // magenta
-            new Color(.4f, 0f, .4f),    // dark magenta
+            new Color(1f, 0.4f, 1f),     // pink
+            new Color(.7f, 0f, .7f),     // magenta
+            new Color(.4f, 0f, .4f),     // dark magenta
         };
 
         public static Color GetColor(int index)

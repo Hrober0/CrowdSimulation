@@ -1,4 +1,5 @@
-﻿using HCore.Extensions;
+﻿using HCore;
+using HCore.Extensions;
 using Navigation;
 using Unity.Collections;
 using Unity.Entities;
@@ -40,7 +41,7 @@ namespace ComplexNavigation
 
                     DebugUtils.Draw(portal.Left, portal.Right, Color.green);
 
-                    portal.PathPoint.To3D().DrawPoint(Color.magenta, null, 0.1f);
+                    portal.PathPoint.To3D().DrawPoint(ColorUtils.GetColor(i), null, 0.1f);
 
                     if (_drawPortalsRight)
                     {

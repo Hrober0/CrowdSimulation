@@ -8,10 +8,11 @@ namespace ComplexNavigation
     public class AgentsDebug : MonoBehaviour
     {
         [SerializeField] private bool _drawVelocities;
+        [SerializeField] private bool _drawPreferredVelocities;
 
         private void OnDrawGizmos()
         {
-            if (!_drawVelocities)
+            if (!_drawVelocities && !_drawPreferredVelocities)
             {
                 return;
             }
@@ -29,12 +30,21 @@ namespace ComplexNavigation
                                       .Build(entityManager);
 
             using var agents = query.ToComponentDataArray<AgentCoreData>(Allocator.Temp);
-            foreach (AgentCoreData agent in agents)
+            if (_drawVelocities)
             {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawLine(agent.Position.To3D(), (agent.Position + agent.Velocity).To3D());
-                Gizmos.color = Color.green;
-                Gizmos.DrawLine(agent.Position.To3D(), (agent.Position + agent.PrefVelocity).To3D());
+                foreach (AgentCoreData agent in agents)
+                {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawLine(agent.Position.To3D(), (agent.Position + agent.Velocity).To3D());
+                }
+            }
+            if (_drawPreferredVelocities)
+            {
+                foreach (AgentCoreData agent in agents)
+                {
+                    Gizmos.color = Color.green;
+                    Gizmos.DrawLine(agent.Position.To3D(), (agent.Position + agent.PrefVelocity).To3D());
+                }
             }
         }
     }

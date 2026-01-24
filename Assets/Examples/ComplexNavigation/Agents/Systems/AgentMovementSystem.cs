@@ -50,10 +50,22 @@ namespace ComplexNavigation
                         return;
                     }
                 }
+                else if (pathIndex.Index + 1 < pathBuffer.Length)
+                {
+                    var closestPortalPoint = GeometryUtils.ClosestPointOnSegment(agentPosition, currentPortal.Left, currentPortal.Right);
+                    if (math.distancesq(closestPortalPoint, agentPosition) < DeltaTime * coreData.MaxSpeed)
+                    {
+                        pathIndex.Index++;
+                        if (pathIndex.Index == pathBuffer.Length)
+                        {
+                            return;
+                        }
+                    }
+                }
 
                 var index = pathIndex.Index;
                 GetLookAheadPoint(agentPosition, pathBuffer, ref index, .2f, out float2 lookTarget);
-                
+
                 float2 currentTargetPosition = index + 1 < pathBuffer.Length
                     ? agentPosition + math.normalize(lookTarget - agentPosition)
                     : pathBuffer[^1].Portal.PathPoint;
