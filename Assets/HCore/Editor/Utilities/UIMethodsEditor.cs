@@ -36,8 +36,8 @@ namespace HCore.UI
 
         public static (Label, Slider, FloatField) NewSliderHorizontalFull(VisualElement root, string text, float min, float max, Action<float> onChange = null, int labelWidth = UIMethods.DEFAULT_NAME_WIDTH)
         {
-            var group = UIMethods.NewHorizontalGroup(root);
-            var label = UIMethods.NewLabel(group, text);
+            var group = UIStyledElements.NewHorizontalGroup(root);
+            var label = UIStyledElements.NewLabel(group, text);
             label.style.minWidth = labelWidth;
             var slider = new Slider(min, max, SliderDirection.Horizontal);
             slider.RegisterValueChangedCallback(evt => onChange?.Invoke(evt.newValue));
@@ -59,7 +59,7 @@ namespace HCore.UI
 
         public static Label NewTitle(VisualElement root, string text, int size = 19)
         {
-            var label = UIMethods.NewLabel(root, $"<b>{text}</b>");
+            var label = UIStyledElements.NewLabel(root, $"<b>{text}</b>");
             label.style.marginBottom = 2;
             label.style.fontSize = size;
             return label;

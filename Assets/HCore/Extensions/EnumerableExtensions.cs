@@ -57,6 +57,21 @@ namespace HCore.Extensions
             }
             return default;
         }
+        
+        public static int FindIndex<T>(this IEnumerable<T> enumerable, Predicate<T> predicate)
+        {
+            int index = 0;
+            foreach (var item in enumerable)
+            {
+                if (predicate(item))
+                {
+                    return index;
+                }
+
+                index++;
+            }
+            return -1;
+        }
 
         public static bool Exist<T>(this IEnumerable<T> enumerable, Predicate<T> predicate)
         {

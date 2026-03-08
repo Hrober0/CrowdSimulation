@@ -11,7 +11,11 @@ namespace HCore.UI
         public const int SMALL_INPUT_WIDTH = 50;
         public const int LINE_SPACE = 10;
 
-        public enum Direction { Horizontal, Vertical }
+        public enum Direction
+        {
+            Horizontal,
+            Vertical
+        }
 
         #region elements modifications
 
@@ -27,6 +31,7 @@ namespace HCore.UI
             if (element.style.display != stargetDisplay)
                 element.style.display = stargetDisplay;
         }
+
         public static void SetActive(this VisualElement element, bool state) => SetActiveElement(element, state);
 
         public static bool VisualElementActive(VisualElement element)
@@ -39,6 +44,7 @@ namespace HCore.UI
 
             return element.style.display.value == DisplayStyle.Flex;
         }
+
         public static bool IsActive(this VisualElement element) => VisualElementActive(element);
 
         public static void HideAllElementChildrens(VisualElement element)
@@ -66,6 +72,7 @@ namespace HCore.UI
             else if (!element.ClassListContains(className))
                 element.AddToClassList(className);
         }
+
         public static void SetClass(this VisualElement element, string className, bool state) => SetElementClass(element, className, state);
 
         public static void SetInteractable(this VisualElement element, bool interactable)
@@ -79,7 +86,8 @@ namespace HCore.UI
             element.RegisterCallback<MouseEnterEvent>(_ => action?.Invoke(true));
             element.RegisterCallback<MouseLeaveEvent>(_ => action?.Invoke(false));
         }
-        public static void RegisterHoverClass(this VisualElement element, string className, VisualElement target=null)
+
+        public static void RegisterHoverClass(this VisualElement element, string className, VisualElement target = null)
         {
             element.RegisterHoverEvent((active) => (target ?? element).SetClass(className, active));
         }
@@ -94,6 +102,7 @@ namespace HCore.UI
             {
                 element = element.parent;
             }
+
             return element;
         }
 
@@ -124,33 +133,11 @@ namespace HCore.UI
 
         #endregion
 
-        #region assets
-
-        private static readonly Dictionary<string, VisualTreeAsset> LoadedVTAssets = new();
-
-        /// <summary>
-        /// Load and cach visual element from resources folder
-        /// </summary>
-        /// <param name="path">Path in the resources folder, without extension (UI/UIFiles/....)</param>
-        public static VisualTreeAsset LoadVTAsset(string path)
-        {
-            if (LoadedVTAssets.TryGetValue(path, out VisualTreeAsset asset))
-                return asset;
-
-            asset = UnityEngine.Resources.Load<VisualTreeAsset>(path);
-            if (asset == null)
-                Debug.LogWarning("Asset not found at " + path);
-
-            LoadedVTAssets.Add(path, asset);
-            return asset;
-        }
-
-        #endregion
-
         #region multi-click
 
         private const float MULTI_CLICKS_RESET_TIME = 0.4f;
         private static readonly Dictionary<MultiClickKey, (int clickCount, float time)> MultiClicks = new();
+
         public static void RegisterMultiClick(Button button, Action callback, int clickCount = 2)
         {
             MultiClickKey key = new(button, callback, clickCount);
@@ -160,6 +147,7 @@ namespace HCore.UI
             if (!MultiClicks.ContainsKey(key))
                 MultiClicks.Add(key, (0, 0));
         }
+
         private static void OnMultiClickButtonClicked(MultiClickKey key)
         {
             float clickTime = Time.timeSinceLevelLoad;
@@ -175,6 +163,7 @@ namespace HCore.UI
                 }
             }
         }
+
         private struct MultiClickKey
         {
             public Button button;
@@ -191,111 +180,7 @@ namespace HCore.UI
 
         #endregion
 
-        #region elements names
-
-        public static string ScrollViewContent => "unity-content-container";
-
-        #endregion
-
-        #region elements creation
-
-        public static VisualElement NewSpace(VisualElement root, float space = LINE_SPACE)
-        {
-            var element = new VisualElement();
-            element.style.marginBottom = space;
-            element.style.marginRight = space;
-            root.Add(element);
-            return element;
-        }
-
-        public static Button NewButton(VisualElement root, string text, Action onClick)
-        {
-            var button = new Button { text = text };
-            button.RegisterCallback<ClickEvent>(evt => onClick());
-            root.Add(button);
-            return button;
-        }
-
-        public static Label NewLabel(VisualElement root, string text)
-        {
-            var label = new Label { text = text };
-            root.Add(label);
-            label.style.marginLeft = 2;
-            return label;
-        }
-
-        public static (Label name, Label content) NewLabel(VisualElement root, string name, object content, int space = DEFAULT_NAME_WIDTH)
-        {
-            var group = NewHorizontalGroup(root);
-            group.style.marginTop = 2;
-            group.style.marginBottom = 2;
-            var nameLabel = NewLabel(group, name);
-            nameLabel.style.minWidth = space;
-            var contentLabel = NewLabel(group, content.ToString());
-            return (nameLabel, contentLabel);
-        }
-
-        public static Label NewHeader(VisualElement root, string text)
-        {
-            var label = NewLabel(root, $"<b>{text}</b>");
-            label.style.marginBottom = 2;
-            label.style.marginTop = 12;
-            return label;
-        }
-
-        public static TextField NewTextField(VisualElement root, string text, string value, Action<string> onChange = null)
-        {
-            var field = new TextField(text);
-            field.value = value;
-            if (onChange != null)
-                field.RegisterValueChangedCallback(evt => onChange(evt.newValue));
-            root.Add(field);
-            return field;
-        }
-
-        public static Toggle NewToggle(VisualElement root, string text, Action<bool> onChange = null, int labelWidth = DEFAULT_NAME_WIDTH, bool defaultValue = false)
-        {
-            var group = NewHorizontalGroup(root);
-            var label = NewLabel(group, text);
-            label.style.minWidth = labelWidth;
-            var toggle = new Toggle();
-            toggle.value = defaultValue;
-            toggle.RegisterValueChangedCallback(evt => onChange?.Invoke(evt.newValue));
-            group.Add(toggle);
-            return toggle;
-        }
-
-        public static VisualElement NewContainer(VisualElement root)
-        {
-            var container = new VisualElement();
-            SetStyleContainer(container);
-            root.Add(container);
-            return container;
-        }
-
-        public static VisualElement NewHorizontalGroup(VisualElement root)
-        {
-            var group = new VisualElement();
-            group.style.flexDirection = FlexDirection.Row;
-            group.style.flexShrink = 0;
-            root.Add(group);
-            return group;
-        }
-
-        #endregion
-
-        #region style
-
-        public static void SetStyleContainer(VisualElement element)
-        {
-            var style = element.style;
-            style.flexShrink = 0;
-            style.SetMargin(5);
-            style.SetPadding(5);
-            style.SetBorderWidth(1);
-            style.SetBorderColor(UIColors.EditorBorder);
-            style.backgroundColor = UIColors.EditorContent;
-        }
+        #region style helpers
 
         public static void SetBorderWidth(this IStyle style, float width)
         {
@@ -311,6 +196,14 @@ namespace HCore.UI
             style.borderTopColor = color;
             style.borderRightColor = color;
             style.borderLeftColor = color;
+        }
+
+        public static void SetBorderRadius(this IStyle s, float r)
+        {
+            s.borderTopLeftRadius = r;
+            s.borderTopRightRadius = r;
+            s.borderBottomLeftRadius = r;
+            s.borderBottomRightRadius = r;
         }
 
         public static void SetPadding(this IStyle style, float width)
