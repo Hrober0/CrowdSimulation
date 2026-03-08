@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using HCore.UI;
+using Unity.VisualScripting;
+using UnityEngine;
 
 namespace Examples.Storage.UI
 {
@@ -13,6 +15,28 @@ namespace Examples.Storage.UI
             ResourceType.Coal => new Color(0.4f, 0.4f, 0.5f),
             ResourceType.Gold => new Color(1.0f, 0.8f, 0.2f),
             _ => Color.grey,
+        };
+
+       
+        // public static Color ForJobStatus(JobStatus s) => s switch
+        // {
+        //     JobStatus.Pending   => TextMuted,
+        //     JobStatus.Assigned  => Warning,
+        //     JobStatus.InTransit => Info,
+        //     JobStatus.Completed => Positive,
+        //     JobStatus.Cancelled => Danger,
+        //     _                   => TextMuted,
+        // };
+        
+        public static Color HolderStateColor(HolderState s) => s switch
+        {
+            HolderState.Idle           => UIColors.TextMuted,
+            HolderState.MovingToSource => UIColors.Accent,
+            HolderState.Picking        => UIColors.Accent,
+            HolderState.MovingToDest   => UIColors.Info,
+            HolderState.Delivering     => UIColors.Info,
+            HolderState.Returning      => UIColors.TextMuted,
+            _                          => UIColors.TextMuted,
         };
     }
 }

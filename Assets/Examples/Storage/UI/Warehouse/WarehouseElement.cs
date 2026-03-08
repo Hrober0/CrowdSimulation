@@ -22,7 +22,6 @@ namespace Examples.Storage.UI
             _headerLabel.style.flexGrow = 1;
 
             _toogleButton = UIStyledElements.NewButtonIcon(header, "", ToggleSlots);
-            ToggleSlots();
 
             _slotContainer = new VisualElement();
             _slotContainer.SetActive(false);
@@ -40,6 +39,8 @@ namespace Examples.Storage.UI
                 },
                 hideOther: false
             );
+            
+            ToggleSlots();
         }
 
         public void Refresh(Entity e, EntityManager em)

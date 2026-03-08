@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using Examples.Storage.UI.Holders;
 using HCore.UI;
+using Unity.Entities;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -24,15 +26,18 @@ namespace Examples.Storage.UI
             UIStyledElements.NewHeader(mainContainer, "Resource Manager");
 
             var tabs = UIStyledElements.NewHorizontalGroup(mainContainer);
+            
+            UIStyledElements.NewDivider(mainContainer);
 
             var content = new VisualElement();
             mainContainer.Add(content);
 
-            AddTab(content, tabs, "Warehouse", new WarehouseTab());
-            // AddTab(content, tabs, "", BuildWarehouseTab());
+            var em  = World.DefaultGameObjectInjectionWorld.EntityManager;
+            AddTab(content, tabs, "Warehouse", new WarehouseTab(em));
+            AddTab(content, tabs, "Holders", new HoldersTab(em));
             // AddTab(content, tabs, "", BuildWarehouseTab());
 
-            ShowTab(_tabs[0]); // default tab
+            ShowTab(_tabs[0]);
         }
 
         private void Update()
