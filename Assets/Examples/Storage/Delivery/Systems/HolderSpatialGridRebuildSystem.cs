@@ -73,7 +73,7 @@ namespace Examples.Storage
         {
             cell = new(
                 (int)math.floor(pos.x / cellSize),
-                (int)math.floor(pos.z / cellSize));
+                (int)math.floor(pos.y / cellSize));
         }
 
         /// <summary>

@@ -1,6 +1,8 @@
-﻿using HCore.UI;
+﻿using HCore.Extensions;
+using HCore.UI;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -28,21 +30,23 @@ namespace Examples.Storage.UI.Holders
         {
             _em = em;
             _holderQuery = em.CreateEntityQuery(
-                ComponentType.ReadOnly<HolderComponent>());
+                ComponentType.ReadOnly<HolderComponent>(),
+                ComponentType.ReadOnly<LocalTransform>());
 
             _root = new VisualElement();
             _root.style.flexGrow = 1;
             _root.style.flexDirection = FlexDirection.Column;
 
             BuildStatsBar();
-            BuildList();
             BuildToolbar();
+            BuildList();
         }
 
         public void Update()
         {
             var entities = _holderQuery.ToEntityArray(Allocator.Temp);
             var components = _holderQuery.ToComponentDataArray<HolderComponent>(Allocator.Temp);
+            var transforms = _holderQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
 
             // Update stats
             int active = 0;
@@ -57,18 +61,22 @@ namespace Examples.Storage.UI.Holders
             _countLabel.text = entities.Length.ToString();
             _activeLabel.text = active.ToString();
             _activeLabel.style.color = active > 0 ? UIColors.Accent : UIColors.TextMuted;
-
-            // Reconcile list — UIElementScrollView handles pooling
+            
             int count = entities.Length;
             _list.Clear();
             for (int i = 0; i < count; i++)
             {
                 var el = _list.ShowElement();
                 el.Refresh(entities[i], components[i]);
+                
+                var transform = transforms[i];
+                new Vector2(transform.Position.x, transform.Position.y).DrawPoint(components[i].State == HolderState.Idle ? Color.red : Color.green);
             }
+            
 
             entities.Dispose();
             components.Dispose();
+            transforms.Dispose();
         }
 
         public void SetActive(bool active)
@@ -97,7 +105,7 @@ namespace Examples.Storage.UI.Holders
         {
             var sv = UIStyledElements.NewScrollView(_root);
 
-            _list = new UIElementScrollView<HolderElement>(
+            _list = new(
                 sv,
                 () =>
                 {
@@ -130,8 +138,8 @@ namespace Examples.Storage.UI.Holders
         {
             var archetype = _em.CreateArchetype(
                 typeof(HolderComponent),
-                typeof(Unity.Transforms.LocalTransform),
-                typeof(Unity.Transforms.LocalToWorld));
+                typeof(LocalTransform),
+                typeof(LocalToWorld));
 
             var entity = _em.CreateEntity(archetype);
 
@@ -143,11 +151,11 @@ namespace Examples.Storage.UI.Holders
                 AssignedJob = Entity.Null,
             });
 
-            _em.SetComponentData(entity, Unity.Transforms.LocalTransform.FromPosition(
+            _em.SetComponentData(entity, LocalTransform.FromPosition(
                 new(
-                    Random.Range(-20f, 20f),
-                    0f,
-                    Random.Range(-20f, 20f))));
+                    Random.Range(-15f, 15f),
+                    Random.Range(-10f, 10f),
+                    0)));
         }
     }
 }

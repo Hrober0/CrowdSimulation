@@ -12,7 +12,7 @@ namespace Examples.Storage.UI
     public class Main : MonoBehaviour
     {
         private UIDocument _doc;
-        private List<ITab> _tabs = new();
+        private List<(ITab content, Button button)> _tabs = new();
         private ITab _selectedTab;
 
         void OnEnable()
@@ -37,7 +37,7 @@ namespace Examples.Storage.UI
             AddTab(content, tabs, "Holders", new HoldersTab(em));
             // AddTab(content, tabs, "", BuildWarehouseTab());
 
-            ShowTab(_tabs[0]);
+            ShowTab(_tabs[0].content);
         }
 
         private void Update()
@@ -48,15 +48,22 @@ namespace Examples.Storage.UI
         void ShowTab(ITab tab)
         {
             _selectedTab = tab;
-            _tabs.ForEach(tab => tab.SetActive(false));
-            tab.SetActive(true);
+            _tabs.ForEach(tab =>
+            {
+                tab.content.SetActive(false);
+                tab.button.style.backgroundColor = UIColors.Background;
+            });
+            
+            var (tabContent, button) = _tabs.Find(item => item.content.Equals(tab));
+            tabContent.SetActive(true);
+            button.style.backgroundColor = UIColors.SurfaceRaised;
         }
 
         void AddTab(VisualElement parent, VisualElement tabs, string buttonName, ITab tab)
         {
-            _tabs.Add(tab);
             parent.Add(tab.Content);
-            UIStyledElements.NewButton(tabs, buttonName, () => ShowTab(tab));
+            var button = UIStyledElements.NewButton(tabs, buttonName, () => ShowTab(tab));
+            _tabs.Add((tab, button));
         }
     }
 }
