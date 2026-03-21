@@ -1,4 +1,5 @@
-﻿using Unity.Entities;
+﻿using System;
+using Unity.Entities;
 
 namespace Examples.Storage
 {
@@ -11,6 +12,7 @@ namespace Examples.Storage
         public ConnectionFlags Flags;
     }
 
+    [Flags]
     public enum ConnectionFlags : byte
     {
         Enabled,

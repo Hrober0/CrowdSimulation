@@ -6,13 +6,14 @@ using UnityEngine.UIElements;
 
 namespace Examples.Storage.UI
 {
-    public class SlotBarElement : UIElement
+    public class ItemElement : UIElement
     {
+        private VisualElement _resourceDot;
         private Label _nameLabel;
         private Label _amountLabel;
         private VisualElement _fillBar;
         private Label _reservedOut, _reservedIn;
-        
+
         private Entity _entity;
         private EntityManager _em;
         private ResourceType _resourceType;
@@ -23,11 +24,12 @@ namespace Examples.Storage.UI
             root.style.flexDirection = FlexDirection.Column;
 
             var row = UIStyledElements.NewHorizontalGroup(root);
-            // resource name label (set in Refresh)
-            UIStyledElements.NewLabel(row, "—");
+            row.style.alignItems = Align.Center;
+
+            _resourceDot = UIStyledElements.NewColorDot(row, UIColors.TextMuted, 7f);
 
             var amountGroup = UIStyledElements.NewHorizontalGroup(row);
-            amountGroup.style.minWidth = 100;
+            amountGroup.style.minWidth = 140;
             _nameLabel = UIStyledElements.NewLabel(amountGroup, "");
             _amountLabel = UIStyledElements.NewLabel(amountGroup, "0 / 0");
             _reservedOut = UIStyledElements.NewLabel(amountGroup, "");
@@ -46,10 +48,11 @@ namespace Examples.Storage.UI
             _entity = entity;
             _em = em;
             _resourceType = slot.Resource;
-            
+
             _nameLabel.text = slot.Resource.DisplayName();
+            _resourceDot.style.color = PanelStyles.ResourceColor(slot.Resource);
             _nameLabel.style.color = PanelStyles.ResourceColor(slot.Resource);
-            
+
             _amountLabel.text = $"{slot.CurrentAmount} / {slot.Capacity}";
             float pct = UIMethods.CountPercent(slot.CurrentAmount, slot.Capacity);
             _fillBar.style.width = Length.Percent(pct * 100f);

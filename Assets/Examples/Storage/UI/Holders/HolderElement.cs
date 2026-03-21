@@ -6,11 +6,6 @@ using UnityEngine.UIElements;
 
 namespace Examples.Storage.UI.Holders
 {
-    /// <summary>
-    /// One row in the Holders tab scroll list.
-    /// Pooled by UIElementScrollView — Init() is called once on creation,
-    /// Refresh() updates label text each frame.
-    /// </summary>
     public class HolderElement : UIElement
     {
         // ── Child references ────────────────────────────────────────────────

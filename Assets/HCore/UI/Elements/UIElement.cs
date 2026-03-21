@@ -23,5 +23,13 @@ namespace HCore.UI
             parent.Add(root);
             Init(root);
         }
+
+        public VisualElement CreateElement(VisualElement parent)
+        {
+            var root = new VisualElement();
+            parent.Add(root);
+            Init(root);
+            return root;
+        }
     }
 }

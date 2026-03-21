@@ -35,6 +35,7 @@ namespace HCore.UI
                 return uiElement;
             }
         }
+        
         public UIElementList(VisualElement container, Func<T> createMethod, bool hideOther = true)
         {
             Container = container;
@@ -43,6 +44,22 @@ namespace HCore.UI
             if (hideOther)
             {
                 UIMethods.HideAllElementChildrens(container);
+            }
+        }
+        
+        public UIElementList(VisualElement container, Action<T> onCreatedMethod = null)
+        {
+            Container = container;
+            _createMethod = CreateNew;
+            
+            T CreateNew()
+            {
+                var vElement = new VisualElement();
+                Container.Add(vElement);
+                var uiElement = new T();
+                uiElement.Init(vElement);
+                onCreatedMethod?.Invoke(uiElement);
+                return uiElement;
             }
         }
 

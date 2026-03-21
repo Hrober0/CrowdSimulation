@@ -32,6 +32,14 @@ namespace HCore.UI
             _scrollView.RegisterCallback<WheelEvent>(HandleMouseScroll);
             _direction = direction;
         }
+        
+        public UIElementScrollView(ScrollView scrollView, Action<T> onCreatedMethod = null, Direction direction = Direction.Horizontal)
+            : base(scrollView.contentContainer, onCreatedMethod)
+        {
+            _scrollView = scrollView;
+            _scrollView.RegisterCallback<WheelEvent>(HandleMouseScroll);
+            _direction = direction;
+        }
 
         public void MoveView(float move, float moveTime = 0.5f)
         {

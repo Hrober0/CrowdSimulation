@@ -8,14 +8,8 @@ using UnityEngine.UIElements;
 
 namespace Examples.Storage.UI.Holders
 {
-    /// <summary>
-    /// Self-contained Holders tab.
-    /// StoragePanel creates one instance and calls BuildTab() to get the root element,
-    /// then calls Tick() every Update().
-    /// </summary>
     public class HoldersTab : ITab
     {
-        private EntityManager _em;
         private EntityQuery _holderQuery;
 
         private VisualElement _root;
@@ -26,10 +20,9 @@ namespace Examples.Storage.UI.Holders
         public VisualElement Content => _root;
 
 
-        public HoldersTab(EntityManager em)
+        public HoldersTab()
         {
-            _em = em;
-            _holderQuery = em.CreateEntityQuery(
+            _holderQuery = Main.EntityManager.CreateEntityQuery(
                 ComponentType.ReadOnly<HolderComponent>(),
                 ComponentType.ReadOnly<LocalTransform>());
 
@@ -105,18 +98,7 @@ namespace Examples.Storage.UI.Holders
         {
             var sv = UIStyledElements.NewScrollView(_root);
 
-            _list = new(
-                sv,
-                () =>
-                {
-                    var ve = new VisualElement();
-                    sv.Add(ve);
-                    var el = new HolderElement();
-                    el.Init(ve);
-                    return el;
-                },
-                direction: UIMethods.Direction.Vertical,
-                hideOther: false);
+            _list = new(sv, direction: UIMethods.Direction.Vertical);
         }
 
 
@@ -136,14 +118,16 @@ namespace Examples.Storage.UI.Holders
 
         private void SpawnHolder()
         {
-            var archetype = _em.CreateArchetype(
+            var em = Main.EntityManager;
+            
+            var archetype = em.CreateArchetype(
                 typeof(HolderComponent),
                 typeof(LocalTransform),
                 typeof(LocalToWorld));
 
-            var entity = _em.CreateEntity(archetype);
+            var entity = em.CreateEntity(archetype);
 
-            _em.SetComponentData(entity, new HolderComponent
+            em.SetComponentData(entity, new HolderComponent
             {
                 CarryCapacity = 20,
                 MoveSpeed = 5f,
@@ -151,7 +135,7 @@ namespace Examples.Storage.UI.Holders
                 AssignedJob = Entity.Null,
             });
 
-            _em.SetComponentData(entity, LocalTransform.FromPosition(
+            em.SetComponentData(entity, LocalTransform.FromPosition(
                 new(
                     Random.Range(-15f, 15f),
                     Random.Range(-10f, 10f),

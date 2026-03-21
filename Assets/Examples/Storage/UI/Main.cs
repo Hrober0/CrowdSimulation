@@ -15,6 +15,8 @@ namespace Examples.Storage.UI
         private List<(ITab content, Button button)> _tabs = new();
         private ITab _selectedTab;
 
+        public static EntityManager EntityManager { get; private set; }
+
         void OnEnable()
         {
             _doc = GetComponent<UIDocument>();
@@ -26,15 +28,15 @@ namespace Examples.Storage.UI
             UIStyledElements.NewHeader(mainContainer, "Resource Manager");
 
             var tabs = UIStyledElements.NewHorizontalGroup(mainContainer);
-            
+
             UIStyledElements.NewDivider(mainContainer);
 
             var content = new VisualElement();
             mainContainer.Add(content);
 
-            var em  = World.DefaultGameObjectInjectionWorld.EntityManager;
-            AddTab(content, tabs, "Warehouse", new WarehouseTab(em));
-            AddTab(content, tabs, "Holders", new HoldersTab(em));
+            EntityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
+            AddTab(content, tabs, "Warehouse", new WarehouseTab());
+            AddTab(content, tabs, "Holders", new HoldersTab());
             // AddTab(content, tabs, "", BuildWarehouseTab());
 
             ShowTab(_tabs[0].content);
@@ -53,7 +55,7 @@ namespace Examples.Storage.UI
                 tab.content.SetActive(false);
                 tab.button.style.backgroundColor = UIColors.Background;
             });
-            
+
             var (tabContent, button) = _tabs.Find(item => item.content.Equals(tab));
             tabContent.SetActive(true);
             button.style.backgroundColor = UIColors.SurfaceRaised;

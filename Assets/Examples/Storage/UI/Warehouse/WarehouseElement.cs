@@ -1,16 +1,18 @@
 ﻿using HCore.UI;
 using Unity.Entities;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Examples.Storage.UI
 {
     public class WarehouseElement : UIElement
     {
-        Label _headerLabel;
-        Button _toogleButton;
-        VisualElement _slotContainer;
-        UIElementList<SlotBarElement> _slotList;
+        private Label _headerLabel;
+        private Button _toggleButton;
+        private VisualElement _expandContainer;
+        private UIElementList<ItemElement> _slotList;
+        private UIElementList<ConnectionElement> _connList;
+        
+        private Entity _warehouseEntity;
 
         public override void Init(VisualElement root)
         {
@@ -21,44 +23,82 @@ namespace Examples.Storage.UI
             _headerLabel = UIStyledElements.NewLabel(header, "Warehouse #—");
             _headerLabel.style.flexGrow = 1;
 
-            _toogleButton = UIStyledElements.NewButtonIcon(header, "", ToggleSlots);
+            _toggleButton = UIStyledElements.NewButtonIcon(header, "", ToggleSlots);
 
-            _slotContainer = new VisualElement();
-            _slotContainer.SetActive(false);
-            root.Add(_slotContainer);
-            
-            _slotList = new(
-                _slotContainer,
-                () =>
-                {
-                    var ve = new VisualElement();
-                    _slotContainer.Add(ve);
-                    var bar = new SlotBarElement();
-                    bar.Init(ve);
-                    return bar;
-                },
-                hideOther: false
-            );
-            
+            _expandContainer = new VisualElement();
+            _expandContainer.SetActive(false);
+            root.Add(_expandContainer);
+
+            var itemsG = UIStyledElements.NewHorizontalGroup(_expandContainer);
+            UIStyledElements.NewLabel(itemsG, "Items");
+            var items = new VisualElement();
+            _expandContainer.Add(items);
+            _slotList = new(items);
+
+            var connectionG = UIStyledElements.NewHorizontalGroup(_expandContainer);
+            UIStyledElements.NewLabel(connectionG, "Connections");
+            UIStyledElements.NewButtonIcon(connectionG, "+", AddConnection);
+            var connections = new VisualElement();
+            _expandContainer.Add(connections);
+            _connList = new(connections);
+
             ToggleSlots();
         }
 
-        public void Refresh(Entity e, EntityManager em)
+        public void Refresh(Entity warehouseEntity)
         {
-            var storage = em.GetComponentData<StorageComponent>(e);
-            _headerLabel.text = $"Warehouse #{e.Index} ({storage.WorldPosition})";
+            _warehouseEntity = warehouseEntity;
+                
+            var em = Main.EntityManager;
 
-            var slots = em.GetBuffer<StorageSlot>(e, true);
-            _slotList.SetElements(slots.AsNativeArray(), (bar, slot) =>
-            {
-                bar.Refresh(slot, e, em);
-            });
+            var storage = em.GetComponentData<StorageComponent>(warehouseEntity);
+            _headerLabel.text = $"Warehouse #{warehouseEntity.Index} ({storage.WorldPosition})";
+
+            var slots = em.GetBuffer<StorageSlot>(warehouseEntity, true);
+            _slotList.SetElements(slots.AsNativeArray(), (bar, slot) => { bar.Refresh(slot, warehouseEntity, em); });
+
+            var connections = em.GetBuffer<StorageConnectionElement>(warehouseEntity, true);
+            _connList.SetElements(connections.AsNativeArray(),
+                (element, connectionElement) => element.Refresh(warehouseEntity, connectionElement));
         }
 
         void ToggleSlots()
         {
-            _slotContainer.SetActive(!_slotContainer.IsActive());
-            _toogleButton.text = _slotContainer.IsActive() ? "/\\" : "\\/";
+            _expandContainer.SetActive(!_expandContainer.IsActive());
+            _toggleButton.text = _expandContainer.IsActive() ? "/\\" : "\\/";
+        }
+
+        private void AddConnection()
+        {
+            ConnectionEditUtils.AutoConnect(Main.EntityManager, _warehouseEntity);
+        }
+        
+        private static void AddConnectionIfMissing(
+            EntityCommandBuffer ecb,
+            BufferLookup<StorageConnectionElement> connLookup,
+            Entity fromEntity,
+            Entity toEntity,
+            ResourceType resource)
+        {
+            // Check existing buffer to avoid duplicates
+            if (connLookup.HasBuffer(fromEntity))
+            {
+                var existing = connLookup[fromEntity];
+                for (int i = 0; i < existing.Length; i++)
+                {
+                    var c = existing[i];
+                    if (c.TargetStorage == toEntity && c.Resource == resource) return;
+                }
+            }
+ 
+            ecb.AppendToBuffer(fromEntity, new StorageConnectionElement
+            {
+                TargetStorage = toEntity,
+                Resource      = resource,
+                Priority      = 128,
+                MaxBatchSize  = 20,
+                Flags         = ConnectionFlags.Enabled,
+            });
         }
     }
 }
