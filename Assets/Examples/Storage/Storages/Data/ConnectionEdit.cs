@@ -8,6 +8,6 @@ namespace Examples.Storage
         public Entity       ToEntity;
         public ResourceType Resource;
         public byte         Priority;
-        public bool         Enabled;
+        public bool         Active;
     }
 }

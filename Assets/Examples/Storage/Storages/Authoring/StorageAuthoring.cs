@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Entities;
 using UnityEngine;
 
-namespace Examples.Storage.Authoring
+namespace Examples.Storage
 {
     public class StorageAuthoring : MonoBehaviour
     {
@@ -25,7 +25,6 @@ namespace Examples.Storage.Authoring
                 AddComponent(e, new StorageComponent
                 {
                     WorldPosition = a.transform.position,
-                    Flags = StorageFlags.IsAccepting | StorageFlags.IsDispensing,
                 });
 
                 var slots = AddBuffer<StorageSlot>(e);

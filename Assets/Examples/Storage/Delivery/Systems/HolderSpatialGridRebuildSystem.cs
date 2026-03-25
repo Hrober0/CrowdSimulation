@@ -19,7 +19,7 @@ namespace Examples.Storage
         public void OnCreate(ref SystemState state)
         {
             // Create the singleton entity and allocate the map once
-            var map = new NativeParallelMultiHashMap<int2, HolderSptailEntry>(
+            var map = new NativeParallelMultiHashMap<int2, HolderSpatilEntry>(
                 InitialCapacity, Allocator.Persistent);
 
             var entity = state.EntityManager.CreateEntity();
@@ -55,7 +55,7 @@ namespace Examples.Storage
         [BurstCompile]
         private partial struct FillGridJob : IJobEntity
         {
-            public NativeParallelMultiHashMap<int2, HolderSptailEntry>.ParallelWriter Grid;
+            public NativeParallelMultiHashMap<int2, HolderSpatilEntry>.ParallelWriter Grid;
             public float CellSize;
 
             private void Execute(Entity e, in HolderComponent h, in LocalTransform t)
@@ -63,7 +63,7 @@ namespace Examples.Storage
                 if (h.State != HolderState.Idle) return;
 
                 WorldToCell(t.Position, CellSize, out var cell);
-                Grid.Add(cell, new HolderSptailEntry { Entity = e, Position = t.Position });
+                Grid.Add(cell, new HolderSpatilEntry { Entity = e, Position = t.Position });
             }
         }
         

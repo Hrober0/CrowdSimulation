@@ -6,15 +6,15 @@ namespace Examples.Storage
 {
     public struct HolderComponent : IComponentData
     {
-        public int CarryCapacity;
-        public int CurrentLoad;
+        public int          CarryCapacity;
+        public int          CurrentLoad;
         public ResourceType CarriedType;
-        public HolderState State;
-        public Entity AssignedJob;
-        public float MoveSpeed;
-        public float3 TargetPos;
+        public HolderState  State;
+        public Entity       AssignedJob;  // set to source storage while job is active; Null when idle
+        public float        MoveSpeed;
+        public float3       TargetPos;
     }
-
+ 
     public enum HolderState : byte
     {
         Idle,
@@ -24,13 +24,14 @@ namespace Examples.Storage
         Delivering,
         Returning,
     }
-
+ 
     /// <summary>
-    /// Added by HolderMovementSystem when the holder reaches TargetPos.
-    /// ResourceTransferSystem reacts to it and owns all state transitions.
-    /// Removed via ECB after processing.
+    /// Signals that a holder has reached its TargetPos.
+    /// Implemented as IEnableableComponent so it is added once to the archetype
+    /// and then only toggled (a bitmask flip) — no structural change, no chunk move.
+    ///
+    /// HolderMovementSystem  → enables  via ECB.SetComponentEnabled(..., true)
+    /// ResourceTransferSystem → disables via EnabledRefRW in the query iteration
     /// </summary>
-    public struct ArrivalTag : IComponentData
-    {
-    }
+    public struct ArrivalTag : IComponentData, IEnableableComponent { }
 }

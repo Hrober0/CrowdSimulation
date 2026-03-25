@@ -22,7 +22,11 @@ namespace Examples.Storage.UI
             _doc = GetComponent<UIDocument>();
             var root = _doc.rootVisualElement;
 
+
+            var zoom = 2;
             var mainContainer = UIStyledElements.NewContainer(root);
+            mainContainer.style.scale = new Scale(new Vector2(zoom, zoom));
+            mainContainer.style.translate = new Translate(new Length(50, LengthUnit.Percent), new Length(50, LengthUnit.Percent));
             mainContainer.style.width = 400;
 
             UIStyledElements.NewHeader(mainContainer, "Resource Manager");

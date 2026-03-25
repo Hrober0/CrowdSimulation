@@ -1,6 +1,7 @@
 ﻿using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Examples.Storage
 {
@@ -30,22 +31,12 @@ namespace Examples.Storage
             {
                 var conn = buffer[found];
                 conn.Priority = edit.Priority;
-                conn.Flags = edit.Enabled
-                    ? (conn.Flags | ConnectionFlags.Enabled | ConnectionFlags.PlayerOverride)
-                    : (conn.Flags & ~ConnectionFlags.Enabled | ConnectionFlags.PlayerOverride);
+                conn.Active  = edit.Active;
                 buffer[found] = conn;
+                return;
             }
-            else if (edit.Enabled)
-            {
-                buffer.Add(new StorageConnectionElement
-                {
-                    TargetStorage = edit.ToEntity,
-                    Resource = edit.Resource,
-                    Priority = edit.Priority,
-                    MaxBatchSize = 20,
-                    Flags = ConnectionFlags.Enabled | ConnectionFlags.PlayerOverride,
-                });
-            }
+            
+            Debug.Log("Not found");
         }
 
         public static void AutoConnect(EntityManager em, Entity targetEntity)
@@ -84,11 +75,11 @@ namespace Examples.Storage
 
                     // target → neighbour
                     var targetConns = em.GetBuffer<StorageConnectionElement>(targetEntity);
-                    AddIfMissing(ref targetConns, neighbourEntity, slot.Resource);
+                    AddIfMissing(ref targetConns, neighbourEntity, slot.Resource, true);
 
                     // neighbour → target
                     var neighbourConns = em.GetBuffer<StorageConnectionElement>(neighbourEntity);
-                    AddIfMissing(ref neighbourConns, targetEntity, slot.Resource);
+                    AddIfMissing(ref neighbourConns, targetEntity, slot.Resource, false);
                 }
             }
         }
@@ -107,7 +98,8 @@ namespace Examples.Storage
         private static void AddIfMissing(
             ref DynamicBuffer<StorageConnectionElement> buffer,
             Entity target,
-            ResourceType resource)
+            ResourceType resource,
+            bool active)
         {
             for (int i = 0; i < buffer.Length; i++)
             {
@@ -121,7 +113,7 @@ namespace Examples.Storage
                 Resource = resource,
                 Priority = 128,
                 MaxBatchSize = 20,
-                Flags = ConnectionFlags.Enabled,
+                Active = active,
             });
         }
     }

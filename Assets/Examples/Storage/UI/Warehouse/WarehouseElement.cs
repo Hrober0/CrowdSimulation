@@ -72,33 +72,5 @@ namespace Examples.Storage.UI
         {
             ConnectionEditUtils.AutoConnect(Main.EntityManager, _warehouseEntity);
         }
-        
-        private static void AddConnectionIfMissing(
-            EntityCommandBuffer ecb,
-            BufferLookup<StorageConnectionElement> connLookup,
-            Entity fromEntity,
-            Entity toEntity,
-            ResourceType resource)
-        {
-            // Check existing buffer to avoid duplicates
-            if (connLookup.HasBuffer(fromEntity))
-            {
-                var existing = connLookup[fromEntity];
-                for (int i = 0; i < existing.Length; i++)
-                {
-                    var c = existing[i];
-                    if (c.TargetStorage == toEntity && c.Resource == resource) return;
-                }
-            }
- 
-            ecb.AppendToBuffer(fromEntity, new StorageConnectionElement
-            {
-                TargetStorage = toEntity,
-                Resource      = resource,
-                Priority      = 128,
-                MaxBatchSize  = 20,
-                Flags         = ConnectionFlags.Enabled,
-            });
-        }
     }
 }

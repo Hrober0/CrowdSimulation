@@ -10,7 +10,7 @@ namespace Examples.Storage
     // Singleton component — lives on a single entity created by the system
     // ─────────────────────────────────────────────────────────────────────────
 
-    public struct HolderSptailEntry
+    public struct HolderSpatilEntry
     {
         public Entity Entity;
         public float3 Position;
@@ -18,7 +18,7 @@ namespace Examples.Storage
 
     public struct IdleHolderGridSingleton : IComponentData
     {
-        public NativeParallelMultiHashMap<int2, HolderSptailEntry> Cells;
+        public NativeParallelMultiHashMap<int2, HolderSpatilEntry> Cells;
         public float CellSize;
     }
 }
