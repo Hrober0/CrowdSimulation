@@ -119,10 +119,7 @@ namespace Examples.Storage.UI.Holders
             var drawLabel = UIStyledElements.NewLabel(toolbar, "Draw");
             drawLabel.style.color      = UIColors.TextMuted;
             drawLabel.style.marginLeft = 10;
-            var drawToggle = new Toggle { value = _drawEnabled };
-            drawToggle.style.marginLeft = 3;
-            drawToggle.RegisterValueChangedCallback(e => _drawEnabled = e.newValue);
-            toolbar.Add(drawToggle);
+            UIStyledElements.NewCheckbox(toolbar, _drawEnabled, v => _drawEnabled = v);
         }
  
         // ── Spawn ─────────────────────────────────────────────────────────────

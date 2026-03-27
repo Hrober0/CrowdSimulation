@@ -309,24 +309,49 @@ namespace HCore.UI
             return field;
         }
 
-        public static Toggle NewToggle(VisualElement root, string text,
-            Action<bool> onChange = null, int labelWidth = DEFAULT_NAME_WIDTH, bool defaultValue = false)
+        /// <summary>
+        /// Compact label-less toggle built from a Button to avoid Unity's Toggle USS overrides.
+        /// Accent fill + "✓" when on; SurfaceRaised + empty when off.
+        /// </summary>
+        public static Button NewCheckbox(VisualElement root,
+            bool defaultValue = false, Action<bool> onChange = null)
         {
-            var group = NewHorizontalGroup(root);
-            group.style.alignItems   = Align.Center;
-            group.style.marginTop    = 2;
-            group.style.marginBottom = 2;
+            bool state = defaultValue;
 
-            var label = NewLabel(group, text);
-            label.style.minWidth     = labelWidth;
-            label.style.color        = UIColors.TextSecondary;
+            var btn = new Button();
+            btn.style.width           = 16;
+            btn.style.height          = 16;
+            btn.style.SetPadding(0);
+            btn.style.SetBorderRadius(3);
+            btn.style.SetBorderWidth(1);
+            btn.style.marginLeft      = 2;
+            btn.style.marginRight     = 2;
+            btn.style.fontSize        = 10;
+            btn.style.unityTextAlign  = TextAnchor.MiddleCenter;
+            btn.style.unityFontStyleAndWeight = FontStyle.Bold;
 
-            var toggle = new Toggle { value = defaultValue };
-            toggle.style.marginLeft  = 4;
-            if (onChange != null)
-                toggle.RegisterValueChangedCallback(e => onChange(e.newValue));
-            group.Add(toggle);
-            return toggle;
+            void ApplyState(bool on)
+            {
+                btn.text                    = on ? "✓" : "";
+                btn.style.backgroundColor   = on ? UIColors.Accent       : UIColors.SurfaceRaised;
+                btn.style.color             = on ? UIColors.TextOnAccent  : UIColors.TextMuted;
+                btn.style.SetBorderColor(       on ? UIColors.Accent       : UIColors.Border);
+            }
+
+            ApplyState(defaultValue);
+
+            btn.RegisterCallback<ClickEvent>(_ => {
+                state = !state;
+                ApplyState(state);
+                onChange?.Invoke(state);
+            });
+            btn.RegisterCallback<MouseEnterEvent>(_ => {
+                if (!state) { btn.style.backgroundColor = UIColors.SurfaceHover; btn.style.SetBorderColor(UIColors.BorderHover); }
+            });
+            btn.RegisterCallback<MouseLeaveEvent>(_ => ApplyState(state));
+
+            root.Add(btn);
+            return btn;
         }
 
         public static SliderInt NewSliderInt(VisualElement root, string label,
