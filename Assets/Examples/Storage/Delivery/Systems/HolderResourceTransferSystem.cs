@@ -17,8 +17,8 @@ namespace Examples.Storage
     [BurstCompile]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(SpatialGridRebuildSystem))]
-    [UpdateBefore(typeof(JobAssignmentSystem))]
-    public partial struct ResourceTransferSystem : ISystem
+    [UpdateBefore(typeof(HoldersJobAssignmentSystem))]
+    public partial struct HolderResourceTransferSystem : ISystem
     {
         private BufferLookup<StorageSlot>         _slotLookup;
         private ComponentLookup<StorageComponent> _storageLookup;

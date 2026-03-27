@@ -38,7 +38,7 @@ namespace Examples.Storage
                     });
                 }
 
-                AddBuffer<StorageConnectionElement>(e);
+                AddBuffer<ConnectionRefElement>(e);
             }
         }
     }

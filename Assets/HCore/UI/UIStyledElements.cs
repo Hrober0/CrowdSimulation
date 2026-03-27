@@ -1,6 +1,7 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
-using System;
 
 namespace HCore.UI
 {
@@ -353,6 +354,157 @@ namespace HCore.UI
             return field;
         }
 
+        /// <summary>
+        /// Compact, label-less enum dropdown styled to match the panel theme.
+        /// Looks like a small button; use instead of a raw EnumField in tight rows.
+        /// Child elements (visualInput, text, arrow) are queried and styled directly
+        /// so Unity's default USS is fully overridden.
+        /// </summary>
+        public static EnumField NewEnumPicker<TEnum>(VisualElement root,
+            TEnum defaultValue, Action<TEnum> onChange = null) where TEnum : Enum
+        {
+            var field = new EnumField(defaultValue);
+
+            // Hide the label portion — label is built into the hierarchy but unused here.
+            field.labelElement.style.display = DisplayStyle.None;
+
+            // Root just handles outer spacing; no background or border here.
+            field.style.marginLeft  = 2;
+            field.style.marginRight = 2;
+
+            // ── visualInput — the visible clickable button ────────────────────
+            // EnumField adds .unity-enum-field__input to this element.
+            var input = field.Q(className: EnumField.inputUssClassName);
+            if (input != null)
+            {
+                input.style.backgroundColor = UIColors.SurfaceRaised;
+                input.style.SetBorderWidth(1);
+                input.style.SetBorderColor(UIColors.Border);
+                input.style.SetBorderRadius(4);
+                input.style.paddingTop    = 3;
+                input.style.paddingBottom = 3;
+                input.style.minHeight     = StyleKeyword.Auto;
+                input.style.minWidth    = 100;
+            }
+            //
+            // // ── TextElement — displays the selected enum name ─────────────────
+            // // EnumField adds .unity-enum-field__text to this element.
+            var text = field.Q<TextElement>(className: EnumField.textUssClassName);
+            if (text != null)
+            {
+                text.style.color      = UIColors.TextSecondary;
+                text.style.fontSize   = UIColors.FontSizeS;
+                text.style.marginLeft = 0;
+                text.style.marginRight = 0;
+                text.style.flexGrow   = 1;
+            }
+
+            // ── Arrow — the dropdown chevron icon ─────────────────────────────
+            // EnumField adds .unity-enum-field__arrow to this element.
+            // The icon is rendered as a background-image mask, so tint with
+            // unityBackgroundImageTintColor rather than color.
+            var arrow = field.Q(className: EnumField.arrowUssClassName);
+            if (arrow != null)
+            {
+                arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
+                arrow.style.marginLeft = 3;
+            }
+
+            // ── Hover ─────────────────────────────────────────────────────────
+            field.RegisterCallback<MouseEnterEvent>(_ => {
+                if (input != null)
+                {
+                    input.style.backgroundColor = UIColors.SurfaceHover;
+                    input.style.SetBorderColor(UIColors.BorderHover);
+                }
+                // if (text  != null) text.style.color  = UIColors.TextPrimary;
+                if (arrow != null) arrow.style.unityBackgroundImageTintColor = UIColors.TextSecondary;
+            });
+            field.RegisterCallback<MouseLeaveEvent>(_ => {
+                if (input != null)
+                {
+                    input.style.backgroundColor = UIColors.SurfaceRaised;
+                    input.style.SetBorderColor(UIColors.Border);
+                }
+                // if (text  != null) text.style.color  = UIColors.TextSecondary;
+                if (arrow != null) arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
+            });
+
+            // Popup opens in a separate panel overlay — style it after open.
+            field.RegisterCallback<PointerDownEvent>(_ =>
+                field.schedule.Execute(() => StyleDropdownPopup(field.panel?.visualTree)));
+
+            if (onChange != null)
+                field.RegisterValueChangedCallback(e => onChange((TEnum)e.newValue));
+
+            root.Add(field);
+            return field;
+        }
+
+        /// <summary>
+        /// Compact, label-less string dropdown styled to match the panel theme.
+        /// Update <c>choices</c> and <c>index</c> on the returned field each frame.
+        /// </summary>
+        public static DropdownField NewDropdownPicker(VisualElement root, Action<int> onChange = null)
+        {
+            var field = new DropdownField(new List<string>(), 0);
+            field.labelElement.style.display = DisplayStyle.None;
+
+            field.style.marginLeft  = 2;
+            field.style.marginRight = 2;
+
+            var input = field.Q(className: DropdownField.inputUssClassName);
+            // Query text and arrow inside the input container, not the field root.
+            // field.Q<TextElement>() would find the hidden labelElement first.
+            var text  = input?.Q<TextElement>();
+            var arrow = input?.Q(className: "unity-base-popup-field__arrow")
+                     ?? input?.Q(className: "unity-dropdown-field__arrow");
+
+            if (input != null)
+            {
+                input.style.backgroundColor = UIColors.SurfaceRaised;
+                input.style.SetBorderWidth(1);
+                input.style.SetBorderColor(UIColors.Border);
+                input.style.SetBorderRadius(4);
+                input.style.paddingTop    = 3;
+                input.style.paddingBottom = 3;
+                input.style.paddingLeft   = 6;
+                input.style.paddingRight  = 6;
+            }
+            if (text != null)
+            {
+                text.style.color    = UIColors.TextSecondary;
+                text.style.fontSize = UIColors.FontSizeS;
+                text.style.flexGrow = 1;
+            }
+            if (arrow != null)
+            {
+                arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
+                arrow.style.marginLeft = 3;
+            }
+
+            field.RegisterCallback<MouseEnterEvent>(_ => {
+                if (input != null) { input.style.backgroundColor = UIColors.SurfaceHover; input.style.SetBorderColor(UIColors.BorderHover); }
+                if (arrow != null) arrow.style.unityBackgroundImageTintColor = UIColors.TextSecondary;
+            });
+            field.RegisterCallback<MouseLeaveEvent>(_ => {
+                if (input != null) { input.style.backgroundColor = UIColors.SurfaceRaised; input.style.SetBorderColor(UIColors.Border); }
+                if (arrow != null) arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
+            });
+
+            field.RegisterCallback<PointerDownEvent>(_ =>
+                field.schedule.Execute(() => StyleDropdownPopup(field.panel?.visualTree)));
+
+            field.RegisterValueChangedCallback(_ =>
+            {
+                // field.value = field.choices[field.index];
+                onChange?.Invoke(field.index);
+            });
+
+            root.Add(field);
+            return field;
+        }
+
         // ════════════════════════════════════════════════════════════════════
         // FILL BAR
         // ════════════════════════════════════════════════════════════════════
@@ -401,6 +553,70 @@ namespace HCore.UI
         // ════════════════════════════════════════════════════════════════════
         // INTERNAL HELPERS
         // ════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Finds the GenericDropdownMenu popup in the panel overlay and applies the dark theme.
+        /// Called via schedule.Execute so it runs after the popup has been added to the tree.
+        /// </summary>
+        private static void StyleDropdownPopup(VisualElement panelRoot)
+        {
+            if (panelRoot == null) return;
+            var dropdown = panelRoot.Q(className: "unity-base-dropdown");
+            if (dropdown == null) return;
+
+            // unity-base-dropdown is a transparent full-panel overlay (click-catcher) —
+            // do NOT set backgroundColor on it or it floods the whole screen.
+            // The visible popup box is __container-outer.
+            var outer = dropdown.Q(className: "unity-base-dropdown__container-outer");
+            if (outer != null)
+            {
+                outer.style.backgroundColor = UIColors.Surface;
+                outer.style.SetBorderWidth(1);
+                outer.style.SetBorderColor(UIColors.Border);
+                outer.style.SetBorderRadius(4);
+                outer.style.overflow      = Overflow.Hidden;
+                outer.style.paddingTop    = 4;
+                outer.style.paddingBottom = 4;
+            }
+
+            // The ScrollView inside the container has its own white background in Unity's USS.
+            var scrollView = dropdown.Q(className: "unity-scroll-view");
+            if (scrollView != null)
+                scrollView.style.backgroundColor = Color.clear;
+
+            dropdown.Query(className: "unity-base-dropdown__item").ForEach(item =>
+            {
+                item.style.backgroundColor = Color.clear;
+                item.style.paddingTop      = 4;
+                item.style.paddingBottom   = 4;
+                item.style.paddingLeft     = 10;
+                item.style.paddingRight    = 10;
+
+                // Unity's USS styles the inner Label with a more-specific rule that beats
+                // `color` set on the parent container — target the Label directly.
+                var label = item.Q<Label>();
+                if (label != null)
+                {
+                    label.style.color    = UIColors.TextPrimary;
+                    label.style.fontSize = UIColors.FontSizeS;
+                }
+
+                var checkmark = item.Q(className: "unity-base-dropdown__checkmark");
+                if (checkmark != null)
+                    checkmark.style.unityBackgroundImageTintColor = UIColors.Accent;
+
+                item.RegisterCallback<MouseEnterEvent>(_ => item.style.backgroundColor = UIColors.SurfaceHover);
+                item.RegisterCallback<MouseLeaveEvent>(_ => item.style.backgroundColor = Color.clear);
+            });
+
+            dropdown.Query(className: "unity-base-dropdown__separator").ForEach(sep =>
+            {
+                sep.style.height          = 1;
+                sep.style.backgroundColor = UIColors.BorderFaint;
+                sep.style.marginTop       = 2;
+                sep.style.marginBottom    = 2;
+            });
+        }
 
         private static void ApplyFieldStyle(VisualElement field)
         {

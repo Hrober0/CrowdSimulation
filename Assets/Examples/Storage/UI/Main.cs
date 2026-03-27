@@ -41,7 +41,7 @@ namespace Examples.Storage.UI
             EntityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
             AddTab(content, tabs, "Warehouse", new WarehouseTab());
             AddTab(content, tabs, "Holders", new HoldersTab());
-            // AddTab(content, tabs, "", BuildWarehouseTab());
+            AddTab(content, tabs, "Connections", new ConnectionsTab());
 
             ShowTab(_tabs[0].content);
         }
@@ -49,6 +49,8 @@ namespace Examples.Storage.UI
         private void Update()
         {
             _selectedTab?.Update();
+            foreach (var (tab, _) in _tabs)
+                tab.DrawGizmos();
         }
 
         void ShowTab(ITab tab)

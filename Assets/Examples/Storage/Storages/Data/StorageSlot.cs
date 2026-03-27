@@ -15,5 +15,7 @@ namespace Examples.Storage
 
         public readonly int AvailableCapacity
             => Capacity - CurrentAmount - ReservedIncoming;
+        
+        public readonly float Fill => Capacity > 0 ? CurrentAmount / (float)Capacity : 0;    
     }
 }

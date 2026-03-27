@@ -16,6 +16,7 @@ namespace Examples.Storage.UI.Holders
         private Label _countLabel;
         private Label _activeLabel;
         private UIElementScrollView<HolderElement> _list;
+        private bool _drawEnabled = true;
  
         public VisualElement Content => _root;
  
@@ -38,30 +39,42 @@ namespace Examples.Storage.UI.Holders
         {
             var entities   = _holderQuery.ToEntityArray(Allocator.Temp);
             var components = _holderQuery.ToComponentDataArray<HolderComponent>(Allocator.Temp);
-            var transforms = _holderQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
- 
+
             int active = 0;
             for (int i = 0; i < components.Length; i++)
                 if (components[i].State != HolderState.Idle) active++;
- 
+
             _countLabel.text = entities.Length.ToString();
             _activeLabel.text = active.ToString();
             _activeLabel.style.color = active > 0 ? UIColors.Accent : UIColors.TextMuted;
- 
+
             _list.Clear();
             for (int i = 0; i < entities.Length; i++)
             {
                 var el = _list.ShowElement();
                 el.Refresh(entities[i], components[i]);
- 
+            }
+
+            entities  .Dispose();
+            components.Dispose();
+        }
+
+        public void DrawGizmos()
+        {
+            if (!_drawEnabled) return;
+
+            var transforms = _holderQuery.ToComponentDataArray<LocalTransform>(Allocator.Temp);
+            var components = _holderQuery.ToComponentDataArray<HolderComponent>(Allocator.Temp);
+
+            for (int i = 0; i < transforms.Length; i++)
+            {
                 var t = transforms[i];
                 new Vector2(t.Position.x, t.Position.y).DrawPoint(
                     components[i].State == HolderState.Idle ? Color.red : Color.green);
             }
- 
-            entities  .Dispose();
-            components.Dispose();
+
             transforms.Dispose();
+            components.Dispose();
         }
  
         public void SetActive(bool active) => _root.SetActive(active);
@@ -102,6 +115,14 @@ namespace Examples.Storage.UI.Holders
             toolbar.style.alignItems = Align.Center;
  
             UIStyledElements.NewButtonPrimary(toolbar, "+ Spawn Holder", SpawnHolder);
+
+            var drawLabel = UIStyledElements.NewLabel(toolbar, "Draw");
+            drawLabel.style.color      = UIColors.TextMuted;
+            drawLabel.style.marginLeft = 10;
+            var drawToggle = new Toggle { value = _drawEnabled };
+            drawToggle.style.marginLeft = 3;
+            drawToggle.RegisterValueChangedCallback(e => _drawEnabled = e.newValue);
+            toolbar.Add(drawToggle);
         }
  
         // ── Spawn ─────────────────────────────────────────────────────────────
@@ -124,7 +145,7 @@ namespace Examples.Storage.UI.Holders
  
             em.SetComponentData(entity, new HolderComponent
             {
-                CarryCapacity = 20,
+                CarryCapacity = 2,
                 MoveSpeed     = 5f,
                 State         = HolderState.Idle,
                 AssignedJob   = Entity.Null,

@@ -7,5 +7,8 @@ namespace Examples.Storage.UI
         void Update();
         void SetActive(bool active);
         VisualElement Content { get; }
+
+        /// <summary>Called every frame regardless of which tab is active.</summary>
+        void DrawGizmos() { }
     }
 }

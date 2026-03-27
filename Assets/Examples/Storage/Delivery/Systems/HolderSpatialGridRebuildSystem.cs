@@ -36,7 +36,9 @@ namespace Examples.Storage
         public void OnDestroy(ref SystemState state)
         {
             if (SystemAPI.TryGetSingletonRW<IdleHolderGridSingleton>(out var grid))
+            {
                 grid.ValueRW.Cells.Dispose();
+            }
         }
 
         [BurstCompile]
@@ -77,49 +79,40 @@ namespace Examples.Storage
         }
 
         /// <summary>
-        /// Ring-expansion nearest-idle-holder search.
-        /// Checks rings 0 → MaxRings until at least one holder is found,
-        /// then checks one more ring to make sure we haven't missed a closer one.
-        /// Returns Entity.Null if no idle holder exists anywhere.
+        /// Returns the nearest idle holder within <paramref name="maxRange"/> using
+        /// <see cref="GridSearchCursor"/>.  After finding a candidate in ring R, one
+        /// additional ring is checked to catch holders that are geometrically closer
+        /// despite belonging to the next ring (ring corners vs. next-ring edge centres).
+        /// Returns Entity.Null if no idle holder exists in range.
         /// </summary>
         [BurstCompile]
         public static void FindNearestIdleHolder(
             in IdleHolderGridSingleton grid,
             in float3 targetPos,
             out float bestDistSq,
-            out Entity bestEntity)
+            out Entity bestEntity,
+            float maxRange = 200)
         {
-            WorldToCell(targetPos, grid.CellSize, out int2 targetCell);
             bestEntity = Entity.Null;
             bestDistSq = float.MaxValue;
-            const int MaxRings = 8;
 
-            for (int ring = 0; ring <= MaxRings; ring++)
+            var cursor = new GridSearchCursor();
+            cursor.Init(in grid, targetPos, maxRange);
+
+            int foundRing = -1;
+            while (cursor.MoveNext(out HolderSpatilEntry entry))
             {
-                for (int dx = -ring; dx <= ring; dx++)
-                for (int dz = -ring; dz <= ring; dz++)
+                // Once we are two rings past the ring where the first candidate was
+                // found, no closer holder can appear.
+                if (foundRing >= 0 && cursor.Ring > foundRing + 1) break;
+
+                float dsq = math.distancesq(entry.Position, targetPos);
+                if (dsq < bestDistSq)
                 {
-                    // Only process cells on the current ring's edge
-                    if (math.abs(dx) != ring && math.abs(dz) != ring) continue;
-
-                    int2 cell = targetCell + new int2(dx, dz);
-
-                    if (!grid.Cells.TryGetFirstValue(cell, out var entry, out var it))
-                        continue;
-
-                    do
-                    {
-                        float dsq = math.distancesq(entry.Position, targetPos);
-                        if (dsq < bestDistSq)
-                        {
-                            bestDistSq = dsq;
-                            bestEntity = entry.Entity;
-                        }
-                    } while (grid.Cells.TryGetNextValue(out entry, ref it));
+                    bestDistSq = dsq;
+                    bestEntity = entry.Entity;
+                    foundRing  = cursor.Ring;
                 }
-
-                // Found at least one candidate — check one more ring for safety, then stop
-                if (bestEntity != Entity.Null && ring >= 1) break;
             }
         }
     }
