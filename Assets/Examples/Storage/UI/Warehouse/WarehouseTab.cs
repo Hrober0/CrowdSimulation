@@ -3,6 +3,7 @@ using HCore.UI;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -87,17 +88,24 @@ namespace Examples.Storage.UI
         private static void SpawnStorage(float3 worldPos)
         {
             var em = Main.EntityManager;
-            var entity = em.CreateEntity();
 
-            em.AddComponentData(entity, new StorageComponent { WorldPosition = worldPos });
+            using var prefabQuery = em.CreateEntityQuery(typeof(StoragePrefabsSingleton));
 
-            var slots = em.AddBuffer<StorageSlot>(entity);
-            slots.Add(new StorageSlot { Resource = ResourceType.Wood, Capacity = 20 });
-            slots.Add(new StorageSlot { Resource = ResourceType.Stone, Capacity = 20 });
+            if (!prefabQuery.TryGetSingleton<StoragePrefabsSingleton>(out var prefabs))
+            {
+                Debug.LogWarning("Storage Prefabs Singleton not found");
+                return;
+            }
+            
+            var entity = em.Instantiate(prefabs.Storage);
 
-            em.AddBuffer<ConnectionRefElement>(entity);
+            var storage = em.GetComponentData<StorageComponent>(entity);
+            storage.WorldPosition = worldPos;
+            em.SetComponentData(entity, storage);
 
-            ConnectionEditUtils.AutoConnect(em, entity, 5);
+            em.SetComponentData(entity, LocalTransform.FromPosition(worldPos));
+
+            ConnectionEditUtils.AutoConnect(em, entity);
         }
     }
 }

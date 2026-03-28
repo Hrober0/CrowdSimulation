@@ -217,6 +217,7 @@ GameObject:
   - component: {fileID: 1248477264}
   - component: {fileID: 1248477266}
   - component: {fileID: 1248477265}
+  - component: {fileID: 1248477267}
   m_Layer: 0
   m_Name: UI
   m_TagString: Untagged
@@ -270,6 +271,18 @@ MonoBehaviour:
   m_WorldSpaceSizeMode: 1
   m_WorldSpaceWidth: 1920
   m_WorldSpaceHeight: 1080
+--- !u!114 &1248477267
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1248477263}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60827a13a4c257946af1ed630898b6e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1323645620
 GameObject:
   m_ObjectHideFlags: 0
