@@ -13,20 +13,22 @@ namespace HCore.Extensions
 
         public static Vector2 To2D(this Vector3 vector3D) => new Vector2(vector3D.x, vector3D.y);
 
-        public static void DrawPoint(this Vector2 point, Color color, float? duration = null) => DrawPoint(point.To3D(Y_2D_POSITION), color, duration);
+        public static void DrawPoint(this Vector2 point, Color color, float? duration = null, float size = 1) =>
+            DrawPoint(point.To3D(Y_2D_POSITION), color, duration, size);
+
         public static void DrawPoint(this Vector3 point, Color color, float? duration = null, float size = 1)
         {
             if (duration != null)
             {
-                Debug.DrawLine(point - Vector3.up * size,      point + Vector3.up * size,         color, duration.Value);
-                Debug.DrawLine(point - Vector3.right * size,   point + Vector3.right * size,      color, duration.Value);
-                Debug.DrawLine(point - Vector3.forward * size, point + Vector3.forward * size,    color, duration.Value);
+                Debug.DrawLine(point - Vector3.up * size, point + Vector3.up * size, color, duration.Value);
+                Debug.DrawLine(point - Vector3.right * size, point + Vector3.right * size, color, duration.Value);
+                Debug.DrawLine(point - Vector3.forward * size, point + Vector3.forward * size, color, duration.Value);
             }
             else
             {
-                Debug.DrawLine(point - Vector3.up * size,      point + Vector3.up * size,         color);
-                Debug.DrawLine(point - Vector3.right * size,   point + Vector3.right * size,      color);
-                Debug.DrawLine(point - Vector3.forward * size, point + Vector3.forward * size,    color);
+                Debug.DrawLine(point - Vector3.up * size, point + Vector3.up * size, color);
+                Debug.DrawLine(point - Vector3.right * size, point + Vector3.right * size, color);
+                Debug.DrawLine(point - Vector3.forward * size, point + Vector3.forward * size, color);
             }
         }
 

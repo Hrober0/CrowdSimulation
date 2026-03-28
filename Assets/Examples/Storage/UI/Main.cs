@@ -1,4 +1,3 @@
-﻿using System;
 using System.Collections.Generic;
 using Examples.Storage.UI.Holders;
 using HCore.UI;
@@ -22,12 +21,15 @@ namespace Examples.Storage.UI
             _doc = GetComponent<UIDocument>();
             var root = _doc.rootVisualElement;
 
-
             var zoom = 2;
             var mainContainer = UIStyledElements.NewContainer(root);
-            mainContainer.style.scale = new Scale(new Vector2(zoom, zoom));
+            mainContainer.style.scale     = new Scale(new Vector2(zoom, zoom));
             mainContainer.style.translate = new Translate(new Length(50, LengthUnit.Percent), new Length(50, LengthUnit.Percent));
-            mainContainer.style.width = 400;
+            mainContainer.style.width     = 400;
+
+            // Report UI hover state to the input handler.
+            mainContainer.RegisterCallback<PointerEnterEvent>(_ => WorldInputHandler.MouseOverUI = true);
+            mainContainer.RegisterCallback<PointerLeaveEvent>(_ => WorldInputHandler.MouseOverUI = false);
 
             UIStyledElements.NewHeader(mainContainer, "Resource Manager");
 
@@ -40,7 +42,7 @@ namespace Examples.Storage.UI
 
             EntityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
             AddTab(content, tabs, "Warehouse", new WarehouseTab());
-            AddTab(content, tabs, "Holders", new HoldersTab());
+            AddTab(content, tabs, "Holders",   new HoldersTab());
             AddTab(content, tabs, "Connections", new ConnectionsTab());
 
             ShowTab(_tabs[0].content);
@@ -56,10 +58,10 @@ namespace Examples.Storage.UI
         void ShowTab(ITab tab)
         {
             _selectedTab = tab;
-            _tabs.ForEach(tab =>
+            _tabs.ForEach(t =>
             {
-                tab.content.SetActive(false);
-                tab.button.style.backgroundColor = UIColors.Background;
+                t.content.SetActive(false);
+                t.button.style.backgroundColor = UIColors.Background;
             });
 
             var (tabContent, button) = _tabs.Find(item => item.content.Equals(tab));

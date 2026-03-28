@@ -15,7 +15,7 @@ namespace Examples.Storage.UI
         private VisualElement _root;
         private DropdownField _pickerA;
         private DropdownField _pickerB;
-        private EnumField     _resourcePicker;
+        private EnumField _resourcePicker;
         private UIElementScrollView<ConnectionElement> _list;
 
         private readonly List<Entity> _storageEntities = new();
@@ -26,11 +26,11 @@ namespace Examples.Storage.UI
         public ConnectionsTab()
         {
             var em = Main.EntityManager;
-            _connQuery    = em.CreateEntityQuery(typeof(StorageConnectionComponent));
+            _connQuery = em.CreateEntityQuery(typeof(StorageConnectionComponent));
             _storageQuery = em.CreateEntityQuery(typeof(StorageComponent));
 
             _root = new VisualElement();
-            _root.style.flexGrow      = 1;
+            _root.style.flexGrow = 1;
             _root.style.flexDirection = FlexDirection.Column;
 
             BuildToolbar();
@@ -41,7 +41,7 @@ namespace Examples.Storage.UI
 
         public void Update()
         {
-            using var connEntities    = _connQuery.ToEntityArray(Allocator.Temp);
+            using var connEntities = _connQuery.ToEntityArray(Allocator.Temp);
             using var storageEntities = _storageQuery.ToEntityArray(Allocator.Temp);
 
             RefreshStoragePickers(storageEntities);
@@ -59,16 +59,18 @@ namespace Examples.Storage.UI
             {
                 var conn = em.GetComponentData<StorageConnectionComponent>(connEntities[i]);
                 if (conn.Mode == ConnectionMode.Disabled) continue;
-                if (!em.HasComponent<StorageComponent>(conn.StorageA)) continue;
-                if (!em.HasComponent<StorageComponent>(conn.StorageB)) continue;
-
-                var posA  = em.GetComponentData<StorageComponent>(conn.StorageA).WorldPosition;
-                var posB  = em.GetComponentData<StorageComponent>(conn.StorageB).WorldPosition;
+                
                 var color = conn.Mode == ConnectionMode.TwoWays ? UIColors.Info : UIColors.Accent;
+                DrawConnection(em, conn, color);
+            }
 
-                if (conn.Mode == ConnectionMode.BToA)       DrawArrow(posB.xy, posA.xy, color);
-                else if (conn.Mode == ConnectionMode.TwoWays) { DrawArrow(posA.xy, posB.xy, color); DrawArrow(posB.xy, posA.xy, color); }
-                else                                         DrawArrow(posA.xy, posB.xy, color);
+            foreach (var element in _list)
+            {
+                if (element.Hovered)
+                {
+                    var conn = em.GetComponentData<StorageConnectionComponent>(element.ConnectionEntity);
+                    DrawConnection(em, conn, Color.magenta);
+                }
             }
         }
 
@@ -84,25 +86,25 @@ namespace Examples.Storage.UI
             toolbar.style.SetBorderColor(UIColors.Border);
             toolbar.style.SetBorderRadius(4);
             toolbar.style.SetPadding(6);
-            toolbar.style.paddingLeft  = 10;
+            toolbar.style.paddingLeft = 10;
             toolbar.style.marginBottom = 6;
-            toolbar.style.alignItems   = Align.Center;
-            toolbar.style.flexWrap     = Wrap.Wrap;
+            toolbar.style.alignItems = Align.Center;
+            toolbar.style.flexWrap = Wrap.Wrap;
 
             var aLabel = UIStyledElements.NewLabel(toolbar, "A:");
             aLabel.style.color = UIColors.TextMuted;
 
             _pickerA = UIStyledElements.NewDropdownPicker(toolbar);
             _pickerA.style.marginLeft = 4;
-            _pickerA.style.minWidth   = 110;
+            _pickerA.style.minWidth = 110;
 
             var bLabel = UIStyledElements.NewLabel(toolbar, "B:");
-            bLabel.style.color    = UIColors.TextMuted;
+            bLabel.style.color = UIColors.TextMuted;
             bLabel.style.marginLeft = 8;
 
             _pickerB = UIStyledElements.NewDropdownPicker(toolbar);
             _pickerB.style.marginLeft = 4;
-            _pickerB.style.minWidth   = 110;
+            _pickerB.style.minWidth = 110;
 
             _resourcePicker = UIStyledElements.NewEnumPicker<ResourceType>(toolbar, ResourceType.Wood);
             _resourcePicker.style.marginLeft = 8;
@@ -110,7 +112,7 @@ namespace Examples.Storage.UI
             UIStyledElements.NewButtonPrimary(toolbar, "+ Add", AddConnection);
 
             var drawLabel = UIStyledElements.NewLabel(toolbar, "Draw");
-            drawLabel.style.color      = UIColors.TextMuted;
+            drawLabel.style.color = UIColors.TextMuted;
             drawLabel.style.marginLeft = 10;
             UIStyledElements.NewCheckbox(toolbar, _drawEnabled, v => _drawEnabled = v);
         }
@@ -130,7 +132,14 @@ namespace Examples.Storage.UI
             {
                 bool same = true;
                 for (int i = 0; i < storageEntities.Length; i++)
-                    if (_storageEntities[i] != storageEntities[i]) { same = false; break; }
+                {
+                    if (_storageEntities[i] != storageEntities[i])
+                    {
+                        same = false;
+                        break;
+                    }
+                }
+
                 if (same) return;
             }
 
@@ -174,19 +183,38 @@ namespace Examples.Storage.UI
 
         private static void DrawArrow(Unity.Mathematics.float2 from, Unity.Mathematics.float2 to, Color color)
         {
-            var f   = new Vector3(from.x, from.y, 0);
-            var t   = new Vector3(to.x,   to.y,   0);
+            var f = new Vector3(from.x, from.y, 0);
+            var t = new Vector3(to.x, to.y, 0);
             var dir = t - f;
             if (dir.sqrMagnitude < 0.01f) return;
 
             Debug.DrawLine(f, t, color);
 
             dir.Normalize();
-            var perp      = new Vector3(-dir.y, dir.x, 0);
+            var perp = new Vector3(-dir.y, dir.x, 0);
             const float s = 0.8f;
             var arrowBase = t - dir * s;
             Debug.DrawLine(t, arrowBase + perp * (s * 0.5f), color);
             Debug.DrawLine(t, arrowBase - perp * (s * 0.5f), color);
+        }
+
+        private static void DrawConnection(EntityManager em, StorageConnectionComponent conn, Color color)
+        {
+            var posA = em.GetComponentData<StorageComponent>(conn.StorageA).WorldPosition;
+            var posB = em.GetComponentData<StorageComponent>(conn.StorageB).WorldPosition;
+            switch (conn.Mode)
+            {
+                case ConnectionMode.BToA:
+                    DrawArrow(posB.xy, posA.xy, color);
+                    break;
+                case ConnectionMode.TwoWays:
+                    DrawArrow(posA.xy, posB.xy, color);
+                    DrawArrow(posB.xy, posA.xy, color);
+                    break;
+                default:
+                    DrawArrow(posA.xy, posB.xy, color);
+                    break;
+            }
         }
     }
 }

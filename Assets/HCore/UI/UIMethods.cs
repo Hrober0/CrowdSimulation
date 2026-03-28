@@ -130,6 +130,8 @@ namespace HCore.UI
         public static float CountPercent(float current, float max) => max == 0 ? 0 : Mathf.Clamp(current / max, 0f, 1f);
         public static string DisplayedPercent(float percent) => Mathf.RoundToInt(percent * 100) + "%";
         public static string DisplayedPercent(float current, float max) => DisplayedPercent(CountPercent(current, max));
+        
+        public static Color WithAlpha(this Color color, float alpha) => new Color(color.r, color.g, color.b, alpha);
 
         #endregion
 

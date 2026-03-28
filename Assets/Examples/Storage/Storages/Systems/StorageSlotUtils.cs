@@ -148,25 +148,40 @@ namespace Examples.Storage
         }
  
         // ── Cancel ────────────────────────────────────────────────────────────
- 
+
         /// <summary>
-        /// Releases the correct reservations based on how far the holder got.
-        /// If holder already picked up: only release incoming.
-        /// If holder never reached source: release both.
+        /// Cleans up all storage reservations when a holder is killed mid-delivery.
+        ///
+        /// Not yet picked up (currentLoad == 0):
+        ///   — releases src.ReservedOutgoing and dst.ReservedIncoming.
+        ///
+        /// Already picked up (currentLoad > 0):
+        ///   — returns the carried goods back to src.CurrentAmount,
+        ///   — releases dst.ReservedIncoming (clamped, safe if already partial).
         /// </summary>
-        // public static void CancelJob(
-        //     ref DynamicBuffer<StorageSlot> srcBuffer,
-        //     ref DynamicBuffer<StorageSlot> dstBuffer,
-        //     in DeliveryJobComponent job,
-        //     HolderState holderState)
-        // {
-        //     bool pickedUp = holderState == HolderState.MovingToDest
-        //                  || holderState == HolderState.Delivering;
-        //
-        //     if (!pickedUp)
-        //         ReleaseOutgoing(ref srcBuffer, job.Resource, job.ReservedAmount);
-        //
-        //     ReleaseIncoming(ref dstBuffer, job.Resource, job.ReservedAmount);
-        // }
+        public static void CancelJob(
+            ref DynamicBuffer<StorageSlot> srcBuffer,
+            ref DynamicBuffer<StorageSlot> dstBuffer,
+            in  DeliveryJobComponent       job,
+            int                            currentLoad)
+        {
+            if (currentLoad > 0)
+            {
+                // Goods already left the source — return them.
+                if (TryGetSlotIndex(srcBuffer, job.Resource, out int si))
+                {
+                    var slot = srcBuffer[si];
+                    slot.CurrentAmount = Mathf.Min(slot.Capacity, slot.CurrentAmount + currentLoad);
+                    srcBuffer[si] = slot;
+                }
+            }
+            else
+            {
+                // Holder never reached the source — release the outgoing lock.
+                ReleaseOutgoing(ref srcBuffer, job.Resource, job.ReservedAmount);
+            }
+
+            ReleaseIncoming(ref dstBuffer, job.Resource, job.ReservedAmount);
+        }
     }
 }

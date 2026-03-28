@@ -15,12 +15,12 @@ namespace Examples.Storage.UI
         private Label _reservedOut, _reservedIn;
 
         private Entity _entity;
-        private EntityManager _em;
         private ResourceType _resourceType;
 
         public override void Init(VisualElement root)
         {
-            _root = root;
+            base.Init(root);
+            
             root.style.flexDirection = FlexDirection.Column;
 
             var row = UIStyledElements.NewHorizontalGroup(root);
@@ -43,10 +43,9 @@ namespace Examples.Storage.UI
             (_, _fillBar) = UIStyledElements.NewFillBar(row, UIColors.Accent);
         }
 
-        public void Refresh(StorageSlot slot, Entity entity, EntityManager em)
+        public void Refresh(StorageSlot slot, Entity entity)
         {
             _entity = entity;
-            _em = em;
             _resourceType = slot.Resource;
 
             _nameLabel.text = slot.Resource.DisplayName();
@@ -66,7 +65,7 @@ namespace Examples.Storage.UI
 
         void ModifyAmount(int delta)
         {
-            var slots = _em.GetBuffer<StorageSlot>(_entity);
+            var slots = Main.EntityManager.GetBuffer<StorageSlot>(_entity);
             var index = slots.AsNativeArray().FindIndex(s => s.Resource == _resourceType);
             var slot = slots[index];
             slot.CurrentAmount = Mathf.Clamp(slot.CurrentAmount + delta, 0, slot.Capacity);

@@ -1,6 +1,5 @@
 ﻿using HCore.UI;
 using Unity.Entities;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -17,11 +16,13 @@ namespace Examples.Storage.UI.Holders
         // ── State ────────────────────────────────────────────────────────────
         public Entity BoundEntity { get; private set; }
 
+        public bool Hovered { get; private set; } = false;
+
         // ────────────────────────────────────────────────────────────────────
 
         public override void Init(VisualElement root)
         {
-            _root = root;
+            base.Init(root);
 
             // Outer row
             root.style.flexDirection = FlexDirection.Row;
@@ -36,7 +37,10 @@ namespace Examples.Storage.UI.Holders
 
             // Hover highlight
             root.RegisterHoverEvent(h =>
-                root.style.backgroundColor = h ? UIColors.SurfaceHover : UIColors.Surface);
+            {
+                root.style.backgroundColor = h ? UIColors.SurfaceHover : UIColors.Surface;
+                Hovered = h;
+            });
 
             // ── Entity index ─────────────────────────────────────────────────
             _indexLabel = UIStyledElements.NewLabel(root, "—");
@@ -70,6 +74,45 @@ namespace Examples.Storage.UI.Holders
             _jobLabel.style.fontSize = UIColors.FontSizeXS;
             _jobLabel.style.minWidth = 70;
             _jobLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+
+            UIStyledElements.NewButtonDanger(root, "×", KillHolder);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+
+        private void KillHolder()
+        {
+            var em = Main.EntityManager;
+            if (!em.Exists(BoundEntity)) return;
+
+            // If a delivery job is in progress, clean up storage reservations first.
+            if (em.IsComponentEnabled<DeliveryJobComponent>(BoundEntity))
+            {
+                var holder = em.GetComponentData<HolderComponent>(BoundEntity);
+                var job    = em.GetComponentData<DeliveryJobComponent>(BoundEntity);
+
+                bool hasSrc = em.HasBuffer<StorageSlot>(job.SourceStorage);
+                bool hasDst = em.HasBuffer<StorageSlot>(job.DestStorage);
+
+                if (hasSrc && hasDst)
+                {
+                    var srcSlots = em.GetBuffer<StorageSlot>(job.SourceStorage);
+                    var dstSlots = em.GetBuffer<StorageSlot>(job.DestStorage);
+                    StorageSlotUtils.CancelJob(ref srcSlots, ref dstSlots, job, holder.CurrentLoad);
+                }
+                else if (hasSrc && holder.CurrentLoad == 0)
+                {
+                    var srcSlots = em.GetBuffer<StorageSlot>(job.SourceStorage);
+                    StorageSlotUtils.ReleaseOutgoing(ref srcSlots, job.Resource, job.ReservedAmount);
+                }
+                else if (hasDst)
+                {
+                    var dstSlots = em.GetBuffer<StorageSlot>(job.DestStorage);
+                    StorageSlotUtils.ReleaseIncoming(ref dstSlots, job.Resource, job.ReservedAmount);
+                }
+            }
+
+            em.DestroyEntity(BoundEntity);
         }
 
         // ────────────────────────────────────────────────────────────────────

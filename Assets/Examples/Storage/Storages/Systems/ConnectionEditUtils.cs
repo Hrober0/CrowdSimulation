@@ -7,8 +7,6 @@ namespace Examples.Storage
 {
     public static class ConnectionEditUtils
     {
-        const float AUTO_CONNECT_RADIUS = 50f;
-
         /// <summary>
         /// Updates mode and priority on an existing connection entity directly.
         /// </summary>
@@ -53,7 +51,7 @@ namespace Examples.Storage
             }
         }
 
-        public static void AutoConnect(EntityManager em, Entity targetEntity)
+        public static void AutoConnect(EntityManager em, Entity targetEntity, float radius = 10)
         {
             if (!em.Exists(targetEntity)) return;
             if (!em.HasBuffer<StorageSlot>(targetEntity)) return;
@@ -79,7 +77,7 @@ namespace Examples.Storage
                 if (neighbourEntity == targetEntity) continue;
 
                 var neighbourStorage = em.GetComponentData<StorageComponent>(neighbourEntity);
-                if (math.distance(targetStorage.WorldPosition, neighbourStorage.WorldPosition) > AUTO_CONNECT_RADIUS) continue;
+                if (math.distance(targetStorage.WorldPosition, neighbourStorage.WorldPosition) > radius) continue;
 
                 var targetSlots = em.GetBuffer<StorageSlot>(targetEntity, isReadOnly: true);
                 var neighbourSlots = em.GetBuffer<StorageSlot>(neighbourEntity, isReadOnly: true);
@@ -118,6 +116,93 @@ namespace Examples.Storage
                 Resource = res;
                 Mode = mode;
             }
+        }
+
+        /// <summary>
+        /// Fully removes a storage entity and cleans up everything that references it:
+        ///
+        ///  1. Active delivery jobs — releases slot reservations on the surviving storage
+        ///     and returns in-transit goods to source if the destroyed storage was the
+        ///     destination.  Affected holders are reset to Idle.
+        ///
+        ///  2. Connection entities — all connections whose StorageA or StorageB equals
+        ///     <paramref name="storageEntity"/> are destroyed and removed from the peer's
+        ///     ConnectionRefElement buffer.
+        ///
+        ///  3. The storage entity itself is destroyed.
+        /// </summary>
+        public static void DestroyStorage(EntityManager em, Entity storageEntity)
+        {
+            if (!em.Exists(storageEntity)) return;
+
+            // ── 1. Cancel active delivery jobs ────────────────────────────────
+            using var holderQuery = new EntityQueryBuilder(Allocator.Temp)
+                .WithAll<HolderComponent, DeliveryJobComponent>()
+                .Build(em);
+            using var holderEntities = holderQuery.ToEntityArray(Allocator.Temp);
+
+            foreach (var holderEntity in holderEntities)
+            {
+                var job    = em.GetComponentData<DeliveryJobComponent>(holderEntity);
+                if (job.SourceStorage != storageEntity && job.DestStorage != storageEntity) continue;
+
+                var holder = em.GetComponentData<HolderComponent>(holderEntity);
+
+                if (job.SourceStorage == storageEntity)
+                {
+                    // Dest keeps its incoming reservation — just release it.
+                    if (em.HasBuffer<StorageSlot>(job.DestStorage))
+                    {
+                        var dstSlots = em.GetBuffer<StorageSlot>(job.DestStorage);
+                        StorageSlotUtils.ReleaseIncoming(ref dstSlots, job.Resource, job.ReservedAmount);
+                    }
+                    // Carried goods (if any) vanish with the source.
+                }
+                else // job.DestStorage == storageEntity
+                {
+                    // Source needs its outgoing reservation released, or goods returned.
+                    if (em.HasBuffer<StorageSlot>(job.SourceStorage))
+                    {
+                        var srcSlots = em.GetBuffer<StorageSlot>(job.SourceStorage);
+                        if (holder.CurrentLoad > 0)
+                        {
+                            // Goods already picked up — return them to source.
+                            if (StorageSlotUtils.TryGetSlotIndex(srcSlots, job.Resource, out int si))
+                            {
+                                var slot = srcSlots[si];
+                                slot.CurrentAmount = Mathf.Min(slot.Capacity, slot.CurrentAmount + holder.CurrentLoad);
+                                srcSlots[si] = slot;
+                            }
+                        }
+                        else
+                        {
+                            StorageSlotUtils.ReleaseOutgoing(ref srcSlots, job.Resource, job.ReservedAmount);
+                        }
+                    }
+                }
+
+                // Reset holder to idle.
+                holder.State       = HolderState.Idle;
+                holder.AssignedJob = Entity.Null;
+                holder.CurrentLoad = 0;
+                holder.CarriedType = ResourceType.None;
+                em.SetComponentData(holderEntity, holder);
+                em.SetComponentEnabled<DeliveryJobComponent>(holderEntity, false);
+                em.SetComponentEnabled<ArrivalTag>(holderEntity, false);
+            }
+
+            // ── 2. Destroy connection entities ────────────────────────────────
+            // Snapshot the ref buffer before RemoveConnection mutates it.
+            if (em.HasBuffer<ConnectionRefElement>(storageEntity))
+            {
+                using var connSnapshot = em.GetBuffer<ConnectionRefElement>(storageEntity, isReadOnly: true)
+                    .ToNativeArray(Allocator.Temp);
+                foreach (var r in connSnapshot)
+                    RemoveConnection(em, r.Value);
+            }
+
+            // ── 3. Destroy the storage entity ─────────────────────────────────
+            em.DestroyEntity(storageEntity);
         }
 
         public static void AutoConnectAll(EntityManager em)
