@@ -33,8 +33,7 @@ namespace Examples.Storage.UI.Holders
             _root.style.flexGrow = 1;
             _root.style.flexDirection = FlexDirection.Column;
 
-            BuildStatsBar();
-            BuildToolbar();
+            BuildToolBar();
             BuildList();
 
             WorldInputHandler.WorldClicked += OnWorldClick;
@@ -92,7 +91,11 @@ namespace Examples.Storage.UI.Holders
             }
         }
 
-        public void SetActive(bool active) => _root.SetActive(active);
+        public void SetActive(bool active)
+        {
+            _root.SetActive(active);
+            if (_placing) TogglePlacing();
+        }
 
         private void OnWorldClick(Vector3 worldPos)
         {
@@ -102,45 +105,20 @@ namespace Examples.Storage.UI.Holders
 
         // ── UI construction ───────────────────────────────────────────────────
 
-        private void BuildStatsBar()
+        private void BuildToolBar()
         {
-            var bar = UIStyledElements.NewHorizontalGroup(_root);
-            bar.style.backgroundColor = UIColors.Surface;
-            bar.style.SetBorderWidth(1);
-            bar.style.SetBorderColor(UIColors.Border);
-            bar.style.SetBorderRadius(4);
-            bar.style.SetPadding(6);
-            bar.style.paddingLeft = 12;
-            bar.style.marginBottom = 6;
-
-            (_, _countLabel) = UIStyledElements.NewLabel(bar, "Total", "0", 50);
-            UIStyledElements.NewSpace(bar, 16);
-            (_, _activeLabel) = UIStyledElements.NewLabel(bar, "Active", "0", 50);
+            var toolbar = UIStyledElements.NewHorizontalContainer(_root);
+            _placeButton = UIStyledElements.NewButtonPrimary(toolbar, "+ Place Holder", TogglePlacing);
+            (_, _countLabel) = UIStyledElements.NewLabel(toolbar, "Total", "0", nameWidth: 50, my: 0);
+            (_, _activeLabel) = UIStyledElements.NewLabel(toolbar, "Active", "0", nameWidth: 50, my: 0);
+            UIStyledElements.NewLabel(toolbar, "Draw");
+            UIStyledElements.NewCheckbox(toolbar, _drawEnabled, v => _drawEnabled = v);
         }
 
         private void BuildList()
         {
             var sv = UIStyledElements.NewScrollView(_root);
             _list = new(sv, direction: UIMethods.Direction.Vertical);
-        }
-
-        private void BuildToolbar()
-        {
-            var toolbar = UIStyledElements.NewHorizontalGroup(_root);
-            toolbar.style.backgroundColor = UIColors.Surface;
-            toolbar.style.SetBorderWidth(1);
-            toolbar.style.SetBorderColor(UIColors.Border);
-            toolbar.style.SetBorderRadius(4);
-            toolbar.style.SetPadding(6);
-            toolbar.style.marginTop = 6;
-            toolbar.style.alignItems = Align.Center;
-
-            _placeButton = UIStyledElements.NewButtonPrimary(toolbar, "+ Place Holder", TogglePlacing);
-
-            var drawLabel = UIStyledElements.NewLabel(toolbar, "Draw");
-            drawLabel.style.color = UIColors.TextMuted;
-            drawLabel.style.marginLeft = 10;
-            UIStyledElements.NewCheckbox(toolbar, _drawEnabled, v => _drawEnabled = v);
         }
 
         // ── Spawn ─────────────────────────────────────────────────────────────

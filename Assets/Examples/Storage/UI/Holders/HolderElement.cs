@@ -130,7 +130,7 @@ namespace Examples.Storage.UI.Holders
             _stateBadge.style.backgroundColor = stateColor.WithAlpha(0.12f);
 
             // Active row tint — left border accent when not idle
-            bool active = h.State != HolderState.Idle && h.State != HolderState.Returning;
+            bool active = h.State is HolderState.MovingToDestInput or HolderState.MovingToSourceInput;
             _root.style.borderLeftWidth = active ? 3 : 1;
             _root.style.borderLeftColor = active ? stateColor : UIColors.Border;
 

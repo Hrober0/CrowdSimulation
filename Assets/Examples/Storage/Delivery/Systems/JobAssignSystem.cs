@@ -70,7 +70,7 @@ namespace Examples.Storage
                 var c = _connDataLookup[connEntities[i]];
                 if (c.Mode != ConnectionMode.Disabled)
                 {
-                    sorted.Add(new ConnSort { Connection = connEntities[i], Priority = c.Priority });
+                    sorted.Add(new ConnSort { Connection = connEntities[i], Priority = c.Priority, LastPickupTime = c.LastPickupTime });
                 }
             }
 
@@ -198,8 +198,19 @@ namespace Examples.Storage
                 assignedSources.Add(sourceStorageEntity);
                 assignedHolders.Add(holderEntity);
 
-                holder.State = HolderState.MovingToSource;
-                holder.TargetPos = sourceStorage.WorldPosition;
+                if (holder.State == HolderState.WaitingAtDest)
+                {
+                    // Holder is inside a storage — send it to that storage's output first.
+                    holder.State = HolderState.ExitingDest;
+                    if (_storageLookup.HasComponent(holder.WaitingAtStorage))
+                        holder.TargetPos = _storageLookup[holder.WaitingAtStorage].OutputPoint;
+                }
+                else
+                {
+                    // Idle holder — send it directly to the source input.
+                    holder.State     = HolderState.MovingToSourceInput;
+                    holder.TargetPos = sourceStorage.InputPoint;
+                }
                 holder.CarriedType = conn.Resource;
                 holder.AssignedJob = sourceStorageEntity;
                 _holderLookup[holderEntity] = holder;
@@ -214,6 +225,10 @@ namespace Examples.Storage
                     ReservedAmount = transferAmount,
                 });
                 ecb.SetComponentEnabled<DeliveryJobComponent>(holderEntity, true);
+
+                var updatedConn = conn;
+                updatedConn.LastPickupTime = SystemAPI.Time.ElapsedTime;
+                ecb.SetComponent(sorted[ci].Connection, updatedConn);
 
                 if (availableHolder == 0)
                 {
@@ -231,13 +246,18 @@ namespace Examples.Storage
         private struct ConnSort
         {
             public Entity Connection;
-            public byte Priority;
+            public byte   Priority;
+            public double LastPickupTime;
         }
 
         private struct PriorityDescComparer : IComparer<ConnSort>
         {
             public readonly int Compare(ConnSort x, ConnSort y)
-                => y.Priority.CompareTo(x.Priority);
+            {
+                int cmp = y.Priority.CompareTo(x.Priority);
+                if (cmp != 0) return cmp;
+                return x.LastPickupTime.CompareTo(y.LastPickupTime); // older pickup first
+            }
         }
     }
 }

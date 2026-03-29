@@ -15,35 +15,43 @@ namespace HCore.UI
         // LAYOUT
         // ════════════════════════════════════════════════════════════════════
 
-        public static VisualElement NewSpace(VisualElement root, float space = LINE_SPACE)
+        public static VisualElement NewSpace(VisualElement root = null, float space = LINE_SPACE)
         {
             var e = new VisualElement();
             e.style.marginBottom = space;
             e.style.marginRight  = space;
-            root.Add(e);
+            root?.Add(e);
             return e;
         }
 
-        public static VisualElement NewHorizontalGroup(VisualElement root)
+        public static VisualElement NewHorizontalGroup(VisualElement root = null, params VisualElement[] children)
         {
             var group = new VisualElement();
             group.style.flexDirection = FlexDirection.Row;
             group.style.flexShrink    = 0;
-            root.Add(group);
+            root?.Add(group);
+            foreach (var child in children)
+            {
+                group.Add(child);
+            }
             return group;
         }
 
-        public static VisualElement NewVerticalGroup(VisualElement root)
+        public static VisualElement NewVerticalGroup(VisualElement root = null, params VisualElement[] children)
         {
             var group = new VisualElement();
             group.style.flexDirection = FlexDirection.Column;
             group.style.flexShrink    = 0;
-            root.Add(group);
+            root?.Add(group);
+            foreach (var child in children)
+            {
+                group.Add(child);
+            }
             return group;
         }
 
         /// <summary>Bordered, padded container — visual grouping box.</summary>
-        public static VisualElement NewContainer(VisualElement root)
+        public static VisualElement NewContainer(VisualElement root = null, params VisualElement[] children)
         {
             var container = new VisualElement();
             container.style.flexShrink       = 0;
@@ -53,32 +61,50 @@ namespace HCore.UI
             container.style.SetBorderColor(UIColors.Border);
             container.style.SetBorderRadius(4);
             container.style.backgroundColor  = UIColors.Surface;
-            root.Add(container);
+            root?.Add(container);
+            foreach (var child in children)
+            {
+                container.Add(child);
+            }
             return container;
         }
 
+        public static VisualElement NewHorizontalContainer(VisualElement root, params VisualElement[] children)
+        {
+            var toolbar = NewHorizontalGroup(root, children);
+            toolbar.style.backgroundColor = UIColors.Surface;
+            toolbar.style.SetBorderWidth(1);
+            toolbar.style.SetBorderColor(UIColors.Border);
+            toolbar.style.SetBorderRadius(4);
+            toolbar.style.SetPadding(6);
+            toolbar.style.paddingLeft = 10;
+            toolbar.style.marginBottom = 6;
+            toolbar.style.alignItems = Align.Center;
+            toolbar.style.flexWrap = Wrap.Wrap;
+            return toolbar;
+        }
+        
         /// <summary>Separator line.</summary>
-        public static VisualElement NewDivider(VisualElement root)
+        public static VisualElement NewDivider(VisualElement root = null)
         {
             var line = new VisualElement();
             line.style.height          = 1;
             line.style.backgroundColor = UIColors.Border;
             line.style.marginTop       = 6;
             line.style.marginBottom    = 6;
-            root.Add(line);
+            root?.Add(line);
             return line;
         }
 
         /// <summary>ScrollView — vertical by default.</summary>
-        public static ScrollView NewScrollView(VisualElement root,
-            ScrollViewMode mode = ScrollViewMode.Vertical)
+        public static ScrollView NewScrollView(VisualElement root = null, ScrollViewMode mode = ScrollViewMode.Vertical)
         {
             var sv = new ScrollView(mode);
             sv.style.flexGrow                   = 1;
             sv.style.backgroundColor            = Color.clear;
             sv.verticalScrollerVisibility       = ScrollerVisibility.Auto;
             sv.horizontalScrollerVisibility     = ScrollerVisibility.Hidden;
-            root.Add(sv);
+            root?.Add(sv);
             return sv;
         }
 
@@ -92,17 +118,17 @@ namespace HCore.UI
             label.style.marginLeft = 2;
             label.style.color      = UIColors.TextPrimary;
             label.style.fontSize   = UIColors.FontSizeS;
-            root.Add(label);
+            root?.Add(label);
             return label;
         }
 
         /// <summary>Name + value pair in a horizontal row.</summary>
         public static (Label name, Label value) NewLabel(VisualElement root,
-            string name, object content, int nameWidth = DEFAULT_NAME_WIDTH)
+            string name, object content, int nameWidth = DEFAULT_NAME_WIDTH, float my = 2)
         {
             var group = NewHorizontalGroup(root);
-            group.style.marginTop    = 2;
-            group.style.marginBottom = 2;
+            group.style.marginTop    = my;
+            group.style.marginBottom = my;
 
             var nameLabel = NewLabel(group, name);
             nameLabel.style.minWidth = nameWidth;
@@ -170,15 +196,10 @@ namespace HCore.UI
             btn.style.marginLeft        = 2;
             btn.style.marginRight       = 2;
             btn.RegisterCallback<ClickEvent>(_ => onClick?.Invoke());
-            btn.RegisterCallback<MouseEnterEvent>(_ => {
-                btn.style.backgroundColor = UIColors.SurfaceHover;
-                btn.style.SetBorderColor(UIColors.BorderHover);
-                btn.style.color           = UIColors.TextPrimary;
-            });
-            btn.RegisterCallback<MouseLeaveEvent>(_ => {
-                btn.style.backgroundColor = UIColors.SurfaceRaised;
-                btn.style.SetBorderColor(UIColors.Border);
-                btn.style.color           = UIColors.TextPrimary;
+            btn.RegisterHoverEvent(h =>
+            {
+                btn.style.SetBorderColor(h ? UIColors.BorderHover : UIColors.Border);
+                btn.style.color = h ? UIColors.TextSecondary : UIColors.TextPrimary;
             });
             root.Add(btn);
             return btn;
@@ -192,8 +213,11 @@ namespace HCore.UI
             btn.style.color             = UIColors.TextOnAccent;
             btn.style.SetBorderWidth(0);
             btn.style.unityFontStyleAndWeight = FontStyle.Bold;
-            btn.RegisterCallback<MouseEnterEvent>(_ => btn.style.backgroundColor = UIColors.AccentHover);
-            btn.RegisterCallback<MouseLeaveEvent>(_ => btn.style.backgroundColor = UIColors.Accent);
+            btn.RegisterHoverEvent(h =>
+            {
+                btn.style.SetBorderColor(h ? UIColors.BorderHover : UIColors.Border);
+                btn.style.color = h ? UIColors.TextSecondary : UIColors.TextPrimary;
+            });
             return btn;
         }
 
@@ -201,15 +225,10 @@ namespace HCore.UI
         public static Button NewButtonDanger(VisualElement root, string text, Action onClick)
         {
             var btn = NewButton(root, text, onClick);
-            btn.RegisterCallback<MouseEnterEvent>(_ => {
-                btn.style.backgroundColor = UIColors.DangerSurface;
-                btn.style.SetBorderColor(UIColors.Danger);
-                btn.style.color           = UIColors.Danger;
-            });
-            btn.RegisterCallback<MouseLeaveEvent>(_ => {
-                btn.style.backgroundColor = UIColors.SurfaceRaised;
-                btn.style.SetBorderColor(UIColors.Border);
-                btn.style.color           = UIColors.TextPrimary;
+            btn.RegisterHoverEvent(h =>
+            {
+                btn.style.SetBorderColor(h ? UIColors.Danger : UIColors.Border);
+                btn.style.color = h ? UIColors.Danger : UIColors.TextPrimary;
             });
             return btn;
         }
@@ -230,13 +249,10 @@ namespace HCore.UI
             btn.style.unityTextAlign    = TextAnchor.MiddleCenter;
             btn.style.marginLeft        = 2;
             btn.RegisterCallback<ClickEvent>(_ => onClick?.Invoke());
-            btn.RegisterCallback<MouseEnterEvent>(_ => {
-                btn.style.backgroundColor = UIColors.SurfaceHover;
-                btn.style.color           = UIColors.TextPrimary;
-            });
-            btn.RegisterCallback<MouseLeaveEvent>(_ => {
-                btn.style.backgroundColor = Color.clear;
-                btn.style.color           = UIColors.TextSecondary;
+            btn.RegisterHoverEvent(h =>
+            {
+                btn.style.SetBorderColor(h ? UIColors.BorderHover : UIColors.Border);
+                btn.style.color = h ? UIColors.TextSecondary : UIColors.TextPrimary;
             });
             root.Add(btn);
             return btn;
@@ -612,10 +628,7 @@ namespace HCore.UI
             dropdown.Query(className: "unity-base-dropdown__item").ForEach(item =>
             {
                 item.style.backgroundColor = Color.clear;
-                item.style.paddingTop      = 4;
-                item.style.paddingBottom   = 4;
-                item.style.paddingLeft     = 10;
-                item.style.paddingRight    = 10;
+                item.style.SetPadding(4);
 
                 // Unity's USS styles the inner Label with a more-specific rule that beats
                 // `color` set on the parent container — target the Label directly.

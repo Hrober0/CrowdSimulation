@@ -46,10 +46,10 @@ namespace Examples.Storage
                 ref LocalTransform transform,
                 in HolderComponent holder)
             {
-                // Only these states drive movement; Idle / Picking / Delivering stay put.
-                if (holder.State is not (HolderState.MovingToSource
-                                      or HolderState.MovingToDest
-                                      or HolderState.Returning))
+                if (holder.State is not (HolderState.MovingToSourceInput
+                                      or HolderState.ExitingSource
+                                      or HolderState.MovingToDestInput
+                                      or HolderState.ExitingDest))
                     return;
  
                 float3 dir  = holder.TargetPos - transform.Position;

@@ -1,6 +1,5 @@
 using Unity.Entities;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace Examples.Storage
 {
@@ -10,21 +9,22 @@ namespace Examples.Storage
         public int          CurrentLoad;
         public ResourceType CarriedType;
         public HolderState  State;
-        public Entity       AssignedJob;  // set to source storage while job is active; Null when idle
+        public Entity       AssignedJob;      // source storage entity while a job is active
+        public Entity       WaitingAtStorage; // dest storage entity while in WaitingAtDest state
         public float        MoveSpeed;
         public float3       TargetPos;
     }
- 
+
     public enum HolderState : byte
     {
         Idle,
-        MovingToSource,
-        Picking,
-        MovingToDest,
-        Delivering,
-        Returning,
+        MovingToSourceInput,  // avoidance ON  — heading to source.InputPoint
+        ExitingSource,        // avoidance OFF — heading to source.OutputPoint (pickup done)
+        MovingToDestInput,    // avoidance ON  — heading to dest.InputPoint
+        WaitingAtDest,        // avoidance OFF — inside dest, delivery done, awaiting new job
+        ExitingDest,          // avoidance OFF — heading to dest.OutputPoint (new job assigned)
     }
- 
+
     /// <summary>
     /// Signals that a holder has reached its TargetPos.
     /// Implemented as IEnableableComponent so it is added once to the archetype

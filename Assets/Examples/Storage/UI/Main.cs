@@ -21,10 +21,10 @@ namespace Examples.Storage.UI
             _doc = GetComponent<UIDocument>();
             var root = _doc.rootVisualElement;
 
-            var zoom = 2;
+            var zoom = 1;
             var mainContainer = UIStyledElements.NewContainer(root);
             mainContainer.style.scale     = new Scale(new Vector2(zoom, zoom));
-            mainContainer.style.translate = new Translate(new Length(50, LengthUnit.Percent), new Length(50, LengthUnit.Percent));
+            mainContainer.style.translate = new Translate(new Length(100 - 100 / (float)zoom, LengthUnit.Percent), new Length(100 -100 / (float)zoom, LengthUnit.Percent));
             mainContainer.style.width     = 400;
 
             // Report UI hover state to the input handler.

@@ -80,40 +80,26 @@ namespace Examples.Storage.UI
 
         private void BuildToolbar()
         {
-            var toolbar = UIStyledElements.NewHorizontalGroup(_root);
-            toolbar.style.backgroundColor = UIColors.Surface;
-            toolbar.style.SetBorderWidth(1);
-            toolbar.style.SetBorderColor(UIColors.Border);
-            toolbar.style.SetBorderRadius(4);
-            toolbar.style.SetPadding(6);
-            toolbar.style.paddingLeft = 10;
-            toolbar.style.marginBottom = 6;
-            toolbar.style.alignItems = Align.Center;
-            toolbar.style.flexWrap = Wrap.Wrap;
+            var toolbar = UIStyledElements.NewHorizontalContainer(_root);
 
             var aLabel = UIStyledElements.NewLabel(toolbar, "A:");
             aLabel.style.color = UIColors.TextMuted;
 
             _pickerA = UIStyledElements.NewDropdownPicker(toolbar);
-            _pickerA.style.marginLeft = 4;
             _pickerA.style.minWidth = 110;
 
             var bLabel = UIStyledElements.NewLabel(toolbar, "B:");
             bLabel.style.color = UIColors.TextMuted;
-            bLabel.style.marginLeft = 8;
 
             _pickerB = UIStyledElements.NewDropdownPicker(toolbar);
-            _pickerB.style.marginLeft = 4;
             _pickerB.style.minWidth = 110;
 
             _resourcePicker = UIStyledElements.NewEnumPicker<ResourceType>(toolbar, ResourceType.Wood);
-            _resourcePicker.style.marginLeft = 8;
 
             UIStyledElements.NewButtonPrimary(toolbar, "+ Add", AddConnection);
 
             var drawLabel = UIStyledElements.NewLabel(toolbar, "Draw");
             drawLabel.style.color = UIColors.TextMuted;
-            drawLabel.style.marginLeft = 10;
             UIStyledElements.NewCheckbox(toolbar, _drawEnabled, v => _drawEnabled = v);
         }
 

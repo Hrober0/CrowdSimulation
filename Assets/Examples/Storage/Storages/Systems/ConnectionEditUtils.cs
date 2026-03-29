@@ -191,6 +191,23 @@ namespace Examples.Storage
                 em.SetComponentEnabled<ArrivalTag>(holderEntity, false);
             }
 
+            // ── 1b. Reset WaitingAtDest holders inside this storage ───────────
+            // These have no active DeliveryJobComponent so the query above misses them.
+            using var allHolderQuery = new EntityQueryBuilder(Allocator.Temp)
+                .WithAll<HolderComponent>()
+                .Build(em);
+            using var allHolderEntities = allHolderQuery.ToEntityArray(Allocator.Temp);
+
+            foreach (var holderEntity in allHolderEntities)
+            {
+                var h = em.GetComponentData<HolderComponent>(holderEntity);
+                if (h.State != HolderState.WaitingAtDest || h.WaitingAtStorage != storageEntity) continue;
+
+                h.State            = HolderState.Idle;
+                h.WaitingAtStorage = Entity.Null;
+                em.SetComponentData(holderEntity, h);
+            }
+
             // ── 2. Destroy connection entities ────────────────────────────────
             // Snapshot the ref buffer before RemoveConnection mutates it.
             if (em.HasBuffer<ConnectionRefElement>(storageEntity))

@@ -1,5 +1,4 @@
 ﻿using HCore.UI;
-using Unity.VisualScripting;
 using UnityEngine;
 
 namespace Examples.Storage.UI
@@ -30,13 +29,13 @@ namespace Examples.Storage.UI
         
         public static Color HolderStateColor(HolderState s) => s switch
         {
-            HolderState.Idle           => UIColors.TextMuted,
-            HolderState.MovingToSource => UIColors.Accent,
-            HolderState.Picking        => UIColors.Accent,
-            HolderState.MovingToDest   => UIColors.Info,
-            HolderState.Delivering     => UIColors.Info,
-            HolderState.Returning      => UIColors.TextMuted,
-            _                          => UIColors.TextMuted,
+            HolderState.Idle                => UIColors.TextMuted,
+            HolderState.MovingToSourceInput => UIColors.Accent,
+            HolderState.ExitingSource       => UIColors.Accent,
+            HolderState.MovingToDestInput   => UIColors.Info,
+            HolderState.WaitingAtDest       => UIColors.Warning,
+            HolderState.ExitingDest         => UIColors.Info,
+            _                               => UIColors.TextMuted,
         };
     }
 }

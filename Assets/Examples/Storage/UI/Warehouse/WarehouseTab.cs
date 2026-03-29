@@ -51,7 +51,11 @@ namespace Examples.Storage.UI
             }
         }
 
-        public void SetActive(bool active) => _root.SetActive(active);
+        public void SetActive(bool active)
+        {
+            _root.SetActive(active);
+            if (_placing) TogglePlacing();
+        }
 
         private void OnWorldClick(Vector3 worldPos)
         {
@@ -63,16 +67,7 @@ namespace Examples.Storage.UI
 
         private void BuildToolbar()
         {
-            var toolbar = UIStyledElements.NewHorizontalGroup(_root);
-            toolbar.style.backgroundColor = UIColors.Surface;
-            toolbar.style.SetBorderWidth(1);
-            toolbar.style.SetBorderColor(UIColors.Border);
-            toolbar.style.SetBorderRadius(4);
-            toolbar.style.SetPadding(6);
-            toolbar.style.paddingLeft = 10;
-            toolbar.style.marginBottom = 6;
-            toolbar.style.alignItems = Align.Center;
-
+            var toolbar = UIStyledElements.NewHorizontalContainer(_root);
             _placeButton = UIStyledElements.NewButtonPrimary(toolbar, "+ Place Storage", TogglePlacing);
         }
 
@@ -100,7 +95,11 @@ namespace Examples.Storage.UI
             var entity = em.Instantiate(prefabs.Storage);
 
             var storage = em.GetComponentData<StorageComponent>(entity);
+            var inputOffset  = storage.InputPoint  - storage.WorldPosition;
+            var outputOffset = storage.OutputPoint - storage.WorldPosition;
             storage.WorldPosition = worldPos;
+            storage.InputPoint    = worldPos + inputOffset;
+            storage.OutputPoint   = worldPos + outputOffset;
             em.SetComponentData(entity, storage);
 
             em.SetComponentData(entity, LocalTransform.FromPosition(worldPos));

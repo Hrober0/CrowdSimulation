@@ -11,9 +11,10 @@ namespace Examples.Storage
         public Entity        StorageA;
         public Entity        StorageB;
         public ResourceType  Resource;
-        public byte          Priority;     // 0–255, higher = processed first
+        public byte          Priority;        // 0–255, higher = processed first
         public byte          MaxBatchSize;
         public ConnectionMode Mode;
+        public double        LastPickupTime;  // ElapsedTime when a job was last dispatched; ties broken by oldest-first
     }
 
     public enum ConnectionMode : byte

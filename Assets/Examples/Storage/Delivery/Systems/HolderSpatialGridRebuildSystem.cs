@@ -62,7 +62,7 @@ namespace Examples.Storage
 
             private void Execute(Entity e, in HolderComponent h, in LocalTransform t)
             {
-                if (h.State != HolderState.Idle) return;
+                if (h.State != HolderState.Idle && h.State != HolderState.WaitingAtDest) return;
 
                 WorldToCell(t.Position, CellSize, out var cell);
                 Grid.Add(cell, new HolderSpatilEntry { Entity = e, Position = t.Position });

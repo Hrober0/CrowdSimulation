@@ -40,6 +40,7 @@ namespace Examples.Storage
             var ecb = new EntityCommandBuffer(Allocator.Temp);
  
             // Query matches only holders where BOTH ArrivalTag AND DeliveryJobComponent are enabled.
+        // WaitingAtDest holders have DeliveryJobComponent disabled and are handled by JobAssignSystem.
             foreach (var (holderRW, jobRO, arrivalEnabledRW, entity) in
                 SystemAPI
                     .Query<RefRW<HolderComponent>,
@@ -79,24 +80,49 @@ namespace Examples.Storage
         {
             switch (holder.State)
             {
-                case HolderState.MovingToSource:
+                case HolderState.MovingToSourceInput:
                     HandlePickup(ref holder, in job, ref slotLookup);
- 
-                    // Redirect toward destination.
-                    if (storageLookup.HasComponent(job.DestStorage))
-                        holder.TargetPos = storageLookup[job.DestStorage].WorldPosition;
- 
-                    holder.State = HolderState.MovingToDest;
+
+                    // TODO: disable avoidance here
+
+                    if (storageLookup.HasComponent(job.SourceStorage))
+                        holder.TargetPos = storageLookup[job.SourceStorage].OutputPoint;
+
+                    holder.State = HolderState.ExitingSource;
                     break;
- 
-                case HolderState.MovingToDest:
+
+                case HolderState.ExitingSource:
+                    // TODO: enable avoidance here
+
+                    if (storageLookup.HasComponent(job.DestStorage))
+                        holder.TargetPos = storageLookup[job.DestStorage].InputPoint;
+
+                    holder.State = HolderState.MovingToDestInput;
+                    break;
+
+                case HolderState.MovingToDestInput:
                     HandleDelivery(ref holder, in job, ref slotLookup);
- 
-                    holder.State       = HolderState.Idle;
-                    holder.AssignedJob = Unity.Entities.Entity.Null;
- 
-                    // Disable job component — IEnableableComponent, no structural change.
+
+                    // TODO: disable avoidance here
+
+                    holder.WaitingAtStorage = job.DestStorage;
+                    holder.State            = HolderState.WaitingAtDest;
+                    holder.AssignedJob      = Entity.Null;
+
+                    // Disable job — JobAssignSystem re-enables it when the next job arrives.
                     ecb.SetComponentEnabled<DeliveryJobComponent>(holderEntity, false);
+                    break;
+
+                case HolderState.ExitingDest:
+                    // TODO: enable avoidance here
+
+                    holder.WaitingAtStorage = Entity.Null;
+
+                    // Job was already set by JobAssignSystem — head to the new source input.
+                    if (storageLookup.HasComponent(job.SourceStorage))
+                        holder.TargetPos = storageLookup[job.SourceStorage].InputPoint;
+
+                    holder.State = HolderState.MovingToSourceInput;
                     break;
             }
         }
