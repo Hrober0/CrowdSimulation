@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find c:UnityProjectsCrowdSimulation -name *.cs -type f -exec grep -l \"class UIElementList\\\\|void SetElements\" {})",
+      "Bash(2)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}
