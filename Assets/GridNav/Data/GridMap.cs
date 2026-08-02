@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -24,10 +25,13 @@ namespace GridNav
         private const int CHUNK_SHIFT = 5; // log2(CHUNK_SIZE)
         private const int CHUNK_MASK = CHUNK_SIZE - 1;
 
-        private NativeArray<ushort> _costSum;
-        private NativeArray<byte> _flags;
-        private NativeArray<byte> _exits;
-        private NativeArray<ChunkVersions> _versions;
+        // Parallel jobs read the whole map - a flow field looks at cells all over its window, not at "its"
+        // index - so the per-index restriction of IJobParallelFor does not apply here. Writing stays safe
+        // through the assembly boundary: only GridApplySystem can write, from a single job.
+        [NativeDisableParallelForRestriction] private NativeArray<ushort> _costSum;
+        [NativeDisableParallelForRestriction] private NativeArray<byte> _flags;
+        [NativeDisableParallelForRestriction] private NativeArray<byte> _exits;
+        [NativeDisableParallelForRestriction] private NativeArray<ChunkVersions> _versions;
 
         private readonly int2 _minCell;
         private readonly int2 _chunkCount;

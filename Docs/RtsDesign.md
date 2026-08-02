@@ -362,7 +362,9 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 0. **Done.** Group scaffolding: the five groups of §13.1 with the `RateManager` on `RtsEconomyGroup`, empty but ordered, so every later system lands in a defined slot.
 1. **Done.** `GridNav`: `GridMap` with `ushort CostSum`, split version counters, the queue + `GridApplySystem` single-writer path, authoring, debug overlay.
 2. **Done.** World objects: `CellObject`, cell -> object multi-hashmap, add/remove maintaining `CostSum`. Arbitrary building footprints. *(The RVO obstacle half of `BuildingFootprintSystem` waits for the avoidance integration in step 3; nothing owns an `ObstacleLookup` yet.)*
-3. Chunk-gate graph (directed intra-chunk edges), hierarchical A*, flow-field window, grid path following on top of existing `Avoidance`. **Includes the reverse-bit one-way unit test.**
+3. **Done.** Chunk-gate graph (directed intra-chunk edges), hierarchical A*, flow-field window, grid path following on top of existing `Avoidance`. **Includes the reverse-bit one-way unit test.**
+
+   Two things settled while building it. **Which tier steers an agent is decided geometrically:** if the agent stands inside the window the goal's field covers it follows that field, otherwise it steers at the far side of the next gate — so a waypoint is always a *cell*, and everyone crossing one gate shares one field for it exactly as haulers share a warehouse's. Routes are recomputed on chunk change rather than tracked along, which self-corrects when avoidance pushes an agent off course. **Local steering was written in `Rts`** rather than reusing `Navigation.PathMovement`: `Rts` does not reference `Navigation`, and §2 says gameplay no longer builds on it.
 4. View layer: pooled GameObjects, `TransformAccessArray` sync, acquire/release on spawn and building entry.
 5. Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming.
 6. Storage module (§7) + order market (§8) + hauler task. Port `StorageSlotUtils`.

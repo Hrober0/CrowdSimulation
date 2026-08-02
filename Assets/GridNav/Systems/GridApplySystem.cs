@@ -34,6 +34,13 @@ namespace GridNav
                 Map = gridWorld.ValueRW.Map,
                 Edits = gridWorld.ValueRW.Edits,
             }.Schedule(state.Dependency);
+
+            // Completed here, not left in flight. What the job writes lives inside the singleton rather than
+            // in chunk data, so ECS does not sequence later main-thread readers - the gate graph checking
+            // chunk versions, a gizmo drawing cells - against it. Completing is what makes "after this group
+            // the grid is immutable for the rest of the frame" literally true, and the drain is a handful of
+            // edits; there is nothing to gain by deferring it.
+            state.Dependency.Complete();
         }
     }
 }
