@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design, not yet implemented. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 and 1 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -83,10 +83,12 @@ For trees, a post-integration **clamp** covers penetration at O(1): if an agent'
 
 **Two version counters per chunk**, not one:
 
-- `PassabilityVersion` — a cell crossed the blocked threshold. Rebuild the chunk's gates *and* invalidate flow fields.
-- `CostVersion` — cost changed without changing passability. Invalidate flow fields only.
+- `PassabilityVersion` — a cell crossed the blocked threshold, or its `Exits` changed. Rebuild the chunk's gates.
+- `CostVersion` — bumped by *every* cost or exit change, passability-changing ones included. Invalidate flow fields.
 
-Harvesting a forest churns cost constantly; without the split it would rebuild the navigation graph on every swing.
+Harvesting a forest churns cost constantly; without the split it would rebuild the navigation graph on every swing. Bumping `CostVersion` on both kinds of change is what lets each consumer watch exactly one counter.
+
+A passability change on a chunk border also bumps the **neighbouring** chunk's `PassabilityVersion`: a border pair belongs to the gates of both chunks (§4.1), and only one of the two cells is inside the chunk that changed.
 
 ## 4. L1 — Pathfinding
 
@@ -288,14 +290,16 @@ What is needed is explicit groups, one of them fixed-rate:
 
 ```
 InitializationSystemGroup
-  +- RtsGridGroup        per frame   - the only grid writer
+  +- GridUpdateGroup     per frame   - the only grid writer      (GridNav)
 SimulationSystemGroup
-  +- RtsNavGroup         per frame, bounded work
+  +- PathfindingGroup    per frame, bounded work                 (GridNav)
   +- RtsEconomyGroup     10 Hz via ComponentSystemGroup.RateManager
   +- RtsAgentGroup       per frame
 PresentationSystemGroup
   +- RtsViewGroup        per frame
 ```
+
+The first two groups live in `GridNav`, not `Rts`, and are named for what they are rather than `Rts*`: `GridApplySystem` and the flow-field systems need `[UpdateInGroup]` on a type their own assembly can see, and `GridNav` does not reference `Rts`. `Rts` orders itself behind them, which it can, since the reference runs that way.
 
 Running the economy at 10 Hz rather than 60 is a 6x cut on the most expensive matching work and is imperceptible in play.
 
@@ -314,11 +318,11 @@ The system order below is a consequence of these. They matter more than the list
 
 | # | system | reads | writes |
 | --- | --- | --- | --- |
-| **RtsGridGroup** | | | |
+| **GridUpdateGroup** | | | |
 | 1 | `CellObjectRegistrationSystem` | CellObject spawn/destroy | cell -> object map, cost-delta queue |
 | 2 | `BuildingFootprintSystem` | placement events | cost-delta queue, RVO obstacle queue |
 | 3 | `GridApplySystem` | queues | **GridMap**, chunk versions |
-| **RtsNavGroup** | | | |
+| **PathfindingGroup** | | | |
 | 4 | `ChunkGateGraphSystem` | GridMap, `PassabilityVersion` | gate graph, dirty chunks only |
 | 5 | `FlowFieldCacheSystem` | GridMap, gate graph, field requests | field cache, max N fields per frame |
 | **RtsEconomyGroup — 10 Hz** | | | |
@@ -355,8 +359,8 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 
 ## 14. Build order
 
-0. Group scaffolding: the five groups of §13.1 with the `RateManager` on `RtsEconomyGroup`, empty but ordered, so every later system lands in a defined slot.
-1. `GridNav`: `GridMap` with `ushort CostSum`, split version counters, the queue + `GridApplySystem` single-writer path, authoring, debug overlay.
+0. **Done.** Group scaffolding: the five groups of §13.1 with the `RateManager` on `RtsEconomyGroup`, empty but ordered, so every later system lands in a defined slot.
+1. **Done.** `GridNav`: `GridMap` with `ushort CostSum`, split version counters, the queue + `GridApplySystem` single-writer path, authoring, debug overlay.
 2. World objects: `CellObject`, cell -> object multi-hashmap, add/remove maintaining `CostSum`. Arbitrary building footprints.
 3. Chunk-gate graph (directed intra-chunk edges), hierarchical A*, flow-field window, grid path following on top of existing `Avoidance`. **Includes the reverse-bit one-way unit test.**
 4. View layer: pooled GameObjects, `TransformAccessArray` sync, acquire/release on spawn and building entry.
