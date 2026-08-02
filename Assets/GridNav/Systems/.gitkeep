@@ -1,0 +1,2 @@
+GridApplySystem (the single grid writer), ChunkGateGraphSystem,
+FlowFieldCacheSystem. Design §13.2 invariants 1 and 3.

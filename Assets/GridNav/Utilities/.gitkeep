@@ -1,0 +1,2 @@
+Cell/chunk index math, exit-bit helpers (mind the reverse bit for
+backwards flow-field expansion), hierarchical A* over the gate graph.

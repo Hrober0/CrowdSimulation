@@ -1,0 +1,2 @@
+StorageSlot buffer: Amount, Capacity, DeliverInUpTo,
+DeliverOutDownTo, Priority, ReservedIn/ReservedOut. Design §7.

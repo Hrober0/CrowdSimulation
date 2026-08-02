@@ -1,0 +1,2 @@
+Order { Kind(Haul|Work|Fight), Source, Target, ItemId, Amount,
+Priority, ClaimedBy, PostedTime }, AssignedOrder. Design §8.

@@ -1,0 +1,2 @@
+CellObjectRegistrationSystem: maintains the cell map and queues
+CostSum deltas for GridApplySystem. Design §13.3 #1.

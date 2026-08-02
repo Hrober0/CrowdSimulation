@@ -1,0 +1,2 @@
+GridMap chunked SoA, CellData (ushort CostSum, Flags, Exits),
+ChunkGate nodes/edges, flow-field structs. Design §3, §4.

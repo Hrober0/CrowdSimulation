@@ -1,0 +1,2 @@
+BuildingFootprintSystem (cost + RVO obstacle queues),
+InteriorTransitionSystem, queue/interior slot claiming. Design §6.

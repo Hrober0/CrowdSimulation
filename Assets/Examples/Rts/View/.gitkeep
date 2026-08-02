@@ -1,0 +1,2 @@
+SimToWorld (the single sim -> world mapping, §2), the GameObject
+pool, TransformAccessArray sync, ViewSyncSystem. Design §10.

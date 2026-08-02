@@ -1,0 +1,3 @@
+Build-order step 0: the five system groups of §13.1, empty but ordered.
+RtsGridGroup, RtsNavGroup, RtsEconomyGroup (10 Hz RateManager),
+RtsAgentGroup, RtsViewGroup.

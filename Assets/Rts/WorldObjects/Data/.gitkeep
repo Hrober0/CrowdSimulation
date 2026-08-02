@@ -1,0 +1,2 @@
+CellObject { int2 Cell, ushort Cost, ObjectKind } and the
+cell -> object NativeParallelMultiHashMap. Design §5.
