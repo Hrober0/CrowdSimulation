@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 2 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 4 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -365,7 +365,15 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 3. **Done.** Chunk-gate graph (directed intra-chunk edges), hierarchical A*, flow-field window, grid path following on top of existing `Avoidance`. **Includes the reverse-bit one-way unit test.**
 
    Two things settled while building it. **Which tier steers an agent is decided geometrically:** if the agent stands inside the window the goal's field covers it follows that field, otherwise it steers at the far side of the next gate — so a waypoint is always a *cell*, and everyone crossing one gate shares one field for it exactly as haulers share a warehouse's. Routes are recomputed on chunk change rather than tracked along, which self-corrects when avoidance pushes an agent off course. **Local steering was written in `Rts`** rather than reusing `Navigation.PathMovement`: `Rts` does not reference `Navigation`, and §2 says gameplay no longer builds on it.
-4. View layer: pooled GameObjects, `TransformAccessArray` sync, acquire/release on spawn and building entry.
+4. **Done.** View layer: pooled GameObjects, `TransformAccessArray` sync, acquire/release on spawn and building entry.
+
+   The seam between simulation and view is one enableable tag, `ViewVisible`, and it lives in `Rts`. The simulation answers "should this be shown at all" — an agent inside a building has it disabled (§6) — and the view layer answers "is it close enough to be worth a GameObject". Keeping the second question out of the simulation is what lets the camera move without touching simulation state. Building entry therefore needs no view code in step 5: disabling the tag is the whole change.
+
+   Three things settled while building it. **A frame is stated, not tracked**: `BeginFrame` / `Show` per wanted agent / `EndFrame` releases the rest, so the pool cannot drift out of sync with the world the way an event-per-appearance scheme can. **Culling is a radius around a focus point, not a frustum** — one distance test per agent, identical under an XY or XZ `SimToWorld`, and it bounds the GameObject count just as well as a frustum would. **Pooled instances are left as scene roots**, because `IJobParallelForTransform` only parallelises over root transforms and a tidy parent container would silently serialise the entire sync.
+
+   `SimToWorld.Rotation` was rebuilt out of `math` calls instead of `Quaternion.LookRotation`, which is an engine extern and cannot be called from the Burst job that writes the transforms.
+
+   Also added, as example scaffolding rather than design: `AgentSpawnerAuthoring` — a crowd scattered over a box, all walking to one goal, placed only on passable cells. Nothing in the view layer can be seen working until something puts agents on the map, and the real game will spawn them from buildings.
 5. Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming.
 6. Storage module (§7) + order market (§8) + hauler task. Port `StorageSlotUtils`.
 7. Crafter: recipe, work slots, worker behaviour.
