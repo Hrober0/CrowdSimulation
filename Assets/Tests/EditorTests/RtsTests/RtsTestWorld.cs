@@ -22,6 +22,7 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _flowFieldSystem;
 
         private readonly SystemHandle _storageRequestSystem;
+        private readonly SystemHandle _workRequestSystem;
         private readonly SystemHandle _orderAgingSystem;
         private readonly SystemHandle _orderAssignSystem;
         private readonly SystemHandle _idleAssignSystem;
@@ -52,6 +53,7 @@ namespace Tests.EditorTests.RtsTests
             _flowFieldSystem = World.CreateSystem<FlowFieldCacheSystem>();
 
             _storageRequestSystem = World.CreateSystem<StorageRequestSystem>();
+            _workRequestSystem = World.CreateSystem<WorkRequestSystem>();
             _orderAgingSystem = World.CreateSystem<OrderAgingSystem>();
             _orderAssignSystem = World.CreateSystem<OrderAssignSystem>();
             _idleAssignSystem = World.CreateSystem<IdleAssignSystem>();
@@ -108,6 +110,7 @@ namespace Tests.EditorTests.RtsTests
             // The economy group runs at 10 Hz in the game; here it runs every frame, so a test never has to
             // count ticks to find out whether the matching pass has happened yet.
             _storageRequestSystem.Update(World.Unmanaged);
+            _workRequestSystem.Update(World.Unmanaged);
             _orderAgingSystem.Update(World.Unmanaged);
             _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
@@ -259,6 +262,49 @@ namespace Tests.EditorTests.RtsTests
                 DeliverOutDownTo = 0,
                 Priority = priority,
             });
+
+        /// <summary>
+        /// A workshop: a door, work benches, an input slot that asks and never gives back, an output slot
+        /// that gives everything away, and a recipe joining them.
+        /// </summary>
+        public Entity CreateCrafter(
+            int2 cell,
+            ItemId input,
+            ItemId output,
+            int benches = 1,
+            float craftSeconds = 1f,
+            int inputStock = 0)
+        {
+            Entity building = CreateBuilding(cell, GridRotation.None, int2.zero);
+            AddEntrance(building, int2.zero, Direction.South);
+            Entities.AddComponentData(building, new Interior { Capacity = benches });
+
+            DynamicBuffer<StorageSlot> slots = Entities.AddBuffer<StorageSlot>(building);
+            slots.Add(new StorageSlot
+            {
+                Item = input,
+                Amount = inputStock,
+                Capacity = 20,
+                DeliverInUpTo = 20,
+                DeliverOutDownTo = 20,
+                Priority = 5,
+            });
+            slots.Add(new StorageSlot
+            {
+                Item = output,
+                Amount = 0,
+                Capacity = 20,
+                DeliverInUpTo = 0,
+                DeliverOutDownTo = 0,
+                Priority = 0,
+            });
+
+            Entities.AddComponentData(building, new Recipe { CraftSeconds = craftSeconds, Priority = 5 });
+            Entities.AddBuffer<RecipeInput>(building).Add(new RecipeInput { Item = input, Amount = 1 });
+            Entities.AddBuffer<RecipeOutput>(building).Add(new RecipeOutput { Item = output, Amount = 1 });
+
+            return building;
+        }
 
         public DynamicBuffer<StorageSlot> SlotsOf(Entity building) => Entities.GetBuffer<StorageSlot>(building);
 

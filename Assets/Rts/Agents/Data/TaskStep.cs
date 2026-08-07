@@ -95,5 +95,13 @@ namespace Rts
             Duration = duration,
             Interaction = InteractionKind.Deposit,
         };
+
+        public static TaskStep Work(Entity crafter, float duration) => new()
+        {
+            Kind = TaskStepKind.Interact,
+            Target = crafter,
+            Duration = duration,
+            Interaction = InteractionKind.Work,
+        };
     }
 }

@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace Rts
 {
@@ -54,6 +55,8 @@ namespace Rts
         /// </summary>
         private static void Release(in EntityManager entities, Entity agent)
         {
+            ReleaseInteriorClaim(entities, agent);
+
             var haul = entities.GetComponentData<AssignedOrder>(agent);
             Carry carry = entities.GetComponentData<Carry>(agent);
 
@@ -75,6 +78,33 @@ namespace Rts
 
             haul.Amount = 0;
             entities.SetComponentData(agent, haul);
+        }
+
+        /// <summary>
+        /// A work slot claimed but never taken up - the task was cut short before the worker got through the
+        /// door - has to go back, or the building loses a bench permanently.
+        ///
+        /// A claim that *was* taken up is already gone: leaving the building clears it, and the agent has to
+        /// have left for its steps to have run out. So a claim still standing here is by definition one that
+        /// was never used.
+        /// </summary>
+        private static void ReleaseInteriorClaim(in EntityManager entities, Entity agent)
+        {
+            if (!entities.HasComponent<InteriorClaim>(agent)
+                || !entities.IsComponentEnabled<InteriorClaim>(agent))
+            {
+                return;
+            }
+
+            Entity building = entities.GetComponentData<InteriorClaim>(agent).Building;
+            if (entities.Exists(building) && entities.HasComponent<Interior>(building))
+            {
+                Interior interior = entities.GetComponentData<Interior>(building);
+                interior.Claimed = math.max(interior.Claimed - 1, 0);
+                entities.SetComponentData(building, interior);
+            }
+
+            entities.SetComponentEnabled<InteriorClaim>(agent, false);
         }
     }
 }

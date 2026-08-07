@@ -45,6 +45,9 @@ namespace Rts
         private BufferLookup<TaskStep> _steps;
         private ComponentLookup<AssignedOrder> _orders;
         private ComponentLookup<HaulLimit> _limits;
+        private ComponentLookup<Interior> _interiors;
+        private ComponentLookup<InteriorClaim> _claims;
+        private ComponentLookup<Recipe> _recipes;
 
         public void OnCreate(ref SystemState state)
         {
@@ -55,6 +58,9 @@ namespace Rts
             _steps = state.GetBufferLookup<TaskStep>();
             _orders = state.GetComponentLookup<AssignedOrder>();
             _limits = state.GetComponentLookup<HaulLimit>(isReadOnly: true);
+            _interiors = state.GetComponentLookup<Interior>();
+            _claims = state.GetComponentLookup<InteriorClaim>();
+            _recipes = state.GetComponentLookup<Recipe>(isReadOnly: true);
         }
 
         public void OnUpdate(ref SystemState state)
@@ -70,6 +76,9 @@ namespace Rts
             _steps.Update(ref state);
             _orders.Update(ref state);
             _limits.Update(ref state);
+            _interiors.Update(ref state);
+            _claims.Update(ref state);
+            _recipes.Update(ref state);
 
             NativeList<FreeAgent> agents = CollectFreeAgents(ref state);
             if (agents.Length == 0)
@@ -106,8 +115,87 @@ namespace Rts
             NativeList<FreeAgent> agents,
             NativeHashMap<Entity, int> busy)
         {
+            return book[orderIndex].Kind switch
+            {
+                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy),
+                OrderKind.Work => TryAssignWork(book, orderIndex, agents),
+                _ => false,
+            };
+        }
+
+        /// <summary>
+        /// Sends a worker to a building that has asked for one. The claim is taken here - before the walk -
+        /// exactly as a bed in a hut is, which is what keeps six agents from converging on a workshop with
+        /// two benches (§6, §8).
+        /// </summary>
+        private bool TryAssignWork(OrderBook book, int orderIndex, NativeList<FreeAgent> agents)
+        {
             Order order = book[orderIndex];
-            if (order.Kind != OrderKind.Haul || order.Amount <= 0)
+            if (order.Amount <= 0 || !TryEntranceOf(order.Target, out int2 door))
+            {
+                return false;
+            }
+
+            if (!_interiors.TryGetComponent(order.Target, out Interior interior) || !interior.HasRoom)
+            {
+                return false;
+            }
+
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), out int agentIndex))
+            {
+                return false;
+            }
+
+            FreeAgent agent = agents[agentIndex];
+
+            interior.Claimed++;
+            _interiors[order.Target] = interior;
+
+            _claims[agent.Entity] = new InteriorClaim { Building = order.Target };
+            _claims.SetComponentEnabled(agent.Entity, true);
+
+            float craftSeconds = _recipes.TryGetComponent(order.Target, out Recipe recipe)
+                ? recipe.CraftSeconds
+                : 1f;
+
+            DynamicBuffer<TaskStep> steps = _steps[agent.Entity];
+            steps.Clear();
+
+            if (agent.Inside != Entity.Null && TryEntranceOf(agent.Inside, out int2 homeDoor))
+            {
+                steps.Add(TaskStep.Exit(agent.Inside, homeDoor));
+            }
+
+            steps.Add(TaskStep.GoTo(door));
+            steps.Add(TaskStep.Enter(order.Target, door));
+
+            // No Exit at the end. The worker stays and repeats while there is work, which is §9's
+            // Interact(inf); InteractionSystem is what eventually sends it back out of the door.
+            steps.Add(TaskStep.Work(order.Target, craftSeconds));
+
+            _orders[agent.Entity] = new AssignedOrder
+            {
+                Kind = OrderKind.Work,
+                Target = order.Target,
+            };
+            _orders.SetComponentEnabled(agent.Entity, true);
+
+            order.Amount = 0;
+            book[orderIndex] = order;
+
+            agents.RemoveAtSwapBack(agentIndex);
+            return true;
+        }
+
+        private bool TryAssignHaul(
+            OrderBook book,
+            int orderIndex,
+            in NativeList<StorageSite> sites,
+            NativeList<FreeAgent> agents,
+            NativeHashMap<Entity, int> busy)
+        {
+            Order order = book[orderIndex];
+            if (order.Amount <= 0)
             {
                 return false;
             }
@@ -130,7 +218,7 @@ namespace Rts
             }
 
             StorageSite source = sites[siteIndex];
-            if (!TryNearestAgent(agents, source.Point, out int agentIndex))
+            if (!TryNearestAgent(agents, source.Point, out int agentIndex, mustCarry: true))
             {
                 return false;
             }
@@ -238,13 +326,26 @@ namespace Rts
             return index >= 0;
         }
 
-        private static bool TryNearestAgent(in NativeList<FreeAgent> agents, float2 point, out int index)
+        /// <param name="mustCarry">
+        /// Hauling needs hands; working does not. An agent with no carry capacity is still a perfectly good
+        /// worker, so the check belongs to the kind of order rather than to who counts as free.
+        /// </param>
+        private static bool TryNearestAgent(
+            in NativeList<FreeAgent> agents,
+            float2 point,
+            out int index,
+            bool mustCarry = false)
         {
             index = -1;
             float best = MAX_HAUL_RANGE * MAX_HAUL_RANGE;
 
             for (int i = 0; i < agents.Length; i++)
             {
+                if (mustCarry && agents[i].CarryCapacity <= 0)
+                {
+                    continue;
+                }
+
                 float distance = math.distancesq(agents[i].Position, point);
                 if (distance < best)
                 {
@@ -271,7 +372,7 @@ namespace Rts
                                  .WithEntityAccess())
             {
                 // Mid-task or holding something: not free, whatever its order component says.
-                if (!steps.IsEmpty || !carry.ValueRO.IsEmpty || carry.ValueRO.Capacity <= 0)
+                if (!steps.IsEmpty || !carry.ValueRO.IsEmpty)
                 {
                     continue;
                 }
@@ -321,6 +422,13 @@ namespace Rts
 
             foreach (RefRO<AssignedOrder> assigned in SystemAPI.Query<RefRO<AssignedOrder>>())
             {
+                // Hauls only. A crafter is the target of both its input hauls and its own work order, and
+                // counting the worker against the hauler cap would let one worker starve the building.
+                if (assigned.ValueRO.Kind != OrderKind.Haul)
+                {
+                    continue;
+                }
+
                 Entity target = assigned.ValueRO.Target;
                 busy.TryGetValue(target, out int count);
                 busy[target] = count + 1;

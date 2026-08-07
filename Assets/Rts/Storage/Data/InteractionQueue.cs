@@ -12,6 +12,9 @@ namespace Rts
         Pickup,
 
         Deposit,
+
+        /// <summary>One batch at a crafter. Repeats itself while there is work (§9's <c>Interact(inf)</c>).</summary>
+        Work,
     }
 
     /// <summary>An <see cref="TaskStepKind.Interact"/> step that has run its course.</summary>

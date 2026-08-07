@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 6 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 7 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -400,7 +400,20 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    `TaskStep`'s inline capacity went from 4 to 6: a hauler woken from a hut is `Exit` plus the four-step hauler task, and idle agents are *in* huts, so that is the common case.
 
    Not built here, and still owed: `WatchdogSystem` (§13.3 #21). Every other row of §8's congestion table is now structural, but "blocked > T seconds → release claim, re-plan" has nothing to hang on until agents can be blocked by things other than walls — which is what the one-way brush of step 8 introduces.
-7. Crafter: recipe, work slots, worker behaviour.
+7. **Done.** Crafter: recipe, work slots, worker behaviour.
+
+   **A work slot *is* an interior slot.** §13.3 #7 names "WorkSlots" as a separate input, and it turned out there was nothing for a second occupancy mechanism to do: a worker claims room inside a workshop exactly as an idle agent claims a bed in a hut, and the same enter/exit path releases it. `Interior.Capacity` on a crafter is its number of benches. This is the fourth use of the one mechanism §6 promised, and it needed no new code at all.
+
+   **A crafter needs no special handling in the economy.** Its input slot is an ordinary requesting slot, so haulers fill it; its output slot is an ordinary pure source, so haulers drain it. The recipe only says what becomes what. Feeding a workshop from a farm and hauling its bread away needs nothing authored beyond four threshold numbers — there is a test for exactly that.
+
+   **`Interact(inf)` is a re-queueing loop, not an infinite duration.** When a batch finishes, `InteractionSystem` asks whether another could follow and either queues one more `Interact` or queues the `Exit`. So the worker stays put for a whole shift rather than walking out and back in per loaf, and it leaves precisely when the building stops asking for it — the same condition, evaluated by the same function, so the worker and the building can never disagree about whether there was work.
+
+   Two claim-lifecycle defects surfaced while building it, both now fixed and covered:
+
+   - Leaving a building cleared the agent's interior claim unconditionally. But a hauler resting in a hut has its claim *moved* to its new destination before it walks out, so the exit was dropping the new claim on the floor. It now only clears a claim on the building actually being left.
+   - A claim taken but never used — the task cut short before the worker got through the door — leaked a bench permanently. `OrderCompletionSystem` now returns it, and can tell the two cases apart because a claim that *was* used is already gone by the time the steps run out.
+
+   Also: exiting a building that has since been demolished used to fail its liveness check and leave the agent trapped inside it. Only the agent has to still exist now.
 8. One-way brush + arrow overlay.
 9. Soldier + threat orders.
 10. Needs / happiness.

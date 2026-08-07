@@ -1,3 +1,4 @@
+using GridNav;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -42,6 +43,10 @@ namespace Rts
 
                     case InteractionKind.Deposit:
                         Deposit(ref state, interaction);
+                        break;
+
+                    case InteractionKind.Work:
+                        Work(ref state, interaction);
                         break;
                 }
             }
@@ -111,6 +116,62 @@ namespace Rts
             // this is what tells OrderCompletionSystem there is nothing left to unwind.
             haul.Amount = 0;
             entities.SetComponentData(interaction.Agent, haul);
+        }
+
+        /// <summary>
+        /// One batch, then the decision that makes a shift a shift: if the crafter can still work, the
+        /// worker queues another batch and stays put. §9's <c>Interact(inf)</c> is this loop - the worker
+        /// only walks back out when the inputs run out or the output shelf fills, which is also exactly when
+        /// the building stops asking for one.
+        /// </summary>
+        private static void Work(ref SystemState state, in InteractionEvent interaction)
+        {
+            EntityManager entities = state.EntityManager;
+            Entity agent = interaction.Agent;
+            Entity crafter = interaction.Target;
+
+            if (!entities.Exists(agent) || !entities.HasBuffer<TaskStep>(agent))
+            {
+                return;
+            }
+
+            if (CanStillWork(entities, crafter, craft: true))
+            {
+                Recipe recipe = entities.GetComponentData<Recipe>(crafter);
+                entities.GetBuffer<TaskStep>(agent).Add(TaskStep.Work(crafter, recipe.CraftSeconds));
+                return;
+            }
+
+            // Out of work. The agent has kept its position since it stepped inside, so the cell it is
+            // standing on is the doorstep it came in through.
+            int2 doorstep = GridCoords.CellOf(entities.GetComponentData<AgentMove>(agent).Position);
+            entities.GetBuffer<TaskStep>(agent).Add(TaskStep.Exit(crafter, doorstep));
+        }
+
+        /// <summary>
+        /// Makes a batch if one can be made, and reports whether another could follow. Both answers come
+        /// from <see cref="RecipeUtils.CanCraft"/>, so the worker and the building that asked for it can
+        /// never disagree about whether there was work.
+        /// </summary>
+        private static bool CanStillWork(in EntityManager entities, Entity crafter, bool craft)
+        {
+            if (!entities.Exists(crafter)
+                || !entities.HasComponent<Recipe>(crafter)
+                || !entities.HasBuffer<StorageSlot>(crafter))
+            {
+                return false;
+            }
+
+            DynamicBuffer<StorageSlot> slots = entities.GetBuffer<StorageSlot>(crafter);
+            DynamicBuffer<RecipeInput> inputs = entities.GetBuffer<RecipeInput>(crafter);
+            DynamicBuffer<RecipeOutput> outputs = entities.GetBuffer<RecipeOutput>(crafter);
+
+            if (craft && RecipeUtils.CanCraft(slots, inputs, outputs))
+            {
+                RecipeUtils.Craft(ref slots, inputs, outputs);
+            }
+
+            return RecipeUtils.CanCraft(slots, inputs, outputs);
         }
 
         private static bool TryGetHaul(in EntityManager entities, Entity agent, out AssignedOrder haul)

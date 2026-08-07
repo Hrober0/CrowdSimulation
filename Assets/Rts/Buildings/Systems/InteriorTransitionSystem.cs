@@ -86,15 +86,22 @@ namespace Rts
         private static void Exit(ref SystemState state, in InteriorTransition transition)
         {
             EntityManager entities = state.EntityManager;
-            if (!IsLive(entities, transition))
+
+            // Only the agent has to still exist. A building demolished around its occupants must not trap
+            // them inside it - putting them back on the map is strictly better than the alternative, and
+            // there is no state left to give back anyway.
+            if (!entities.Exists(transition.Agent) || !entities.HasComponent<AgentMove>(transition.Agent))
             {
                 return;
             }
 
-            Interior interior = entities.GetComponentData<Interior>(transition.Building);
-            interior.Occupied = math.max(interior.Occupied - 1, 0);
-            interior.Claimed = math.max(interior.Claimed - 1, 0);
-            entities.SetComponentData(transition.Building, interior);
+            if (entities.Exists(transition.Building) && entities.HasComponent<Interior>(transition.Building))
+            {
+                Interior interior = entities.GetComponentData<Interior>(transition.Building);
+                interior.Occupied = math.max(interior.Occupied - 1, 0);
+                interior.Claimed = math.max(interior.Claimed - 1, 0);
+                entities.SetComponentData(transition.Building, interior);
+            }
 
             // Put back down on the doorstep. The agent kept its position while inside, but the building may
             // have been re-placed or the claim released from somewhere else in the meantime, and the entrance
@@ -106,7 +113,7 @@ namespace Rts
             entities.SetComponentData(transition.Agent, move);
 
             entities.SetComponentEnabled<InsideBuilding>(transition.Agent, false);
-            entities.SetComponentEnabled<InteriorClaim>(transition.Agent, false);
+            ReleaseClaimOn(entities, transition.Agent, transition.Building);
 
             entities.SetComponentEnabled<AgentMove>(transition.Agent, true);
 
@@ -114,6 +121,27 @@ namespace Rts
 
             // PathFollow stays off: the agent is standing in a doorway with nothing to do until its next
             // GoTo step turns it back on.
+        }
+
+        /// <summary>
+        /// Gives back the claim, but only if it is a claim on the building being left.
+        ///
+        /// The two can differ, and the case is ordinary rather than exotic: a hauler resting in a hut is
+        /// handed a job, its claim is moved to the building it has been sent to, and only *then* does it
+        /// walk out of the hut. Clearing the claim on the way out would drop the new one on the floor.
+        /// </summary>
+        private static void ReleaseClaimOn(in EntityManager entities, Entity agent, Entity building)
+        {
+            if (!entities.HasComponent<InteriorClaim>(agent)
+                || !entities.IsComponentEnabled<InteriorClaim>(agent))
+            {
+                return;
+            }
+
+            if (entities.GetComponentData<InteriorClaim>(agent).Building == building)
+            {
+                entities.SetComponentEnabled<InteriorClaim>(agent, false);
+            }
         }
 
         /// <summary>
