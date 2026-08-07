@@ -29,11 +29,16 @@ namespace Examples.Rts
             state.RequireForUpdate<GridWorld>();
             state.RequireForUpdate<AgentSpawn>();
 
+            // One archetype for every agent, whatever it ends up doing (§9). What a hauler, a worker and a
+            // soldier differ in is the contents of their TaskStep buffer, not their components.
             _archetype = state.EntityManager.CreateArchetype(
                 typeof(AgentMove),
                 typeof(PathFollow),
                 typeof(ArrivedTag),
                 typeof(PathRoute),
+                typeof(TaskStep),
+                typeof(InsideBuilding),
+                typeof(InteriorClaim),
                 typeof(ViewVisible)
             );
         }
@@ -85,16 +90,21 @@ namespace Examples.Rts
 
                 state.EntityManager.SetComponentData(agent, new PathFollow
                 {
-                    GoalCell = request.GoalCell,
                     ArriveDistance = 0.4f,
-                    WaypointCell = request.GoalCell,
-                    RoutedGoal = request.GoalCell,
 
                     // -1 is no chunk, which is what makes the first frame route rather than trust these.
                     RoutedChunk = -1,
                 });
 
+                // The walk is a task step rather than an enabled PathFollow: TaskStepSystem owns when an
+                // agent walks, and an agent that arrives with an empty buffer is then idle by definition and
+                // gets picked up by IdleAssignSystem (§6).
+                state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
+
+                state.EntityManager.SetComponentEnabled<PathFollow>(agent, false);
                 state.EntityManager.SetComponentEnabled<ArrivedTag>(agent, false);
+                state.EntityManager.SetComponentEnabled<InsideBuilding>(agent, false);
+                state.EntityManager.SetComponentEnabled<InteriorClaim>(agent, false);
             }
         }
 

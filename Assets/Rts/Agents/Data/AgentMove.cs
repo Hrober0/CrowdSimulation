@@ -11,8 +11,13 @@ namespace Rts
     /// <see cref="PrefVelocity"/> is where the agent *wants* to go, written by path following from the flow
     /// field gradient. <see cref="Velocity"/> is what RVO allowed it to do. Keeping the two apart is what
     /// lets avoidance override intent without losing it.
+    ///
+    /// Disabling this is how an agent leaves the map without leaving the world (§6): every movement system
+    /// queries it, so one flag takes the agent out of the spatial hash, out of everyone else's avoidance
+    /// neighbours, out of integration and out of the view - and its position, load and health are all still
+    /// exactly where they were when it comes back.
     /// </summary>
-    public struct AgentMove : IComponentData, IEquatable<AgentMove>
+    public struct AgentMove : IComponentData, IEnableableComponent, IEquatable<AgentMove>
     {
         public Entity Entity;
 

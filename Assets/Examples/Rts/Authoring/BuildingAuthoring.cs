@@ -1,3 +1,4 @@
+using System;
 using GridNav;
 using Rts;
 using Unity.Entities;
@@ -12,6 +13,16 @@ namespace Examples.Rts
     /// </summary>
     public class BuildingAuthoring : MonoBehaviour
     {
+        [Serializable]
+        private struct Entrance
+        {
+            [Tooltip("The footprint cell the door is cut into, before rotation.")]
+            public Vector2Int WallCell;
+
+            [Tooltip("Which wall of that cell the door is on. Agents stand on the neighbour that side.")]
+            public Direction Side;
+        }
+
         [SerializeField, Tooltip("Footprint cells as offsets from this object's cell, before rotation.")]
         private Vector2Int[] _footprintOffsets =
         {
@@ -20,6 +31,19 @@ namespace Examples.Rts
         };
 
         [SerializeField] private GridRotation _rotation;
+
+        [SerializeField, Tooltip("Doors. A building with none can never be entered, which is fine for a wall.")]
+        private Entrance[] _entrances =
+        {
+            new() { WallCell = new Vector2Int(0, 0), Side = Direction.South },
+        };
+
+        [SerializeField, Min(0)]
+        [Tooltip("How many agents fit inside at once. 0 means the building cannot be entered.")]
+        private int _interiorCapacity;
+
+        [SerializeField, Tooltip("Agents with nothing to do come and rest here - a haulers' hut.")]
+        private bool _idleShelter;
 
         public int2 OriginCell => GridCoords.CellOf(SimToWorld.ToSim(transform.position));
 
@@ -34,6 +58,24 @@ namespace Examples.Rts
                 int2 cell = origin + RotationUtils.Rotate(new int2(offset.x, offset.y), _rotation);
                 Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(cell)), cellSize);
             }
+
+            Gizmos.color = new Color(0.95f, 0.8f, 0.2f);
+            foreach (Entrance entrance in _entrances)
+            {
+                int2 doorstep = Doorstep(origin, entrance, out int2 wall);
+                Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(doorstep)), cellSize * 0.8f);
+                Gizmos.DrawLine(
+                    SimToWorld.Position(GridCoords.CellCenter(wall)),
+                    SimToWorld.Position(GridCoords.CellCenter(doorstep))
+                );
+            }
+        }
+
+        /// <summary>The cell an agent stands on to use this door, and the wall cell it belongs to.</summary>
+        private int2 Doorstep(int2 origin, in Entrance entrance, out int2 wall)
+        {
+            wall = origin + RotationUtils.Rotate(new int2(entrance.WallCell.x, entrance.WallCell.y), _rotation);
+            return wall + DirectionUtils.Offset(RotationUtils.Rotate(entrance.Side, _rotation));
         }
 
         private class BuildingBaker : Baker<BuildingAuthoring>
@@ -51,6 +93,28 @@ namespace Examples.Rts
                 foreach (Vector2Int offset in authoring._footprintOffsets)
                 {
                     footprint.Add(new BuildingFootprintOffset { Offset = new int2(offset.x, offset.y) });
+                }
+
+                DynamicBuffer<BuildingEntranceOffset> entrances = AddBuffer<BuildingEntranceOffset>(entity);
+                foreach (Entrance entrance in authoring._entrances)
+                {
+                    entrances.Add(new BuildingEntranceOffset
+                    {
+                        Offset = new int2(entrance.WallCell.x, entrance.WallCell.y),
+                        Side = entrance.Side,
+                    });
+                }
+
+                if (authoring._interiorCapacity > 0)
+                {
+                    AddComponent(entity, new Interior { Capacity = authoring._interiorCapacity });
+                }
+
+                // A shelter with no room is a building nobody can rest in, so the tag without a capacity
+                // would be a silently dead setting rather than a half-working one.
+                if (authoring._idleShelter && authoring._interiorCapacity > 0)
+                {
+                    AddComponent<IdleShelter>(entity);
                 }
             }
         }

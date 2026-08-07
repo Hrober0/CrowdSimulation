@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 4 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 5 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -374,12 +374,36 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    `SimToWorld.Rotation` was rebuilt out of `math` calls instead of `Quaternion.LookRotation`, which is an engine extern and cannot be called from the Burst job that writes the transforms.
 
    Also added, as example scaffolding rather than design: `AgentSpawnerAuthoring` — a crowd scattered over a box, all walking to one goal, placed only on passable cells. Nothing in the view layer can be seen working until something puts agents on the map, and the real game will spawn them from buildings.
-5. Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming.
+5. **Done.** Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming.
+
+   **`Interior` has three fields, not two.** "The interior slot is claimed before the walk begins" needs somewhere to record a claim that is not yet an occupant, so `Occupied` (physically inside, what production and display want) is joined by `Claimed` (inside *plus* walking here). `Claimed` is the one capped by `Capacity`: capping occupants instead would let ten agents walk to a hut with two beds and eight arrive to be turned away at the door, which is exactly the entrance pile-up §8 exists to prevent.
+
+   **Queue slots turned out to be the interior claim.** They were listed here as a separate mechanism, and once claim-before-approach exists there is nothing left for them to do: an agent that cannot get a slot never sets off, so no queue forms outside to need slots. Agents waiting for room wait *inside* their own hut, which is §8's point about the thundering herd. Reintroduce them only if something needs agents queued outside a building it has already been admitted to.
+
+   **`AgentMove` became `IEnableableComponent`.** §6 called for it, and it is what makes "an idle agent in a hut costs nothing" structural rather than tuned: every movement system queries `AgentMove`, so one flag removes the agent from the spatial hash, from everyone else's avoidance neighbours, from integration and from the view at once — with its position, load and health untouched for when it comes back.
+
+   **Entrances are authored as a wall cell plus a side**, not as the outside cell. The cell an agent stands on is then derived, which makes "the doorstep is outside the footprint and therefore passable" a consequence of the authoring rather than something the author has to keep true by hand — including after rotation. Doorsteps are flagged `Entrance | NoIdle`; the `NoIdle` half is the one that matters at runtime.
+
+   Resolving entrances lives in `BuildingFootprintSystem` rather than in a system of its own, so that one place both takes and gives back everything a building touches — a split would eventually leak half a building's cells on demolition.
+
+   Nothing queues an `Exit` yet. Idle agents rest in huts until an order arrives, and orders are step 6; `Exit` is implemented and unit-tested but unreachable in play until then.
 6. Storage module (§7) + order market (§8) + hauler task. Port `StorageSlotUtils`.
 7. Crafter: recipe, work slots, worker behaviour.
 8. One-way brush + arrow overlay.
 9. Soldier + threat orders.
 10. Needs / happiness.
+
+### 14.1 Out of scope, but required
+
+The build order covers code only. Everything below is scene and asset work — it is nobody's *implementation* step, it cannot be written from here, and each code step stays invisible until it exists. Listed so it is not mistaken for missing work, and so the step that first needs it is on record.
+
+| what | first needed by | why it cannot be code |
+| --- | --- | --- |
+| an agent prefab, and an `AgentViewSettings` object holding it | step 4 — nothing renders without it | a prefab and its material are scene assets |
+| an `AgentSpawnerAuthoring` in the subscene | step 4 — outside tests there are no agents at all | placement is authoring |
+| building prefabs and their 1:1 static views (§10) | step 5 | as above |
+| a hauler's hut in the subscene with a non-zero `Interior.Capacity` | step 5 — idle claiming has nowhere to send anyone | as above |
+| tuning passes on `MaxConcurrentHaulers` / `MaxConcurrentVisitors`, flow-field window size | step 6 onwards (§15) | needs a real map to measure against |
 
 ## 15. Open items
 

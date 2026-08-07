@@ -12,6 +12,10 @@ namespace Rts
     /// Every footprint cell is blocked and flagged <see cref="CellFlags.Building"/>. Blocked cells are what
     /// keep *paths* out of a building; RVO obstacles - which keep a shoved agent out of one - come with the
     /// avoidance integration, not here (§3).
+    ///
+    /// Entrances are resolved in the same pass and for the same reason: a doorway's cell is derived from the
+    /// placement exactly as a footprint cell is, and one system that both takes and gives back everything a
+    /// building touches cannot leak half a building's cells on demolition.
     /// </summary>
     [UpdateInGroup(typeof(GridUpdateGroup))]
     [UpdateAfter(typeof(CellObjectRegistrationSystem))]
@@ -19,6 +23,12 @@ namespace Rts
     {
         /// <summary>A footprint cell always blocks, so the refund is a constant and needs no recording.</summary>
         private const int FOOTPRINT_COST = CellData.BLOCKED;
+
+        /// <summary>
+        /// What an entrance cell is marked with. <see cref="CellFlags.NoIdle"/> is the half that matters at
+        /// runtime: a doorway that agents are allowed to loiter in is a doorway that gets blocked (§6).
+        /// </summary>
+        private const CellFlags ENTRANCE_FLAGS = CellFlags.Entrance | CellFlags.NoIdle;
 
         private EntityQuery _placed;
         private EntityQuery _demolished;
@@ -57,6 +67,9 @@ namespace Rts
                 DynamicBuffer<BuildingFootprintCell> occupied =
                     commands.AddBuffer<BuildingFootprintCell>(entity);
 
+                DynamicBuffer<BuildingEntranceCell> doorways =
+                    commands.AddBuffer<BuildingEntranceCell>(entity);
+
                 BuildingPlacement placed = placement.ValueRO;
                 foreach (BuildingFootprintOffset offset in footprint)
                 {
@@ -67,10 +80,30 @@ namespace Rts
 
                     occupied.Add(new BuildingFootprintCell { Cell = cell });
                 }
+
+                if (!SystemAPI.HasBuffer<BuildingEntranceOffset>(entity))
+                {
+                    continue;
+                }
+
+                foreach (BuildingEntranceOffset entrance in SystemAPI.GetBuffer<BuildingEntranceOffset>(entity))
+                {
+                    int2 wall = placed.OriginCell + RotationUtils.Rotate(entrance.Offset, placed.Rotation);
+                    Direction side = RotationUtils.Rotate(entrance.Side, placed.Rotation);
+                    int2 doorstep = wall + DirectionUtils.Offset(side);
+
+                    edits.Enqueue(GridEdit.AddFlags(doorstep, ENTRANCE_FLAGS));
+
+                    doorways.Add(new BuildingEntranceCell
+                    {
+                        Cell = doorstep,
+                        Facing = DirectionUtils.Opposite(side),
+                    });
+                }
             }
 
-            foreach ((DynamicBuffer<BuildingFootprintCell> occupied, Entity entity)
-                     in SystemAPI.Query<DynamicBuffer<BuildingFootprintCell>>()
+            foreach ((DynamicBuffer<BuildingFootprintCell> occupied, DynamicBuffer<BuildingEntranceCell> doorways, Entity entity)
+                     in SystemAPI.Query<DynamicBuffer<BuildingFootprintCell>, DynamicBuffer<BuildingEntranceCell>>()
                                  .WithNone<BuildingPlacement>()
                                  .WithEntityAccess())
             {
@@ -80,7 +113,17 @@ namespace Rts
                     edits.Enqueue(GridEdit.RemoveFlags(cell.Cell, CellFlags.Building));
                 }
 
+                // Flags are bits, not counts, so two buildings whose doorsteps land on the same cell would
+                // have that cell cleared by whichever is demolished first. Left as is: it needs two doors
+                // facing each other across one cell, and a refcount per flag would cost every cell four
+                // bytes to fix an authoring mistake.
+                foreach (BuildingEntranceCell doorway in doorways)
+                {
+                    edits.Enqueue(GridEdit.RemoveFlags(doorway.Cell, ENTRANCE_FLAGS));
+                }
+
                 commands.RemoveComponent<BuildingFootprintCell>(entity);
+                commands.RemoveComponent<BuildingEntranceCell>(entity);
             }
 
             commands.Playback(state.EntityManager);
