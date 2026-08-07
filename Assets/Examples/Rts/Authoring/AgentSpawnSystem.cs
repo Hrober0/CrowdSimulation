@@ -41,6 +41,7 @@ namespace Examples.Rts
                 typeof(InteriorClaim),
                 typeof(Carry),
                 typeof(AssignedOrder),
+                typeof(MovementWatchdog),
                 typeof(ViewVisible)
             );
         }
@@ -104,6 +105,10 @@ namespace Examples.Rts
                 state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
 
                 state.EntityManager.SetComponentData(agent, new Carry { Capacity = request.CarryCapacity });
+                state.EntityManager.SetComponentData(agent, new MovementWatchdog
+                {
+                    LastProgressPosition = position,
+                });
 
                 state.EntityManager.SetComponentEnabled<PathFollow>(agent, false);
                 state.EntityManager.SetComponentEnabled<ArrivedTag>(agent, false);

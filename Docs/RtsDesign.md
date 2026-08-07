@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 7 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 8 of §14 are implemented; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -399,7 +399,7 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 
    `TaskStep`'s inline capacity went from 4 to 6: a hauler woken from a hut is `Exit` plus the four-step hauler task, and idle agents are *in* huts, so that is the common case.
 
-   Not built here, and still owed: `WatchdogSystem` (§13.3 #21). Every other row of §8's congestion table is now structural, but "blocked > T seconds → release claim, re-plan" has nothing to hang on until agents can be blocked by things other than walls — which is what the one-way brush of step 8 introduces.
+   Not built here, and still owed: `WatchdogSystem` (§13.3 #21). Every other row of §8's table of jams is now structural, but "blocked > T seconds → release claim, re-plan" has nothing to hang on until agents can be blocked by things other than walls — which is what the one-way brush of step 8 introduces.
 7. **Done.** Crafter: recipe, work slots, worker behaviour.
 
    **A work slot *is* an interior slot.** §13.3 #7 names "WorkSlots" as a separate input, and it turned out there was nothing for a second occupancy mechanism to do: a worker claims room inside a workshop exactly as an idle agent claims a bed in a hut, and the same enter/exit path releases it. `Interior.Capacity` on a crafter is its number of benches. This is the fourth use of the one mechanism §6 promised, and it needed no new code at all.
@@ -414,7 +414,21 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    - A claim taken but never used — the task cut short before the worker got through the door — leaked a bench permanently. `OrderCompletionSystem` now returns it, and can tell the two cases apart because a claim that *was* used is already gone by the time the steps run out.
 
    Also: exiting a building that has since been demolished used to fail its liveness check and leave the agent trapped inside it. Only the agent has to still exist now.
-8. One-way brush + arrow overlay.
+8. **Done.** One-way brush + arrow overlay. Includes `WatchdogSystem` (§13.3 #21), which was owed from step 6.
+
+   **Painting a cell forbids the reverse direction; it does not permit only one.** §3 says the brush "drops the mask to the allowed bit(s)", and the allowed bits turn out to be three of the four. A strict single-bit mask would also forbid stepping sideways off the road, so an agent could enter a one-way road and never leave it — the feature meant to unjam corridors would strand everyone who used one. Forbidding the reverse gives what the player actually wants: traffic that cannot double back, on a road you can still get on and off.
+
+   The brush is a **drag gesture**: drag along a road and each cell is painted with the direction of travel, right-click clears a cell back to two-way. Direction comes from the dominant axis of the step, so a fast drag that skips cells still paints something sensible. A corner painted twice keeps the later direction, which is the way out of it.
+
+   The arrow overlay now draws the **forbidden** directions rather than the allowed ones. With a forbid-reverse mask, drawing the permitted set puts three arrows on every road cell and leaves the reader to work out which one is missing; one arrow pointing the way you may *not* go reads immediately.
+
+   **The watchdog is the only rule in §8's table of jams that reacts rather than prevents, and that is inherent.** Every other row is prevented structurally — reservations cap commitments, claims precede approach, strict priority forbids ping-pong — but two agents wedged in a corridor is a geometry problem, and geometry cannot be reasoned about in advance. So it is noticed instead: no progress for five seconds while trying to walk, and the task is dropped.
+
+   Dropping it is all the watchdog does. Everything after that is machinery that already existed — `OrderCompletionSystem` unwinds the reservations and the interior claim, `StorageRequestSystem` re-posts the demand because the demand never went away, and the agent is picked up as free. There is no "recovering" state and nothing had to be taught what a deadlock is.
+
+   Progress is measured against **the last place the agent actually got to**, not against last frame. A frame-to-frame test would read RVO jitter as progress forever, and an agent shuffling on the spot in a jam is precisely the case this exists to catch.
+
+   One gap this closed on the way: a claim whose task died left the building a bench or bed short permanently. Releasing it is now a rule in `IdleAssignSystem` — a claim with no task behind it is stale — rather than something each of the several ways a task can end has to remember.
 9. Soldier + threat orders.
 10. Needs / happiness.
 

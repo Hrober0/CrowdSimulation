@@ -46,10 +46,19 @@ namespace Rts
                                  .WithPresent<PathFollow, InteriorClaim>()
                                  .WithDisabled<InsideBuilding, AssignedOrder>())
             {
-                // Idle is "nothing left to do, nothing held, and not already on the way somewhere".
-                if (!steps.IsEmpty || claimed.ValueRO || walking.ValueRO)
+                // Idle is "nothing left to do and not already on the way somewhere".
+                if (!steps.IsEmpty || walking.ValueRO)
                 {
                     continue;
+                }
+
+                // A claim with no task behind it is stale - the watchdog gave up on the walk to it, or the
+                // task was dropped some other way. Giving it back here rather than at each of the places a
+                // task can die means a building cannot slowly lose its beds to abandoned journeys.
+                if (claimed.ValueRO)
+                {
+                    ReleaseClaim(ref state, claim.ValueRO.Building);
+                    claimed.ValueRW = false;
                 }
 
                 float2 position = agent.ValueRO.Position;
@@ -133,6 +142,23 @@ namespace Rts
                 interior.Claimed += shelter.TakenThisTick;
                 SystemAPI.SetComponent(shelter.Building, interior);
             }
+        }
+
+        /// <summary>
+        /// Hands one slot back. Not reflected in this tick's shelter candidates, which were counted before
+        /// the loop began - so the freed slot is offered from the next tick. A tenth of a second late to
+        /// re-offer a bed is not worth recounting the world for.
+        /// </summary>
+        private void ReleaseClaim(ref SystemState state, Entity building)
+        {
+            if (!SystemAPI.HasComponent<Interior>(building))
+            {
+                return;
+            }
+
+            Interior interior = SystemAPI.GetComponent<Interior>(building);
+            interior.Claimed = math.max(interior.Claimed - 1, 0);
+            SystemAPI.SetComponent(building, interior);
         }
 
         private static bool TryNearestShelter(in NativeList<ShelterCandidate> shelters, float2 position, out int index)

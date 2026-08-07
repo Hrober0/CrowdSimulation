@@ -37,6 +37,7 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _interiorTransitionSystem;
         private readonly SystemHandle _interactionSystem;
         private readonly SystemHandle _orderCompletionSystem;
+        private readonly SystemHandle _watchdogSystem;
 
         private double _elapsed;
 
@@ -68,6 +69,7 @@ namespace Tests.EditorTests.RtsTests
             _interiorTransitionSystem = World.CreateSystem<InteriorTransitionSystem>();
             _interactionSystem = World.CreateSystem<InteractionSystem>();
             _orderCompletionSystem = World.CreateSystem<OrderCompletionSystem>();
+            _watchdogSystem = World.CreateSystem<WatchdogSystem>();
 
             World.EntityManager.CreateSingleton(
                 GridSettings.FromCells(new int2(sizeInCells, sizeInCells), centerOnOrigin: true)
@@ -125,6 +127,7 @@ namespace Tests.EditorTests.RtsTests
             _interiorTransitionSystem.Update(World.Unmanaged);
             _interactionSystem.Update(World.Unmanaged);
             _orderCompletionSystem.Update(World.Unmanaged);
+            _watchdogSystem.Update(World.Unmanaged);
 
             Entities.CompleteAllTrackedJobs();
         }
@@ -205,7 +208,7 @@ namespace Tests.EditorTests.RtsTests
             Entity entity = Entities.CreateEntity(
                 typeof(AgentMove), typeof(PathFollow), typeof(ArrivedTag),
                 typeof(InsideBuilding), typeof(InteriorClaim),
-                typeof(Carry), typeof(AssignedOrder), typeof(ViewVisible)
+                typeof(Carry), typeof(AssignedOrder), typeof(MovementWatchdog), typeof(ViewVisible)
             );
 
             Entities.AddBuffer<PathRoute>(entity);
@@ -221,6 +224,7 @@ namespace Tests.EditorTests.RtsTests
 
             Entities.SetComponentData(entity, new PathFollow { ArriveDistance = 0.4f, RoutedChunk = -1 });
             Entities.SetComponentData(entity, new Carry { Capacity = carryCapacity });
+            Entities.SetComponentData(entity, new MovementWatchdog { LastProgressPosition = position });
 
             Entities.SetComponentEnabled<PathFollow>(entity, false);
             Entities.SetComponentEnabled<ArrivedTag>(entity, false);

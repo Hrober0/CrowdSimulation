@@ -126,6 +126,12 @@ namespace Examples.Rts
             Gizmos.DrawCube(center, SimToWorld.Direction(new float2(0.9f, 0.9f)));
         }
 
+        /// <summary>
+        /// Draws what the cell will *not* let an agent do. Forbidden rather than allowed, because a one-way
+        /// road cell forbids exactly one direction and permits the other three (see <see cref="OneWayBrush"/>):
+        /// drawing the permitted set would put three arrows on every road cell and leave the reader to work
+        /// out which one is missing.
+        /// </summary>
         private static void DrawExits(int2 cell, CellData data)
         {
             float2 center = GridCoords.CellCenter(cell);
@@ -134,7 +140,7 @@ namespace Examples.Rts
             for (int i = 0; i < DirectionUtils.DIRECTION_COUNT; i++)
             {
                 var direction = (Direction)i;
-                if (!data.CanExit(direction))
+                if (data.CanExit(direction))
                 {
                     continue;
                 }
