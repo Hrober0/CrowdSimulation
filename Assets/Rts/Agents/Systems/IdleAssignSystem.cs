@@ -44,7 +44,7 @@ namespace Rts
                      in SystemAPI.Query<DynamicBuffer<TaskStep>, RefRO<AgentMove>, EnabledRefRO<PathFollow>,
                                         RefRW<InteriorClaim>, EnabledRefRW<InteriorClaim>>()
                                  .WithPresent<PathFollow, InteriorClaim>()
-                                 .WithDisabled<InsideBuilding>())
+                                 .WithDisabled<InsideBuilding, AssignedOrder>())
             {
                 // Idle is "nothing left to do, nothing held, and not already on the way somewhere".
                 if (!steps.IsEmpty || claimed.ValueRO || walking.ValueRO)

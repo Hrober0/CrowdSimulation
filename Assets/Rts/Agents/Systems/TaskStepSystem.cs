@@ -25,12 +25,14 @@ namespace Rts
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<InteriorTransitionQueue>();
+            state.RequireForUpdate<InteractionQueue>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             InteriorTransitionQueue transitions = SystemAPI.GetSingleton<InteriorTransitionQueue>();
+            InteractionQueue interactions = SystemAPI.GetSingleton<InteractionQueue>();
             float deltaTime = SystemAPI.Time.DeltaTime;
 
             // WithPresent on both, because an agent inside a building has PathFollow disabled and is exactly
@@ -98,11 +100,22 @@ namespace Rts
                         // Counted down in place, so a long Interact does not rewrite the buffer every frame.
                         ref TaskStep head = ref steps.ElementAt(0);
                         head.Duration -= deltaTime;
-                        if (head.Duration <= 0f)
+                        if (head.Duration > 0f)
                         {
-                            steps.RemoveAt(0);
+                            break;
                         }
 
+                        if (step.Interaction != InteractionKind.None)
+                        {
+                            interactions.Enqueue(new InteractionEvent
+                            {
+                                Agent = entity,
+                                Target = step.Target,
+                                Kind = step.Interaction,
+                            });
+                        }
+
+                        steps.RemoveAt(0);
                         break;
                     }
                 }

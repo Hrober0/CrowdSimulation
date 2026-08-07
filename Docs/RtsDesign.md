@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 5 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 6 of §14 are implemented; the rest is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -387,7 +387,19 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    Resolving entrances lives in `BuildingFootprintSystem` rather than in a system of its own, so that one place both takes and gives back everything a building touches — a split would eventually leak half a building's cells on demolition.
 
    Nothing queues an `Exit` yet. Idle agents rest in huts until an order arrives, and orders are step 6; `Exit` is implemented and unit-tested but unreachable in play until then.
-6. Storage module (§7) + order market (§8) + hauler task. Port `StorageSlotUtils`.
+6. **Done.** Storage module (§7) + order market (§8) + hauler task. Port `StorageSlotUtils`.
+
+   **One order per (target, item), carrying the whole outstanding need** — not one order per unit. §8's construction site wanting 500 planks is one order of 500. Nothing is gained by a 500-entry queue: the units in flight are already capped by the reservations and the trips by `HaulLimit`, so the only thing per-unit orders would add is 500 things to sort. It also makes aging work, because an unmet request is *the same order* a tick older rather than a fresh one that has forgotten how long it has been waiting.
+
+   **Haulers pick up and deposit on the doorstep, not inside.** §6 lists "hauler picking up or depositing" among the uses of the interior mechanism, and that is still available — the steps exist. But claiming an interior slot at the destination *before* walking to the source means holding a slot at one building for the whole outbound leg at another, which is a worse deadlock than the pile-up it prevents. `HaulLimit` already bounds the crowd at a door, so the doorstep interaction is what step 6 builds. Revisit if haulers need to be *hidden* indoors while loading.
+
+   **Interactions go through a queue, like interior transitions.** The step machine says *that* something finished; `InteractionSystem` decides what it costs. That is what makes §13.2 invariant 2 checkable rather than merely intended: `Amount` has exactly one writer, and it is not in the 60 Hz parallel phase.
+
+   **`AssignedOrder.Amount` is the outstanding reservation, not the original claim.** It is set to what was actually picked up (which can be less — something may eat the stock while the hauler walks) and zeroed by a successful deposit. "Nothing reserved and nothing carried" is then the finished case, and every other way a task can end unwinds through one `CancelHaul`. Without that distinction the release path cannot tell a completed delivery from a haul that never collected anything, and silently leaks reservations.
+
+   `TaskStep`'s inline capacity went from 4 to 6: a hauler woken from a hut is `Exit` plus the four-step hauler task, and idle agents are *in* huts, so that is the common case.
+
+   Not built here, and still owed: `WatchdogSystem` (§13.3 #21). Every other row of §8's congestion table is now structural, but "blocked > T seconds → release claim, re-plan" has nothing to hang on until agents can be blocked by things other than walls — which is what the one-way brush of step 8 introduces.
 7. Crafter: recipe, work slots, worker behaviour.
 8. One-way brush + arrow overlay.
 9. Soldier + threat orders.
@@ -403,6 +415,7 @@ The build order covers code only. Everything below is scene and asset work — i
 | an `AgentSpawnerAuthoring` in the subscene | step 4 — outside tests there are no agents at all | placement is authoring |
 | building prefabs and their 1:1 static views (§10) | step 5 | as above |
 | a hauler's hut in the subscene with a non-zero `Interior.Capacity` | step 5 — idle claiming has nowhere to send anyone | as above |
+| at least one `StorageAuthoring` source and one warehouse, both with a door | step 6 — with nothing asking for anything, the order market correctly does nothing | thresholds are content, not code |
 | tuning passes on `MaxConcurrentHaulers` / `MaxConcurrentVisitors`, flow-field window size | step 6 onwards (§15) | needs a real map to measure against |
 
 ## 15. Open items

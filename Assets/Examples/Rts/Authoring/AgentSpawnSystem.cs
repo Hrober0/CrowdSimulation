@@ -39,6 +39,8 @@ namespace Examples.Rts
                 typeof(TaskStep),
                 typeof(InsideBuilding),
                 typeof(InteriorClaim),
+                typeof(Carry),
+                typeof(AssignedOrder),
                 typeof(ViewVisible)
             );
         }
@@ -101,10 +103,13 @@ namespace Examples.Rts
                 // gets picked up by IdleAssignSystem (§6).
                 state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
 
+                state.EntityManager.SetComponentData(agent, new Carry { Capacity = request.CarryCapacity });
+
                 state.EntityManager.SetComponentEnabled<PathFollow>(agent, false);
                 state.EntityManager.SetComponentEnabled<ArrivedTag>(agent, false);
                 state.EntityManager.SetComponentEnabled<InsideBuilding>(agent, false);
                 state.EntityManager.SetComponentEnabled<InteriorClaim>(agent, false);
+                state.EntityManager.SetComponentEnabled<AssignedOrder>(agent, false);
             }
         }
 

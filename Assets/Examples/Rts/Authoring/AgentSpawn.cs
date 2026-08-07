@@ -23,6 +23,9 @@ namespace Examples.Rts
         /// <summary>Must stay below ~0.45 of a cell, or agents clip the corners of blocked cells (§3).</summary>
         public float Radius;
 
+        /// <summary>Units carried per trip. Zero means the agent will never be given a haul.</summary>
+        public int CarryCapacity;
+
         public uint Seed;
     }
 }

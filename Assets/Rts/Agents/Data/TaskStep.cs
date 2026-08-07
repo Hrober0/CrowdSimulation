@@ -28,10 +28,12 @@ namespace Rts
     /// idle    GoTo(door)  -> Enter(hut)
     /// </code>
     ///
-    /// Four entries inline, which is the longest task any of them needs; a fifth would spill to the heap
-    /// rather than fail.
+    /// Six entries inline. The design budgeted four, which is the length of the hauler task above; the two
+    /// extra are for the <c>Exit</c> that has to go in front of it when the hauler is woken out of a hut -
+    /// and idle agents are *in* huts, so that is the common case rather than the exception. Spilling to the
+    /// heap would work, but not for the most frequently built task in the game.
     /// </summary>
-    [InternalBufferCapacity(4)]
+    [InternalBufferCapacity(6)]
     public struct TaskStep : IBufferElementData
     {
         public TaskStepKind Kind;
@@ -44,6 +46,12 @@ namespace Rts
 
         /// <summary>Seconds left of an <see cref="TaskStepKind.Interact"/>. Counted down in place.</summary>
         public float Duration;
+
+        /// <summary>
+        /// What the <see cref="TaskStepKind.Interact"/> settles when it finishes. The one field in the whole
+        /// machine that is per-kind, which is exactly what §9 says it should be.
+        /// </summary>
+        public InteractionKind Interaction;
 
         public static TaskStep GoTo(int2 cell) => new()
         {
@@ -70,6 +78,22 @@ namespace Rts
             Kind = TaskStepKind.Exit,
             Target = building,
             Cell = entranceCell,
+        };
+
+        public static TaskStep Pickup(Entity source, float duration) => new()
+        {
+            Kind = TaskStepKind.Interact,
+            Target = source,
+            Duration = duration,
+            Interaction = InteractionKind.Pickup,
+        };
+
+        public static TaskStep Deposit(Entity target, float duration) => new()
+        {
+            Kind = TaskStepKind.Interact,
+            Target = target,
+            Duration = duration,
+            Interaction = InteractionKind.Deposit,
         };
     }
 }

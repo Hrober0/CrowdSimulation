@@ -21,6 +21,9 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _gateGraphSystem;
         private readonly SystemHandle _flowFieldSystem;
 
+        private readonly SystemHandle _storageRequestSystem;
+        private readonly SystemHandle _orderAgingSystem;
+        private readonly SystemHandle _orderAssignSystem;
         private readonly SystemHandle _idleAssignSystem;
 
         private readonly SystemHandle _agentSpatialHashSystem;
@@ -31,6 +34,8 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _avoidanceSystem;
         private readonly SystemHandle _integrateSystem;
         private readonly SystemHandle _interiorTransitionSystem;
+        private readonly SystemHandle _interactionSystem;
+        private readonly SystemHandle _orderCompletionSystem;
 
         private double _elapsed;
 
@@ -46,6 +51,9 @@ namespace Tests.EditorTests.RtsTests
             _gateGraphSystem = World.CreateSystem<ChunkGateGraphSystem>();
             _flowFieldSystem = World.CreateSystem<FlowFieldCacheSystem>();
 
+            _storageRequestSystem = World.CreateSystem<StorageRequestSystem>();
+            _orderAgingSystem = World.CreateSystem<OrderAgingSystem>();
+            _orderAssignSystem = World.CreateSystem<OrderAssignSystem>();
             _idleAssignSystem = World.CreateSystem<IdleAssignSystem>();
 
             _agentSpatialHashSystem = World.CreateSystem<AgentSpatialHashSystem>();
@@ -56,6 +64,8 @@ namespace Tests.EditorTests.RtsTests
             _avoidanceSystem = World.CreateSystem<AgentAvoidanceSystem>();
             _integrateSystem = World.CreateSystem<AgentIntegrateSystem>();
             _interiorTransitionSystem = World.CreateSystem<InteriorTransitionSystem>();
+            _interactionSystem = World.CreateSystem<InteractionSystem>();
+            _orderCompletionSystem = World.CreateSystem<OrderCompletionSystem>();
 
             World.EntityManager.CreateSingleton(
                 GridSettings.FromCells(new int2(sizeInCells, sizeInCells), centerOnOrigin: true)
@@ -97,6 +107,9 @@ namespace Tests.EditorTests.RtsTests
 
             // The economy group runs at 10 Hz in the game; here it runs every frame, so a test never has to
             // count ticks to find out whether the matching pass has happened yet.
+            _storageRequestSystem.Update(World.Unmanaged);
+            _orderAgingSystem.Update(World.Unmanaged);
+            _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
 
             _agentSpatialHashSystem.Update(World.Unmanaged);
@@ -107,6 +120,8 @@ namespace Tests.EditorTests.RtsTests
             _avoidanceSystem.Update(World.Unmanaged);
             _integrateSystem.Update(World.Unmanaged);
             _interiorTransitionSystem.Update(World.Unmanaged);
+            _interactionSystem.Update(World.Unmanaged);
+            _orderCompletionSystem.Update(World.Unmanaged);
 
             Entities.CompleteAllTrackedJobs();
         }
@@ -182,11 +197,12 @@ namespace Tests.EditorTests.RtsTests
         }
 
         /// <summary>An agent with nowhere to be, which is what <see cref="IdleAssignSystem"/> is looking for.</summary>
-        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.35f)
+        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.35f, int carryCapacity = 10)
         {
             Entity entity = Entities.CreateEntity(
                 typeof(AgentMove), typeof(PathFollow), typeof(ArrivedTag),
-                typeof(InsideBuilding), typeof(InteriorClaim), typeof(ViewVisible)
+                typeof(InsideBuilding), typeof(InteriorClaim),
+                typeof(Carry), typeof(AssignedOrder), typeof(ViewVisible)
             );
 
             Entities.AddBuffer<PathRoute>(entity);
@@ -201,13 +217,65 @@ namespace Tests.EditorTests.RtsTests
             });
 
             Entities.SetComponentData(entity, new PathFollow { ArriveDistance = 0.4f, RoutedChunk = -1 });
+            Entities.SetComponentData(entity, new Carry { Capacity = carryCapacity });
 
             Entities.SetComponentEnabled<PathFollow>(entity, false);
             Entities.SetComponentEnabled<ArrivedTag>(entity, false);
             Entities.SetComponentEnabled<InsideBuilding>(entity, false);
             Entities.SetComponentEnabled<InteriorClaim>(entity, false);
+            Entities.SetComponentEnabled<AssignedOrder>(entity, false);
             return entity;
         }
+
+        /// <summary>A building with one storage slot and a door on its south wall.</summary>
+        public Entity CreateStore(int2 cell, StorageSlot slot)
+        {
+            Entity building = CreateBuilding(cell, GridRotation.None, int2.zero);
+            AddEntrance(building, int2.zero, Direction.South);
+            Entities.AddBuffer<StorageSlot>(building).Add(slot);
+            return building;
+        }
+
+        /// <summary>Holds stock and never asks for any: the pure source of §7.</summary>
+        public Entity CreateSource(int2 cell, ItemId item, int amount, int capacity = 100) =>
+            CreateStore(cell, new StorageSlot
+            {
+                Item = item,
+                Amount = amount,
+                Capacity = capacity,
+                DeliverInUpTo = 0,
+                DeliverOutDownTo = 0,
+                Priority = 0,
+            });
+
+        /// <summary>Always wants more, and gives to anyone who wants it more.</summary>
+        public Entity CreateWarehouse(int2 cell, ItemId item, int capacity = 100, byte priority = 1) =>
+            CreateStore(cell, new StorageSlot
+            {
+                Item = item,
+                Amount = 0,
+                Capacity = capacity,
+                DeliverInUpTo = capacity,
+                DeliverOutDownTo = 0,
+                Priority = priority,
+            });
+
+        public DynamicBuffer<StorageSlot> SlotsOf(Entity building) => Entities.GetBuffer<StorageSlot>(building);
+
+        public StorageSlot SlotOf(Entity building, ItemId item)
+        {
+            DynamicBuffer<StorageSlot> slots = SlotsOf(building);
+            StorageSlotUtils.TryGetSlotIndex(slots, item, out int index);
+            return index >= 0 ? slots[index] : default;
+        }
+
+        public Carry CarryOf(Entity agent) => Entities.GetComponentData<Carry>(agent);
+
+        public bool HasOrder(Entity agent) => Entities.IsComponentEnabled<AssignedOrder>(agent);
+
+        public AssignedOrder OrderOf(Entity agent) => Entities.GetComponentData<AssignedOrder>(agent);
+
+        public OrderBook Orders => GetSingleton<OrderBook>();
 
         public DynamicBuffer<TaskStep> StepsOf(Entity entity) => Entities.GetBuffer<TaskStep>(entity);
 

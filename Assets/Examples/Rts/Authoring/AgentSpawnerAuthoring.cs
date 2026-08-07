@@ -25,6 +25,9 @@ namespace Examples.Rts
         [Tooltip("Must stay below 0.45 of a cell, or agents clip the corners of blocked cells.")]
         private float _radius = 0.35f;
 
+        [SerializeField, Min(0), Tooltip("Units carried per haul trip. 0 makes them incapable of hauling.")]
+        private int _carryCapacity = 10;
+
         [SerializeField, Tooltip("Changing it re-scatters the crowd without moving anything.")]
         private uint _seed = 1;
 
@@ -64,6 +67,7 @@ namespace Examples.Rts
                     GoalCell = authoring.GoalCell,
                     MaxSpeed = authoring._maxSpeed,
                     Radius = authoring._radius,
+                    CarryCapacity = authoring._carryCapacity,
 
                     // Zero is the one seed Unity.Mathematics.Random rejects, and an inspector default of 0 is
                     // exactly what someone will leave it at.
