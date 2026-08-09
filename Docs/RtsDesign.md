@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 8 of §14 are implemented; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 8 of §14 are implemented, plus the sandbox scene of §14.1; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -374,7 +374,7 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    `SimToWorld.Rotation` was rebuilt out of `math` calls instead of `Quaternion.LookRotation`, which is an engine extern and cannot be called from the Burst job that writes the transforms.
 
    Also added, as example scaffolding rather than design: `AgentSpawnerAuthoring` — a crowd scattered over a box, all walking to one goal, placed only on passable cells. Nothing in the view layer can be seen working until something puts agents on the map, and the real game will spawn them from buildings.
-5. **Done.** Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming.
+5. **Done.** Buildings: entrance cells, interior enter/exit, queue slots, haulers' huts, idle claiming. *(The 1:1 static building view §10 asks for was missed here and added later — see §14.1.)*
 
    **`Interior` has three fields, not two.** "The interior slot is claimed before the walk begins" needs somewhere to record a claim that is not yet an occupant, so `Occupied` (physically inside, what production and display want) is joined by `Claimed` (inside *plus* walking here). `Claimed` is the one capped by `Capacity`: capping occupants instead would let ten agents walk to a hut with two beds and eight arrive to be turned away at the door, which is exactly the entrance pile-up §8 exists to prevent.
 
@@ -414,7 +414,7 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    - A claim taken but never used — the task cut short before the worker got through the door — leaked a bench permanently. `OrderCompletionSystem` now returns it, and can tell the two cases apart because a claim that *was* used is already gone by the time the steps run out.
 
    Also: exiting a building that has since been demolished used to fail its liveness check and leave the agent trapped inside it. Only the agent has to still exist now.
-8. **Done.** One-way brush + arrow overlay. Includes `WatchdogSystem` (§13.3 #21), which was owed from step 6.
+8. **Done.** One-way brush + arrow overlay. Includes `WatchdogSystem` (§13.3 #21), which was owed from step 6. *(This built the one-way brush but no brush that lays a road down at all; that was added later — see §14.1.)*
 
    **Painting a cell forbids the reverse direction; it does not permit only one.** §3 says the brush "drops the mask to the allowed bit(s)", and the allowed bits turn out to be three of the four. A strict single-bit mask would also forbid stepping sideways off the road, so an agent could enter a one-way road and never leave it — the feature meant to unjam corridors would strand everyone who used one. Forbidding the reverse gives what the player actually wants: traffic that cannot double back, on a road you can still get on and off.
 
@@ -432,18 +432,34 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 9. Soldier + threat orders.
 10. Needs / happiness.
 
-### 14.1 Out of scope, but required
+### 14.1 Sandbox scene — done
 
-The build order covers code only. Everything below is scene and asset work — it is nobody's *implementation* step, it cannot be written from here, and each code step stays invisible until it exists. Listed so it is not mistaken for missing work, and so the step that first needs it is on record.
+Everything below was once listed here as "out of scope, but required": scene and asset work that no code step owned, and without which every step above stays invisible. The claim that it *could not be written from here* was wrong. An editor script can author a scene, and generating it beats hand-editing scene YAML in every way that matters — it is reviewable as source, and it can be rebuilt after any change to the example instead of drifting from it.
 
-| what | first needed by | why it cannot be code |
-| --- | --- | --- |
-| an agent prefab, and an `AgentViewSettings` object holding it | step 4 — nothing renders without it | a prefab and its material are scene assets |
-| an `AgentSpawnerAuthoring` in the subscene | step 4 — outside tests there are no agents at all | placement is authoring |
-| building prefabs and their 1:1 static views (§10) | step 5 | as above |
-| a hauler's hut in the subscene with a non-zero `Interior.Capacity` | step 5 — idle claiming has nowhere to send anyone | as above |
-| at least one `StorageAuthoring` source and one warehouse, both with a door | step 6 — with nothing asking for anything, the order market correctly does nothing | thresholds are content, not code |
-| tuning passes on `MaxConcurrentHaulers` / `MaxConcurrentVisitors`, flow-field window size | step 6 onwards (§15) | needs a real map to measure against |
+`Assets/Examples/Rts/Editor/RtsSceneBuilder.cs` is that script (`Tools/RTS/Build Sandbox Scene`). It writes the prefabs, their materials, a `PanelSettings`, and `RtsSandbox.unity`. Views are tinted unlit quads: no sprite assets, no lighting, nothing to import, and one colour per thing is the fastest way to tell agents apart while watching them.
+
+`RtsStartWorld` lays out a working economy on Play — Farm → Mill → Bakery → Warehouse plus a hut for the haulers, which between them exercise two crafting stages, three hauls, strict priority, reservations, claim-before-approach and the concurrency cap. **F5 rebuilds it.** That is also the answer to "save and load": a real save would mean serialising chunked native grid memory and every component of every entity, for a sandbox whose whole point is that any situation can be reconstructed in seconds. Rebuilding *is* the load, through the same code path the first frame uses.
+
+Two things about the rebuild were not obvious and are now enforced in code:
+
+- **Demolition and placement cannot share a frame.** The grid has one writer per frame (§13.2), so a building placed where one just stood cancels its own refund out and leaves the cell walkable but unflagged. There is a one-frame gap between clearing and laying.
+- **Ground cost is painted once, ever.** It is a cost delta like every other contribution, so re-painting it per rebuild makes the world monotonically more expensive until nothing is passable.
+
+Ground is laid down deliberately expensive because a road is a *discount* (§3), and a discount off zero changes no routing at all.
+
+Interaction is one tool controller — inspect, build, demolish, road, spawn — which is the single owner of world mouse input, and a UI Toolkit panel built on the existing `HCore.UI` kit. Clicking a building, an agent or a bare cell publishes an `ISelectionHandler` event through the `EventBus`; the panel is a subscriber, not the thing doing the picking, so the inspector is decoupled from the input that feeds it.
+
+Two gaps in earlier steps had to close before any of this could be watched, and they are **retro-fixes to those steps, not scene dressing**:
+
+- **Step 5 owed building views.** §10 specifies a 1:1 static view per building and nothing implemented it — the view layer built in step 4 handled pooled agents only. `BuildingViewSystem` now creates one GameObject per building, sized from the footprint extent and tinted per kind, destroyed on demolish via a cleanup component.
+- **Step 8 owed roads themselves.** Step 8 built the *one-way* brush, but there was no brush that laid a road down in the first place, so the discount §3 is built around had never been exercised outside tests. `RoadBrush` now covers both: two-way lays the discount and the `Road`/`NoIdle` flags, one-way adds the reverse-forbid mask, erase gives it all back. Painting is idempotent on the `Road` flag, so dragging over a cell twice does not stack the discount.
+
+Still genuinely out of scope, and unchanged:
+
+| what | why |
+| --- | --- |
+| a subscene-authored map (`GridAuthoring`, `AgentSpawnerAuthoring`, `StorageAuthoring` placed by hand) | the sandbox builds its world from code instead; authoring is for a real level, which is content work |
+| tuning passes on `MaxConcurrentHaulers` / `MaxConcurrentVisitors`, flow-field window size | needs a real map to measure against (§15) |
 
 ## 15. Open items
 

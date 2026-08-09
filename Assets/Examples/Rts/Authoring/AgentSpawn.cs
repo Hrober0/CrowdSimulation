@@ -26,6 +26,13 @@ namespace Examples.Rts
         /// <summary>Units carried per trip. Zero means the agent will never be given a haul.</summary>
         public int CarryCapacity;
 
+        /// <summary>
+        /// Spawn with nothing to do rather than walking to <see cref="GoalCell"/>. Idle agents are picked up
+        /// by the economy on the next tick - which is what you want when dropping a crowd into a working
+        /// world, as opposed to a demo that wants everyone marching at one spot.
+        /// </summary>
+        public bool Idle;
+
         public uint Seed;
     }
 }

@@ -101,8 +101,12 @@ namespace Examples.Rts
 
                 // The walk is a task step rather than an enabled PathFollow: TaskStepSystem owns when an
                 // agent walks, and an agent that arrives with an empty buffer is then idle by definition and
-                // gets picked up by IdleAssignSystem (§6).
-                state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
+                // gets picked up by IdleAssignSystem (§6). An idle spawn just skips the step and is picked
+                // up on the next economy tick.
+                if (!request.Idle)
+                {
+                    state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
+                }
 
                 state.EntityManager.SetComponentData(agent, new Carry { Capacity = request.CarryCapacity });
                 state.EntityManager.SetComponentData(agent, new MovementWatchdog
