@@ -21,6 +21,9 @@ namespace Examples.Rts
         /// <summary>Sorting offset towards the camera, in world units. Presentation only.</summary>
         public float Depth { get; set; }
 
+        /// <summary>How fast a view may swing round to face where it is going. Presentation only.</summary>
+        public float TurnDegreesPerSecond { get; set; } = 540f;
+
         /// <summary>How far from the camera a view is still worth having. Default is "no culling".</summary>
         public ViewCulling Culling { get; set; }
 
@@ -71,7 +74,7 @@ namespace Examples.Rts
 
             _pool.EndFrame();
 
-            _sync = _pool.Schedule(Depth);
+            _sync = _pool.Schedule(Depth, TurnDegreesPerSecond, SystemAPI.Time.DeltaTime);
         }
 
         protected override void OnDestroy() => CompleteSync();

@@ -36,6 +36,15 @@ namespace Rts
     [InternalBufferCapacity(6)]
     public struct TaskStep : IBufferElementData
     {
+        /// <summary>
+        /// How close to a doorway counts as being at it, in cells. Wider than a plain walk on purpose:
+        /// nothing about a doorway needs the agent to stand on the exact cell - <c>InteractionSystem</c> and
+        /// <c>InteriorTransitionSystem</c> both work off the agent's *entity*, never its position - and
+        /// insisting on the centre is what turns a busy door into a scrum. Every agent bound for the building
+        /// steers at one point, and none of them can reach it through the others.
+        /// </summary>
+        public const float DOOR_ARRIVE_DISTANCE = 1.1f;
+
         public TaskStepKind Kind;
 
         /// <summary>The building or object the step is about, if it is about one.</summary>
@@ -53,10 +62,24 @@ namespace Rts
         /// </summary>
         public InteractionKind Interaction;
 
+        /// <summary>
+        /// How close to <see cref="Cell"/> counts as arrived, in cells. Zero takes the walking default, which
+        /// is what every step that is not about a doorway wants.
+        /// </summary>
+        public float ArriveDistance;
+
         public static TaskStep GoTo(int2 cell) => new()
         {
             Kind = TaskStepKind.GoTo,
             Cell = cell,
+        };
+
+        /// <summary>A walk to a doorway, close enough to use it. See <see cref="DOOR_ARRIVE_DISTANCE"/>.</summary>
+        public static TaskStep GoToDoor(int2 cell) => new()
+        {
+            Kind = TaskStepKind.GoTo,
+            Cell = cell,
+            ArriveDistance = DOOR_ARRIVE_DISTANCE,
         };
 
         public static TaskStep Enter(Entity building, int2 entranceCell) => new()

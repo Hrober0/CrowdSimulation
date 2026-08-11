@@ -88,6 +88,7 @@ namespace Examples.Rts.EditorTools
             RtsToolController tools = sandbox.AddComponent<RtsToolController>();
             sandbox.AddComponent<RtsStartWorld>();
             sandbox.AddComponent<GridDebugOverlay>();
+            sandbox.AddComponent<AgentDebugOverlay>();
 
             AgentViewSettings agents = sandbox.AddComponent<AgentViewSettings>();
             BuildingViewSettings buildings = sandbox.AddComponent<BuildingViewSettings>();

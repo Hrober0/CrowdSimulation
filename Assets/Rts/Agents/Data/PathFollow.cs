@@ -27,6 +27,19 @@ namespace Rts
 
         /// <summary>The chunk the agent was in when it routed. Leaving it is what triggers a re-route.</summary>
         public int RoutedChunk;
+
+        /// <summary>
+        /// Where to wait instead of pressing on, and whether to. Written by <see cref="ArrivalQueueSystem"/>
+        /// when somebody else has the destination first (§8).
+        ///
+        /// A point, and deliberately not <see cref="WaypointCell"/>: a waypoint is a flow field request, and a
+        /// field per waiting agent per busy door would be a cache full of fields whose whole purpose is to
+        /// move one agent a cell backwards. A hold point is always on the line the agent is already standing
+        /// on, so steering straight at it needs no field at all.
+        /// </summary>
+        public float2 HoldPoint;
+
+        public bool Holding;
     }
 
     /// <summary>One gate on the way to the goal, in the order they are crossed.</summary>

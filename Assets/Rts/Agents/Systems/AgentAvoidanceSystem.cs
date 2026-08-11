@@ -21,9 +21,13 @@ namespace Rts
     [UpdateAfter(typeof(PathFollowSystem))]
     public partial struct AgentAvoidanceSystem : ISystem
     {
+        private ComponentLookup<AgentMove> _agents;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<AgentSpatialHash>();
+
+            _agents = state.GetComponentLookup<AgentMove>();
         }
 
         public void OnUpdate(ref SystemState state)
@@ -45,10 +49,12 @@ namespace Rts
 
             NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
 
+            _agents.Update(ref state);
+
             state.Dependency = new AgentVelocityJob
             {
                 Entities = entities,
-                Agents = state.GetComponentLookup<AgentMove>(),
+                Agents = _agents,
                 SpatialHash = SystemAPI.GetSingleton<AgentSpatialHash>().Hash,
                 InverseTimeStep = 1f / deltaTime,
             }.ScheduleParallel(agentCount, 64, state.Dependency);
@@ -62,9 +68,25 @@ namespace Rts
     public struct AgentVelocityJob : IJobFor
     {
         private const int MAX_NEIGHBOURS = 8;
-        private const float NEIGHBOUR_DISTANCE = 1f;
+
+        /// <summary>Seconds ahead ORCA plans around another agent.</summary>
         private const float TIME_HORIZON_AGENT = 1f;
+
+        /// <summary>Unused until building outlines are fed in as obstacles (§5).</summary>
         private const float TIME_HORIZON_OBSTACLE = 1f;
+
+        /// <summary>
+        /// How much of <see cref="AgentMove.Radius"/> is body as far as avoidance is concerned. The rest is
+        /// personal space that a crowd is allowed to squeeze out of: at a one-cell doorway, two agents kept a
+        /// full radius each apart cannot both be near the door, so they shove each other away from it forever.
+        ///
+        /// The terrain clamp in <see cref="AgentIntegrateSystem"/> keeps using the full radius - overlapping a
+        /// neighbour a little is a look, overlapping a wall is a bug.
+        /// </summary>
+        private const float BODY_RADIUS_SCALE = 0.5f;
+
+        /// <summary>Seconds a standing agent needs to reach full speed, and the same to turn or stop.</summary>
+        private const float SPEED_RAMP_SECONDS = 0.25f;
 
         [ReadOnly] public NativeArray<Entity> Entities;
 
@@ -108,11 +130,27 @@ namespace Rts
                 velocity = velocity / math.sqrt(speedSq) * agent.MaxSpeed;
             }
 
-            move.Velocity = velocity;
+            move.Velocity = Ramp(move.Velocity, velocity, agent.MaxSpeed);
             Agents[entity] = move;
 
             neighbours.Dispose();
             orcaLines.Dispose();
+        }
+
+        /// <summary>
+        /// Moves the velocity towards what RVO asked for at a finite rate instead of jumping to it. RVO
+        /// re-solves from scratch every frame, so its answer swings between frames as neighbours shuffle; a
+        /// body with no inertia follows every swing and the crowd twitches. The ramp is also what rounds the
+        /// 45 degree corners the flow field hands out into something a person would walk.
+        /// </summary>
+        private float2 Ramp(float2 current, float2 wanted, float maxSpeed)
+        {
+            float maxChange = maxSpeed / SPEED_RAMP_SECONDS / InverseTimeStep; // acceleration * deltaTime
+
+            float2 change = wanted - current;
+            float length = math.length(change);
+
+            return length <= maxChange ? wanted : current + change / length * maxChange;
         }
 
         private static Agent ToAgent(in AgentMove move) => new()
@@ -122,12 +160,26 @@ namespace Rts
             Velocity = move.Velocity,
             PrefVelocity = move.PrefVelocity,
             MaxSpeed = move.MaxSpeed,
-            Radius = move.Radius,
+            Radius = move.Radius * BODY_RADIUS_SCALE,
             MaxNeighbors = MAX_NEIGHBOURS,
-            NeighborDist = NEIGHBOUR_DISTANCE + move.Radius,
-            TimeHorizonAgent = TIME_HORIZON_AGENT + move.Radius,
-            TimeHorizonObstacle = TIME_HORIZON_OBSTACLE + move.Radius,
+            NeighborDist = SightDistance(move),
+            TimeHorizonAgent = TIME_HORIZON_AGENT,
+            TimeHorizonObstacle = TIME_HORIZON_OBSTACLE,
         };
+
+        /// <summary>
+        /// How far away a neighbour is still worth knowing about, derived from the horizon rather than set on
+        /// its own.
+        ///
+        /// The two cannot be allowed to disagree. ORCA plans a whole <see cref="TIME_HORIZON_AGENT"/> ahead,
+        /// so sight shorter than the ground covered in that time means a neighbour's constraint does not
+        /// exist until the two are nearly touching - and then arrives as a demand for a velocity change the
+        /// agent has no time to make. That is what "avoidance reacts too late" is: not a weak horizon, a blind
+        /// agent. A flat one cell of sight gave two agents closing head-on at twice top speed a fifth of a
+        /// second of warning.
+        /// </summary>
+        private static float SightDistance(in AgentMove move) =>
+            move.MaxSpeed * TIME_HORIZON_AGENT + move.Radius * 2f;
 
         /// <summary>Keeps the nearest few neighbours, closest first, which is the order RVO wants them in.</summary>
         private struct NeighbourInsertion : ISpatialQueryProcessor<AgentMove>
@@ -146,6 +198,17 @@ namespace Rts
 
                 float distanceSq = math.lengthsq(Current.Position - neighbour.Position);
                 if (distanceSq >= QueryDistance * QueryDistance)
+                {
+                    return;
+                }
+
+                // Full already, and this one is no closer than the farthest kept, so it is not one of the
+                // nearest few. Without the test the write below lands on the last slot regardless of distance,
+                // which makes that slot whoever happened to be processed last however far away it was - a real
+                // neighbour dropped for one that does not matter. The wider the sight distance the more often
+                // that happens, so this has to hold before the range above is worth widening.
+                if (Neighbours.Length == MaxNeighbours
+                    && distanceSq >= Neighbours[MaxNeighbours - 1].Distance)
                 {
                     return;
                 }

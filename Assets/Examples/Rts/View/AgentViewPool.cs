@@ -73,6 +73,13 @@ namespace Examples.Rts
             if (!_viewOf.TryGetValue(entity, out int view))
             {
                 view = Acquire(entity);
+
+                // A view straight out of the pool is wearing the last agent's heading. Snap it here: the turn
+                // rate exists to stop an agent spinning, not to make a new one unwind a stranger's facing.
+                if (math.lengthsq(move.Velocity) > math.EPSILON)
+                {
+                    _transforms[view].rotation = SimToWorld.Rotation(move.Velocity);
+                }
             }
 
             _slots[view] = new ViewSlot
@@ -102,7 +109,13 @@ namespace Examples.Rts
         /// <see cref="Transform"/>s without a main-thread stall (§10).
         /// </summary>
         /// <param name="depth">Sorting offset towards the camera, in world units.</param>
-        public JobHandle Schedule(float depth, JobHandle dependency = default)
+        /// <param name="turnDegreesPerSecond">How fast a view may swing round to face where it is going.</param>
+        /// <param name="deltaTime">Frame time, for the turn rate.</param>
+        public JobHandle Schedule(
+            float depth,
+            float turnDegreesPerSecond,
+            float deltaTime,
+            JobHandle dependency = default)
         {
             _frameData.ResizeUninitialized(_slots.Count);
             for (int view = 0; view < _slots.Count; view++)
@@ -114,6 +127,7 @@ namespace Examples.Rts
             {
                 Views = _frameData.AsArray(),
                 Depth = depth,
+                MaxTurn = math.radians(turnDegreesPerSecond) * deltaTime,
             }.Schedule(_transforms, dependency);
         }
 
@@ -212,9 +226,19 @@ namespace Examples.Rts
         [BurstCompile]
         private struct WriteTransformsJob : IJobParallelForTransform
         {
+            /// <summary>
+            /// Fraction of top speed below which the velocity is not a heading worth following. An agent
+            /// pressed up against a doorway has a velocity that points somewhere new every frame, and none of
+            /// those directions is where it is trying to go - facing them makes it spin on the spot.
+            /// </summary>
+            private const float FACING_SPEED_FRACTION = 0.15f;
+
             [ReadOnly] public NativeArray<AgentMove> Views;
 
             public float Depth;
+
+            /// <summary>Radians a view may turn this frame.</summary>
+            public float MaxTurn;
 
             public void Execute(int index, TransformAccess transform)
             {
@@ -222,12 +246,43 @@ namespace Examples.Rts
 
                 transform.position = SimToWorld.Position(move.Position, Depth);
 
-                // Only while actually moving: a stopped agent keeps facing wherever it last walked, instead
-                // of snapping back to a default heading the moment its velocity hits zero.
-                if (math.lengthsq(move.Velocity) > math.EPSILON)
+                // Only while actually moving, and only while moving fast enough to mean it: a stopped agent
+                // keeps facing wherever it last walked, instead of snapping back to a default heading the
+                // moment its velocity hits zero.
+                float speed = math.length(move.Velocity);
+                if (speed <= math.EPSILON || speed < move.MaxSpeed * FACING_SPEED_FRACTION)
                 {
-                    transform.rotation = SimToWorld.Rotation(move.Velocity);
+                    return;
                 }
+
+                float2 facing = FacingOf(transform.rotation);
+                float turn = math.clamp(SignedAngle(facing, move.Velocity), -MaxTurn, MaxTurn);
+
+                transform.rotation = SimToWorld.Rotation(Rotate(facing, turn));
+            }
+
+            /// <summary>
+            /// The facing a rotation was built from, undoing <see cref="SimToWorld.Rotation"/>. Every rotation
+            /// on an agent view came from there, so it is a turn about Z and nothing else - which is what makes
+            /// reading the angle straight off two components correct rather than a guess.
+            /// </summary>
+            private static float2 FacingOf(Quaternion rotation)
+            {
+                float angle = 2f * math.atan2(rotation.z, rotation.w) + math.PI * 0.5f;
+                return new float2(math.cos(angle), math.sin(angle));
+            }
+
+            /// <summary>The turn from one direction to another, signed, shortest way round.</summary>
+            private static float SignedAngle(float2 from, float2 to) =>
+                math.atan2(from.x * to.y - from.y * to.x, math.dot(from, to));
+
+            private static float2 Rotate(float2 direction, float radians)
+            {
+                math.sincos(radians, out float sin, out float cos);
+                return new float2(
+                    direction.x * cos - direction.y * sin,
+                    direction.x * sin + direction.y * cos
+                );
             }
         }
     }

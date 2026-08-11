@@ -73,6 +73,84 @@ namespace Tests.EditorTests.RtsTests
             _world.AgentOf(agent).Position.Should().Be(restingPlace);
         }
 
+        /// <summary>
+        /// The walk has to be *smooth*, not merely finished. Every other test here would pass an agent that
+        /// crawled into each cell centre and accelerated out of it again - which is what path following did
+        /// while its slow-down radius was measured against the next cell centre instead of the goal.
+        /// </summary>
+        [Test]
+        public void ASteadyWalkKeepsItsSpeedBetweenCells()
+        {
+            const float deltaTime = 0.05f;
+            const float maxSpeed = 4f;
+
+            // Twenty cells of clear ground due west, so nothing but the walk itself can vary the speed.
+            Entity agent = _world.CreateAgent(CentreOf(new int2(20, 0)), new int2(0, 0), maxSpeed);
+
+            float slowest = float.MaxValue;
+            int samples = 0;
+
+            for (int frame = 0; frame < 140; frame++)
+            {
+                _world.TickFrame(deltaTime);
+
+                AgentMove move = _world.AgentOf(agent);
+
+                // Skip the spin-up from a standstill, and the braking for the goal: both are meant to be slow.
+                bool cruising = frame > 15
+                             && math.distance(move.Position, CentreOf(new int2(0, 0))) > 3f
+                             && _world.IsWalking(agent);
+
+                if (!cruising)
+                {
+                    continue;
+                }
+
+                slowest = math.min(slowest, math.length(move.Velocity));
+                samples++;
+            }
+
+            samples.Should().BeGreaterThan(20, "the journey has to be long enough to have a cruise in it");
+            slowest.Should().BeGreaterThan(maxSpeed * 0.8f,
+                "an agent crossing open ground has no reason to slow down between cells");
+        }
+
+        /// <summary>
+        /// Avoidance re-solves from scratch every frame, so its answer can swing hard as neighbours shuffle.
+        /// Applying it raw is what makes a crowd twitch; the ramp in <c>AgentAvoidanceSystem</c> bounds it.
+        /// </summary>
+        [Test]
+        public void VelocityRampsInsteadOfJumping()
+        {
+            const float deltaTime = 0.05f;
+            const float maxSpeed = 4f;
+            const float rampSeconds = 0.25f; // AgentAvoidanceSystem.SPEED_RAMP_SECONDS
+
+            float largestJump = maxSpeed / rampSeconds * deltaTime;
+
+            Entity agent = _world.CreateAgent(CentreOf(new int2(20, 0)), new int2(0, 0), maxSpeed);
+            float2 previous = _world.AgentOf(agent).Velocity;
+
+            for (int frame = 0; frame < 140; frame++)
+            {
+                _world.TickFrame(deltaTime);
+
+                AgentMove move = _world.AgentOf(agent);
+
+                // Arrival stops the agent dead on purpose, and takes it out of the movement systems with it.
+                if (!_world.IsWalking(agent))
+                {
+                    break;
+                }
+
+                math.distance(move.Velocity, previous).Should()
+                    .BeLessThan(largestJump * 1.01f + 0.001f,
+                                $"the velocity may only ramp, not jump (frame {frame})");
+
+                previous = move.Velocity;
+            }
+        }
+
         [Test]
         public void AnAgentNeverStepsIntoABlockedCell()
         {

@@ -215,12 +215,25 @@ Congestion and deadlock, handled structurally:
 | failure mode | prevention |
 | --- | --- |
 | everyone converges on one storage | `ReservedIn` caps commitments at real capacity; plus a hard `MaxConcurrentHaulers` per building |
-| entrance pile-up | queue-slot and interior-slot claims happen **before** approach; no slot -> take another order or go idle |
+| entrance pile-up | interior-slot claims happen **before** approach; no slot -> take another order or go idle. The queue-slot half is `ArrivalQueueSystem` (below) |
 | head-on jams in corridors | player-painted one-way `Exits` |
 | mutual stationary block | per-agent watchdog: blocked > T seconds -> release claim, re-plan. One generic rule |
 | low-priority starvation | `effective = Priority + age * agingRate` (generalises the old `LastPickupTime` tie-break) |
 | item taken while hauler en route | reservations, plus the existing `ExecutePickup` shortfall path |
 | ping-pong between stores | strict priority inequality (§7) |
+
+### Doorway contention — the queue slot, and why it is not a claim
+
+The interior-slot claim caps how many agents may be **inside** a building. Nothing capped how many may crowd its **step**, and that is a separate jam: several agents converging on one cell are handed mirror-image ORCA constraints, so each gives way to the others and none of them arrives. It is not only an entering problem — a hauler stands on a doorstep for the length of a pickup without ever going in, so the busiest doors belong to agents that never use them.
+
+`ArrivalQueueSystem` is the queue-slot half. Two departures from the row above:
+
+- **It is not written in terms of doors.** The contended thing is a destination cell that agents have to occupy; a doorway is the case that motivated it, not the mechanism. Agents within 5 cells of their goal are ranked by distance, the nearest walks in, the rest hold back along their own approach line — so the line forms on whichever side the traffic arrives from, and nothing has to know which wall the door is in.
+- **It is not a claim.** Rank is recomputed from positions every frame and nothing is stored. A reservation would need a release path for every way an agent can stop wanting the door — death, re-tasking, the watchdog giving up — which is the same leak the interior claim needs a rule in `IdleAssignSystem` to guard against (§14 step 8). There is nothing to leak if nothing is held, and rank is stable regardless, because the agent at the front is the nearest one and the ones behind it are being told to stay back.
+
+**Only ranks behind the front are exempt from the watchdog**, and that is what stops a queue deadlocking. The agent at the front is still watched, so a head that is genuinely wedged is still given up on and the line moves up — the queue cannot outlive the thing it is queueing for.
+
+Doorway walks also use a wider arrival radius (`TaskStep.GoToDoor`, 1.1 cells) than a plain one. Nothing about a doorway needs the exact cell — `InteractionSystem` and `InteriorTransitionSystem` both work off the agent's *entity*, never its position — and insisting on the centre is what made every agent bound for a building steer at one point.
 
 ### Mass transport — preventing the thundering herd
 
@@ -467,5 +480,8 @@ Still genuinely out of scope, and unchanged:
 - Whether warehouse-to-warehouse rebalancing is ever wanted; today it is blocked by design and the player can force it by setting different priorities.
 - Flow-field window size (128² assumed) wants measuring against real building density.
 - `MaxConcurrentHaulers` / `MaxConcurrentVisitors` values are tuning, not design — start at 4 and 8 and measure.
+- **Door transitions have no duration, and one gap in §8's queue slot is waiting on that.** Going in and coming out are instantaneous: `InteriorTransitionSystem` flips three flags, and an exiting agent *materialises* in the middle of whatever is standing outside, giving avoidance a hard overlap to solve from a standing start. Giving the transition a duration is what makes it something the crowd can react to instead — and the animation (slide into the door cell, scale to zero, reversed on the way out) is only the visible face of it. Keep it transform-only so it stays inside the existing `IJobParallelForTransform` and the view layer's "the transform is driven, nothing else is" contract holds.
+
+  Two things fall out of the duration rather than needing their own mechanism. **The doorway becomes a resource held for a known time**, which closes the queue's remaining hole: an agent standing on a step through a `Pickup` has `PathFollow` disabled today, so `ArrivalQueueSystem` cannot see it and the agent at the front walks in on it. And **exit outranks enter** — an exiting agent has nowhere else to be and blocking it stalls the whole building's throughput, while an enterer can wait one slot. Cost is nil either way: a transitioning agent is the already-supported "on the map, not walking" state, so it is one extra view and one hash entry for the duration.
 
 Settled (previously open): cell size is 1 unit, shared by the nav and building grids, agent radius 0.35 (§3).

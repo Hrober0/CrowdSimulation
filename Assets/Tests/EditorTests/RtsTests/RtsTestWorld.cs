@@ -31,6 +31,7 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _taskStepSystem;
         private readonly SystemHandle _pathRouteSystem;
         private readonly SystemHandle _pathRequestSystem;
+        private readonly SystemHandle _arrivalQueueSystem;
         private readonly SystemHandle _pathFollowSystem;
         private readonly SystemHandle _avoidanceSystem;
         private readonly SystemHandle _integrateSystem;
@@ -63,6 +64,7 @@ namespace Tests.EditorTests.RtsTests
             _taskStepSystem = World.CreateSystem<TaskStepSystem>();
             _pathRouteSystem = World.CreateSystem<PathRouteSystem>();
             _pathRequestSystem = World.CreateSystem<PathRequestSystem>();
+            _arrivalQueueSystem = World.CreateSystem<ArrivalQueueSystem>();
             _pathFollowSystem = World.CreateSystem<PathFollowSystem>();
             _avoidanceSystem = World.CreateSystem<AgentAvoidanceSystem>();
             _integrateSystem = World.CreateSystem<AgentIntegrateSystem>();
@@ -121,6 +123,7 @@ namespace Tests.EditorTests.RtsTests
             _taskStepSystem.Update(World.Unmanaged);
             _pathRouteSystem.Update(World.Unmanaged);
             _pathRequestSystem.Update(World.Unmanaged);
+            _arrivalQueueSystem.Update(World.Unmanaged);
             _pathFollowSystem.Update(World.Unmanaged);
             _avoidanceSystem.Update(World.Unmanaged);
             _integrateSystem.Update(World.Unmanaged);
@@ -338,6 +341,8 @@ namespace Tests.EditorTests.RtsTests
         public bool IsVisible(Entity agent) => Entities.IsComponentEnabled<ViewVisible>(agent);
 
         public AgentMove AgentOf(Entity entity) => Entities.GetComponentData<AgentMove>(entity);
+
+        public PathFollow FollowOf(Entity entity) => Entities.GetComponentData<PathFollow>(entity);
 
         public bool IsWalking(Entity entity) => Entities.IsComponentEnabled<PathFollow>(entity);
 

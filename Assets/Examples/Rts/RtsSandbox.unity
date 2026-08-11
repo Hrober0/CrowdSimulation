@@ -300,6 +300,7 @@ GameObject:
   - component: {fileID: 766113047}
   - component: {fileID: 766113051}
   - component: {fileID: 766113050}
+  - component: {fileID: 766113053}
   - component: {fileID: 766113049}
   - component: {fileID: 766113048}
   m_Layer: 0
@@ -352,6 +353,7 @@ MonoBehaviour:
   _agentPrefab: {fileID: 1683616565734441140, guid: 9069ebefbb211634e8241a244ca481ed, type: 3}
   _prewarm: 256
   _depth: 0
+  _turnDegreesPerSecond: 540
   _cullRadius: 0
   _focus: {fileID: 0}
 --- !u!114 &766113050
@@ -404,6 +406,27 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &766113053
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 766113046}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 83b1f2a704dd3664c8fbd069750eebb2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.AgentDebugOverlay
+  _drawSpeed: 0
+  _drawVelocity: 0
+  _drawIntent: 0
+  _drawRadius: 0
+  _drawGoal: 0
+  _drawTrail: 0
+  _windowRadius: 24
+  _trailInterval: 0.1
+  _trailLength: 40
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

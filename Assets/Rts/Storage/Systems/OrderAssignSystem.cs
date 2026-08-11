@@ -166,7 +166,7 @@ namespace Rts
                 steps.Add(TaskStep.Exit(agent.Inside, homeDoor));
             }
 
-            steps.Add(TaskStep.GoTo(door));
+            steps.Add(TaskStep.GoToDoor(door));
             steps.Add(TaskStep.Enter(order.Target, door));
 
             // No Exit at the end. The worker stays and repeats while there is work, which is §9's
@@ -271,9 +271,11 @@ namespace Rts
                 steps.Add(TaskStep.Exit(agent.Inside, homeDoor));
             }
 
-            steps.Add(TaskStep.GoTo(source.EntranceCell));
+            // Doorway walks, both of them: a hauler hands goods over the threshold without going in, so it is
+            // one of the agents standing on the doorstep that a busy warehouse has to keep moving.
+            steps.Add(TaskStep.GoToDoor(source.EntranceCell));
             steps.Add(TaskStep.Pickup(source.Building, PICKUP_SECONDS));
-            steps.Add(TaskStep.GoTo(targetDoor));
+            steps.Add(TaskStep.GoToDoor(targetDoor));
             steps.Add(TaskStep.Deposit(order.Target, DEPOSIT_SECONDS));
         }
 

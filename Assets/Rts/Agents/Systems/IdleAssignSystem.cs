@@ -73,7 +73,7 @@ namespace Rts
                     claim.ValueRW = new InteriorClaim { Building = shelter.Building };
                     claimed.ValueRW = true;
 
-                    steps.Add(TaskStep.GoTo(shelter.Entrance));
+                    steps.Add(TaskStep.GoToDoor(shelter.Entrance));
                     steps.Add(TaskStep.Enter(shelter.Building, shelter.Entrance));
 
                     claims++;

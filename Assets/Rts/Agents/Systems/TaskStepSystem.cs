@@ -60,7 +60,7 @@ namespace Rts
                             // already in progress, which the goal comparison is the whole test for.
                             if (!follow.ValueRO.GoalCell.Equals(step.Cell))
                             {
-                                follow.ValueRW = Walk(follow.ValueRO, step.Cell);
+                                follow.ValueRW = Walk(follow.ValueRO, step);
                             }
 
                             break;
@@ -76,7 +76,7 @@ namespace Rts
                         }
 
                         arrived.ValueRW = false;
-                        follow.ValueRW = Walk(follow.ValueRO, step.Cell);
+                        follow.ValueRW = Walk(follow.ValueRO, step);
                         walking.ValueRW = true;
                         break;
 
@@ -126,17 +126,19 @@ namespace Rts
         /// Points an agent at a cell. <c>RoutedChunk = -1</c> is no chunk, which is what makes
         /// <see cref="PathRouteSystem"/> work out a route on the first frame rather than trust these values.
         /// </summary>
-        private static PathFollow Walk(PathFollow follow, int2 goal)
+        private static PathFollow Walk(PathFollow follow, in TaskStep step)
         {
-            follow.GoalCell = goal;
-            follow.WaypointCell = goal;
-            follow.RoutedGoal = goal;
+            follow.GoalCell = step.Cell;
+            follow.WaypointCell = step.Cell;
+            follow.RoutedGoal = step.Cell;
             follow.RoutedChunk = -1;
 
-            if (follow.ArriveDistance <= 0f)
-            {
-                follow.ArriveDistance = DEFAULT_ARRIVE_DISTANCE;
-            }
+            // Taken from the step every time, not only when unset: a doorway's wider distance belongs to that
+            // step and must not be inherited by whatever the agent is sent to do next.
+            follow.ArriveDistance = step.ArriveDistance > 0f ? step.ArriveDistance : DEFAULT_ARRIVE_DISTANCE;
+
+            // A new walk is not a hold. Whatever queue the agent was in was for a destination it no longer has.
+            follow.Holding = false;
 
             return follow;
         }

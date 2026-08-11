@@ -41,13 +41,24 @@ namespace Rts
         {
             float deltaTime = SystemAPI.Time.DeltaTime;
 
-            foreach ((RefRO<AgentMove> agent, RefRW<MovementWatchdog> watchdog,
+            foreach ((RefRO<AgentMove> agent, RefRO<PathFollow> follow, RefRW<MovementWatchdog> watchdog,
                       EnabledRefRW<PathFollow> walking, DynamicBuffer<TaskStep> steps)
-                     in SystemAPI.Query<RefRO<AgentMove>, RefRW<MovementWatchdog>,
+                     in SystemAPI.Query<RefRO<AgentMove>, RefRO<PathFollow>, RefRW<MovementWatchdog>,
                                         EnabledRefRW<PathFollow>, DynamicBuffer<TaskStep>>())
             {
                 MovementWatchdog timer = watchdog.ValueRO;
                 float2 position = agent.ValueRO.Position;
+
+                // Waiting a turn is not being stuck. Safe to exempt because only the ranks *behind* the front
+                // of a queue ever hold: the agent at the front is still watched, so a head that really is
+                // wedged is still given up on and the line moves up (see ArrivalQueueSystem).
+                if (follow.ValueRO.Holding)
+                {
+                    timer.LastProgressPosition = position;
+                    timer.StalledSeconds = 0f;
+                    watchdog.ValueRW = timer;
+                    continue;
+                }
 
                 if (math.distancesq(position, timer.LastProgressPosition)
                     >= PROGRESS_DISTANCE * PROGRESS_DISTANCE)
