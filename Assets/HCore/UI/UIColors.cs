@@ -5,10 +5,12 @@ namespace HCore.UI
     public static class UIColors
     {
        // ── Font sizes ───────────────────────────────────────────────────────
-        public const float FontSizeXS = 9f;
-        public const float FontSizeS  = 11f;
-        public const float FontSizeM  = 12f;
-        public const float FontSizeL  = 14f;
+       // Sized in the UIPanelScale reference units the rest of the UI uses. These are the numbers to change
+       // to resize every label in the project at once - the panels themselves set no font size.
+        public const float FontSizeXS = 18f;
+        public const float FontSizeS  = 22f;
+        public const float FontSizeM  = 24f;
+        public const float FontSizeL  = 28f;
 
         // ── Surfaces ─────────────────────────────────────────────────────────
         public static readonly Color Background   = new(0.08f, 0.09f, 0.11f);

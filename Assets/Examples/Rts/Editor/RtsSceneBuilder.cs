@@ -1,5 +1,6 @@
 using System.IO;
 using Examples.Rts.UI;
+using HCore.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -177,7 +178,10 @@ namespace Examples.Rts.EditorTools
         {
             var settings = ScriptableObject.CreateInstance<PanelSettings>();
             settings.themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(RUNTIME_THEME);
-            settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+
+            // Same call the panel makes at runtime, so the asset this writes and what the game does agree,
+            // and a default-constructed PanelSettings does not ship a fixed-pixel-size panel.
+            UIPanelScale.ScaleWithScreen(settings);
 
             AssetDatabase.CreateAsset(settings, PANEL_SETTINGS);
             return settings;

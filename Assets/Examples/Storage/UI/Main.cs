@@ -19,13 +19,13 @@ namespace Examples.Storage.UI
         void OnEnable()
         {
             _doc = GetComponent<UIDocument>();
+            UIPanelScale.ScaleWithScreen(_doc);
             var root = _doc.rootVisualElement;
 
-            var zoom = 1;
+            // Width in the same reference units as everything in UIStyledElements; the panel scale takes it
+            // from there, so this stays the same share of the window on every screen.
             var mainContainer = UIStyledElements.NewContainer(root);
-            mainContainer.style.scale     = new Scale(new Vector2(zoom, zoom));
-            mainContainer.style.translate = new Translate(new Length(100 - 100 / (float)zoom, LengthUnit.Percent), new Length(100 -100 / (float)zoom, LengthUnit.Percent));
-            mainContainer.style.width     = 400;
+            mainContainer.style.width = 800;
 
             // Report UI hover state to the input handler.
             mainContainer.RegisterCallback<PointerEnterEvent>(_ => WorldInputHandler.MouseOverUI = true);

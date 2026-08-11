@@ -28,16 +28,16 @@ namespace Examples.Rts.UI
             VisualElement row = UIStyledElements.NewHorizontalGroup(root);
             row.style.alignItems = Align.Center;
 
-            _dot = UIStyledElements.NewColorDot(row, UIColors.TextMuted, 7f);
+            _dot = UIStyledElements.NewColorDot(row, UIColors.TextMuted, 14f);
 
             _name = UIStyledElements.NewLabel(row, "");
-            _name.style.minWidth = 60;
+            _name.style.minWidth = 120;
 
             _amount = UIStyledElements.NewLabel(row, "0 / 0");
-            _amount.style.minWidth = 60;
+            _amount.style.minWidth = 120;
 
             _reserved = UIStyledElements.NewLabel(row, "");
-            _reserved.style.minWidth = 70;
+            _reserved.style.minWidth = 140;
 
             (_, _fill) = UIStyledElements.NewFillBar(root, UIColors.Accent);
 

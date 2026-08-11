@@ -26,16 +26,16 @@ namespace Examples.Storage.UI
 
             root.style.flexDirection = FlexDirection.Row;
             root.style.alignItems = Align.Center;
-            root.style.SetPadding(4);
-            root.style.paddingLeft = 8;
-            root.style.borderBottomWidth = 1;
+            root.style.SetPadding(8);
+            root.style.paddingLeft = 16;
+            root.style.borderBottomWidth = 2;
             root.style.borderBottomColor = UIColors.BorderFaint;
-            root.style.minHeight = 28;
+            root.style.minHeight = 56;
             root.RegisterHoverEvent(h => Hovered = h);
 
-            _resourceDot = UIStyledElements.NewColorDot(root, UIColors.TextMuted, 7f);
+            _resourceDot = UIStyledElements.NewColorDot(root, UIColors.TextMuted, 14f);
             _resourceLabel = UIStyledElements.NewLabel(root, "—");
-            _resourceLabel.style.minWidth = 44;
+            _resourceLabel.style.minWidth = 88;
             _resourceLabel.style.color = UIColors.TextSecondary;
             _resourceLabel.style.fontSize = UIColors.FontSizeS;
 
@@ -43,16 +43,16 @@ namespace Examples.Storage.UI
             _targetLabel.style.flexGrow = 1;
             _targetLabel.style.color = UIColors.TextSecondary;
             _targetLabel.style.fontSize = UIColors.FontSizeS;
-            _targetLabel.style.marginLeft = 6;
+            _targetLabel.style.marginLeft = 12;
 
             _prioritySlider = UIStyledElements.NewSliderInt(root, "", 0, 255, 128, OnPriorityChanged);
             _prioritySlider.style.flexGrow = 1;
-            _prioritySlider.style.marginLeft = 8;
-            _prioritySlider.style.marginRight = 8;
-            _prioritySlider.style.maxWidth = 120;
+            _prioritySlider.style.marginLeft = 16;
+            _prioritySlider.style.marginRight = 16;
+            _prioritySlider.style.maxWidth = 240;
 
             _modeField = UIStyledElements.NewEnumPicker(root, ConnectionMode.Disabled, OnModeChanged);
-            _modeField.style.minWidth = 72;
+            _modeField.style.minWidth = 144;
 
             UIStyledElements.NewButtonIcon(root, "×", RemoveConnection);
         }

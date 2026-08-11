@@ -26,10 +26,10 @@ namespace Examples.Storage.UI
             var row = UIStyledElements.NewHorizontalGroup(root);
             row.style.alignItems = Align.Center;
 
-            _resourceDot = UIStyledElements.NewColorDot(row, UIColors.TextMuted, 7f);
+            _resourceDot = UIStyledElements.NewColorDot(row, UIColors.TextMuted, 14f);
 
             var amountGroup = UIStyledElements.NewHorizontalGroup(row);
-            amountGroup.style.minWidth = 140;
+            amountGroup.style.minWidth = 280;
             _nameLabel = UIStyledElements.NewLabel(amountGroup, "");
             _amountLabel = UIStyledElements.NewLabel(amountGroup, "0 / 0");
             _reservedOut = UIStyledElements.NewLabel(amountGroup, "");

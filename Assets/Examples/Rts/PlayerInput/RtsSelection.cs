@@ -1,6 +1,7 @@
 using HCore;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Examples.Rts
 {
@@ -57,5 +58,17 @@ namespace Examples.Rts
     public interface IPointerOverUiQuery : ISingleEventHandler
     {
         bool IsPointerOverUi();
+    }
+
+    /// <summary>
+    /// Where the panel is on screen, in pixels from the bottom left, or an empty rect when no panel is up.
+    ///
+    /// Asked by the gizmo drawers. The editor composites gizmos after the camera and after the UI, so no
+    /// sorting order will put the panel on top of them: the only side of it that can move is the gizmos,
+    /// which is why they need to know which rectangle to leave alone.
+    /// </summary>
+    public interface IUiScreenRectQuery : ISingleEventHandler
+    {
+        Rect UiScreenRect();
     }
 }

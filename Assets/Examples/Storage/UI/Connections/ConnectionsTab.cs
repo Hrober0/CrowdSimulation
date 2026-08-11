@@ -86,13 +86,13 @@ namespace Examples.Storage.UI
             aLabel.style.color = UIColors.TextMuted;
 
             _pickerA = UIStyledElements.NewDropdownPicker(toolbar);
-            _pickerA.style.minWidth = 110;
+            _pickerA.style.minWidth = 220;
 
             var bLabel = UIStyledElements.NewLabel(toolbar, "B:");
             bLabel.style.color = UIColors.TextMuted;
 
             _pickerB = UIStyledElements.NewDropdownPicker(toolbar);
-            _pickerB.style.minWidth = 110;
+            _pickerB.style.minWidth = 220;
 
             _resourcePicker = UIStyledElements.NewEnumPicker<ResourceType>(toolbar, ResourceType.Wood);
 

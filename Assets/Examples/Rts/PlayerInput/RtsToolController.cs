@@ -347,6 +347,13 @@ namespace Examples.Rts
                 return;
             }
 
+            // The cursor gizmo follows the cursor, so it is the one gizmo guaranteed to be under the panel
+            // whenever the player reaches for a button.
+            if (UiGizmos.Hides(SimToWorld.Position(GridCoords.CellCenter(_hoverCell))))
+            {
+                return;
+            }
+
             Vector3 size = SimToWorld.Direction(new float2(1f, 1f));
 
             if (Tool == RtsTool.Build)

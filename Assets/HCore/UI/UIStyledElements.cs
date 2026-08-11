@@ -5,11 +5,19 @@ using UnityEngine.UIElements;
 
 namespace HCore.UI
 {
+    /// <summary>
+    /// The project's runtime widgets, built in code rather than from UXML so that a panel reads as one file.
+    ///
+    /// Every size here is a pixel size at the <see cref="UIPanelScale"/> reference resolution, which scales
+    /// the whole panel, so these numbers stay the same on every screen. Between them and that reference they
+    /// are the only thing that decides how big the UI is: nothing below sets a font size of its own, and
+    /// callers that need a width state it in the same units.
+    /// </summary>
     public static class UIStyledElements
     {
-        public const int DEFAULT_NAME_WIDTH = 150;
-        public const int SMALL_INPUT_WIDTH  = 50;
-        public const float LINE_SPACE       = 10f;
+        public const int DEFAULT_NAME_WIDTH = 300;
+        public const int SMALL_INPUT_WIDTH  = 100;
+        public const float LINE_SPACE       = 20f;
 
         // ════════════════════════════════════════════════════════════════════
         // LAYOUT
@@ -55,11 +63,11 @@ namespace HCore.UI
         {
             var container = new VisualElement();
             container.style.flexShrink       = 0;
-            container.style.SetMargin(5);
-            container.style.SetPadding(5);
-            container.style.SetBorderWidth(1);
+            container.style.SetMargin(10);
+            container.style.SetPadding(10);
+            container.style.SetBorderWidth(2);
             container.style.SetBorderColor(UIColors.Border);
-            container.style.SetBorderRadius(4);
+            container.style.SetBorderRadius(8);
             container.style.backgroundColor  = UIColors.Surface;
             root?.Add(container);
             foreach (var child in children)
@@ -73,25 +81,25 @@ namespace HCore.UI
         {
             var toolbar = NewHorizontalGroup(root, children);
             toolbar.style.backgroundColor = UIColors.Surface;
-            toolbar.style.SetBorderWidth(1);
+            toolbar.style.SetBorderWidth(2);
             toolbar.style.SetBorderColor(UIColors.Border);
-            toolbar.style.SetBorderRadius(4);
-            toolbar.style.SetPadding(6);
-            toolbar.style.paddingLeft = 10;
-            toolbar.style.marginBottom = 6;
+            toolbar.style.SetBorderRadius(8);
+            toolbar.style.SetPadding(12);
+            toolbar.style.paddingLeft = 20;
+            toolbar.style.marginBottom = 12;
             toolbar.style.alignItems = Align.Center;
             toolbar.style.flexWrap = Wrap.Wrap;
             return toolbar;
         }
-        
+
         /// <summary>Separator line.</summary>
         public static VisualElement NewDivider(VisualElement root = null)
         {
             var line = new VisualElement();
-            line.style.height          = 1;
+            line.style.height          = 2;
             line.style.backgroundColor = UIColors.Border;
-            line.style.marginTop       = 6;
-            line.style.marginBottom    = 6;
+            line.style.marginTop       = 12;
+            line.style.marginBottom    = 12;
             root?.Add(line);
             return line;
         }
@@ -115,7 +123,7 @@ namespace HCore.UI
         public static Label NewLabel(VisualElement root, string text)
         {
             var label = new Label { text = text };
-            label.style.marginLeft = 2;
+            label.style.marginLeft = 4;
             label.style.color      = UIColors.TextPrimary;
             label.style.fontSize   = UIColors.FontSizeS;
             root?.Add(label);
@@ -124,7 +132,7 @@ namespace HCore.UI
 
         /// <summary>Name + value pair in a horizontal row.</summary>
         public static (Label name, Label value) NewLabel(VisualElement root,
-            string name, object content, int nameWidth = DEFAULT_NAME_WIDTH, float my = 2)
+            string name, object content, int nameWidth = DEFAULT_NAME_WIDTH, float my = 4)
         {
             var group = NewHorizontalGroup(root);
             group.style.marginTop    = my;
@@ -143,8 +151,8 @@ namespace HCore.UI
             var label = NewLabel(root, $"<b>{text}</b>");
             label.style.color        = UIColors.TextPrimary;
             label.style.fontSize     = UIColors.FontSizeM;
-            label.style.marginTop    = 12;
-            label.style.marginBottom = 4;
+            label.style.marginTop    = 24;
+            label.style.marginBottom = 8;
             return label;
         }
 
@@ -153,9 +161,9 @@ namespace HCore.UI
             var label = NewLabel(root, text.ToUpper());
             label.style.color           = UIColors.TextMuted;
             label.style.fontSize        = UIColors.FontSizeXS;
-            label.style.marginTop       = 8;
-            label.style.marginBottom    = 2;
-            label.style.letterSpacing   = 1;
+            label.style.marginTop       = 16;
+            label.style.marginBottom    = 4;
+            label.style.letterSpacing   = 2;
             return label;
         }
 
@@ -166,12 +174,12 @@ namespace HCore.UI
             badge.style.fontSize        = UIColors.FontSizeXS;
             badge.style.color           = foreground;
             badge.style.backgroundColor = background;
-            badge.style.SetPadding(2);
-            badge.style.paddingLeft     = 6;
-            badge.style.paddingRight    = 6;
-            badge.style.SetBorderRadius(3);
-            badge.style.marginLeft      = 4;
-            badge.style.marginRight     = 4;
+            badge.style.SetPadding(4);
+            badge.style.paddingLeft     = 12;
+            badge.style.paddingRight    = 12;
+            badge.style.SetBorderRadius(6);
+            badge.style.marginLeft      = 8;
+            badge.style.marginRight     = 8;
             badge.style.unityTextAlign  = TextAnchor.MiddleCenter;
             root.Add(badge);
             return badge;
@@ -187,14 +195,14 @@ namespace HCore.UI
             btn.style.color             = UIColors.TextPrimary;
             btn.style.backgroundColor   = UIColors.SurfaceRaised;
             btn.style.fontSize          = UIColors.FontSizeS;
-            btn.style.SetBorderWidth(1);
+            btn.style.SetBorderWidth(2);
             btn.style.SetBorderColor(UIColors.Border);
-            btn.style.SetBorderRadius(4);
-            btn.style.SetPadding(4);
-            btn.style.paddingLeft       = 10;
-            btn.style.paddingRight      = 10;
-            btn.style.marginLeft        = 2;
-            btn.style.marginRight       = 2;
+            btn.style.SetBorderRadius(8);
+            btn.style.SetPadding(8);
+            btn.style.paddingLeft       = 20;
+            btn.style.paddingRight      = 20;
+            btn.style.marginLeft        = 4;
+            btn.style.marginRight       = 4;
             btn.RegisterCallback<ClickEvent>(_ => onClick?.Invoke());
             btn.RegisterHoverEvent(h =>
             {
@@ -237,17 +245,17 @@ namespace HCore.UI
         public static Button NewButtonIcon(VisualElement root, string icon, Action onClick)
         {
             var btn = new Button { text = icon };
-            btn.style.width             = 22;
-            btn.style.height            = 22;
+            btn.style.width             = 44;
+            btn.style.height            = 44;
             btn.style.SetPadding(0);
-            btn.style.SetBorderRadius(4);
-            btn.style.SetBorderWidth(1);
+            btn.style.SetBorderRadius(8);
+            btn.style.SetBorderWidth(2);
             btn.style.SetBorderColor(UIColors.Border);
             btn.style.backgroundColor   = Color.clear;
             btn.style.color             = UIColors.TextSecondary;
             btn.style.fontSize          = UIColors.FontSizeS;
             btn.style.unityTextAlign    = TextAnchor.MiddleCenter;
-            btn.style.marginLeft        = 2;
+            btn.style.marginLeft        = 4;
             btn.RegisterCallback<ClickEvent>(_ => onClick?.Invoke());
             btn.RegisterHoverEvent(h =>
             {
@@ -262,17 +270,17 @@ namespace HCore.UI
         public static Button NewButtonStepper(VisualElement root, string text, Action onClick)
         {
             var btn = new Button { text = text };
-            btn.style.width             = 20;
-            btn.style.height            = 20;
+            btn.style.width             = 40;
+            btn.style.height            = 40;
             btn.style.SetPadding(0);
-            btn.style.SetBorderRadius(3);
-            btn.style.SetBorderWidth(1);
+            btn.style.SetBorderRadius(6);
+            btn.style.SetBorderWidth(2);
             btn.style.SetBorderColor(UIColors.Border);
             btn.style.backgroundColor   = UIColors.Surface;
             btn.style.color             = UIColors.TextSecondary;
             btn.style.fontSize          = UIColors.FontSizeS;
             btn.style.unityTextAlign    = TextAnchor.MiddleCenter;
-            btn.style.marginLeft        = 2;
+            btn.style.marginLeft        = 4;
             btn.RegisterCallback<ClickEvent>(_ => onClick?.Invoke());
             btn.RegisterCallback<MouseEnterEvent>(_ => {
                 btn.style.backgroundColor = UIColors.AccentSurface;
@@ -335,14 +343,14 @@ namespace HCore.UI
             bool state = defaultValue;
 
             var btn = new Button();
-            btn.style.width           = 16;
-            btn.style.height          = 16;
+            btn.style.width           = 32;
+            btn.style.height          = 32;
             btn.style.SetPadding(0);
-            btn.style.SetBorderRadius(3);
-            btn.style.SetBorderWidth(1);
-            btn.style.marginLeft      = 2;
-            btn.style.marginRight     = 2;
-            btn.style.fontSize        = 10;
+            btn.style.SetBorderRadius(6);
+            btn.style.SetBorderWidth(2);
+            btn.style.marginLeft      = 4;
+            btn.style.marginRight     = 4;
+            btn.style.fontSize        = 20;
             btn.style.unityTextAlign  = TextAnchor.MiddleCenter;
             btn.style.unityFontStyleAndWeight = FontStyle.Bold;
 
@@ -410,8 +418,8 @@ namespace HCore.UI
             field.labelElement.style.display = DisplayStyle.None;
 
             // Root just handles outer spacing; no background or border here.
-            field.style.marginLeft  = 2;
-            field.style.marginRight = 2;
+            field.style.marginLeft  = 4;
+            field.style.marginRight = 4;
 
             // ── visualInput — the visible clickable button ────────────────────
             // EnumField adds .unity-enum-field__input to this element.
@@ -419,13 +427,13 @@ namespace HCore.UI
             if (input != null)
             {
                 input.style.backgroundColor = UIColors.SurfaceRaised;
-                input.style.SetBorderWidth(1);
+                input.style.SetBorderWidth(2);
                 input.style.SetBorderColor(UIColors.Border);
-                input.style.SetBorderRadius(4);
-                input.style.paddingTop    = 3;
-                input.style.paddingBottom = 3;
+                input.style.SetBorderRadius(8);
+                input.style.paddingTop    = 6;
+                input.style.paddingBottom = 6;
                 input.style.minHeight     = StyleKeyword.Auto;
-                input.style.minWidth    = 100;
+                input.style.minWidth    = 200;
             }
             //
             // // ── TextElement — displays the selected enum name ─────────────────
@@ -448,7 +456,7 @@ namespace HCore.UI
             if (arrow != null)
             {
                 arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
-                arrow.style.marginLeft = 3;
+                arrow.style.marginLeft = 6;
             }
 
             // ── Hover ─────────────────────────────────────────────────────────
@@ -491,8 +499,8 @@ namespace HCore.UI
             var field = new DropdownField(new List<string>(), 0);
             field.labelElement.style.display = DisplayStyle.None;
 
-            field.style.marginLeft  = 2;
-            field.style.marginRight = 2;
+            field.style.marginLeft  = 4;
+            field.style.marginRight = 4;
 
             var input = field.Q(className: DropdownField.inputUssClassName);
             // Query text and arrow inside the input container, not the field root.
@@ -504,13 +512,13 @@ namespace HCore.UI
             if (input != null)
             {
                 input.style.backgroundColor = UIColors.SurfaceRaised;
-                input.style.SetBorderWidth(1);
+                input.style.SetBorderWidth(2);
                 input.style.SetBorderColor(UIColors.Border);
-                input.style.SetBorderRadius(4);
-                input.style.paddingTop    = 3;
-                input.style.paddingBottom = 3;
-                input.style.paddingLeft   = 6;
-                input.style.paddingRight  = 6;
+                input.style.SetBorderRadius(8);
+                input.style.paddingTop    = 6;
+                input.style.paddingBottom = 6;
+                input.style.paddingLeft   = 12;
+                input.style.paddingRight  = 12;
             }
             if (text != null)
             {
@@ -521,7 +529,7 @@ namespace HCore.UI
             if (arrow != null)
             {
                 arrow.style.unityBackgroundImageTintColor = UIColors.TextMuted;
-                arrow.style.marginLeft = 3;
+                arrow.style.marginLeft = 6;
             }
 
             field.RegisterCallback<MouseEnterEvent>(_ => {
@@ -554,14 +562,14 @@ namespace HCore.UI
         /// Returns (track, fill). Set fill.style.width = Length.Percent(pct) in Refresh().
         /// </summary>
         public static (VisualElement track, VisualElement fill) NewFillBar(
-            VisualElement root, Color fillColor, float heightPx = 5f)
+            VisualElement root, Color fillColor, float heightPx = 10f)
         {
             var track = new VisualElement();
             track.style.height          = heightPx;
             track.style.backgroundColor = UIColors.Border;
-            track.style.SetBorderRadius(2);
+            track.style.SetBorderRadius(4);
             track.style.overflow        = Overflow.Hidden;
-            track.style.marginTop       = 2;
+            track.style.marginTop       = 4;
             track.style.flexGrow        = 1;
             root.Add(track);
 
@@ -577,7 +585,7 @@ namespace HCore.UI
         // COLOR DOT
         // ════════════════════════════════════════════════════════════════════
 
-        public static VisualElement NewColorDot(VisualElement root, Color color, float size = 8f)
+        public static VisualElement NewColorDot(VisualElement root, Color color, float size = 16f)
         {
             var dot = new VisualElement();
             dot.style.width             = size;
@@ -585,12 +593,12 @@ namespace HCore.UI
             dot.style.SetBorderRadius(size / 2f);
             dot.style.backgroundColor   = color;
             dot.style.flexShrink        = 0;
-            dot.style.marginRight       = 5;
+            dot.style.marginRight       = 10;
             dot.style.alignSelf         = Align.Center;
             root.Add(dot);
             return dot;
         }
-        
+
         // ════════════════════════════════════════════════════════════════════
         // INTERNAL HELPERS
         // ════════════════════════════════════════════════════════════════════
@@ -612,12 +620,12 @@ namespace HCore.UI
             if (outer != null)
             {
                 outer.style.backgroundColor = UIColors.Surface;
-                outer.style.SetBorderWidth(1);
+                outer.style.SetBorderWidth(2);
                 outer.style.SetBorderColor(UIColors.Border);
-                outer.style.SetBorderRadius(4);
+                outer.style.SetBorderRadius(8);
                 outer.style.overflow      = Overflow.Hidden;
-                outer.style.paddingTop    = 4;
-                outer.style.paddingBottom = 4;
+                outer.style.paddingTop    = 8;
+                outer.style.paddingBottom = 8;
             }
 
             // The ScrollView inside the container has its own white background in Unity's USS.
@@ -628,7 +636,7 @@ namespace HCore.UI
             dropdown.Query(className: "unity-base-dropdown__item").ForEach(item =>
             {
                 item.style.backgroundColor = Color.clear;
-                item.style.SetPadding(4);
+                item.style.SetPadding(8);
 
                 // Unity's USS styles the inner Label with a more-specific rule that beats
                 // `color` set on the parent container — target the Label directly.
@@ -649,10 +657,10 @@ namespace HCore.UI
 
             dropdown.Query(className: "unity-base-dropdown__separator").ForEach(sep =>
             {
-                sep.style.height          = 1;
+                sep.style.height          = 2;
                 sep.style.backgroundColor = UIColors.BorderFaint;
-                sep.style.marginTop       = 2;
-                sep.style.marginBottom    = 2;
+                sep.style.marginTop       = 4;
+                sep.style.marginBottom    = 4;
             });
         }
 
@@ -660,8 +668,8 @@ namespace HCore.UI
         {
             field.style.color            = UIColors.TextPrimary;
             field.style.fontSize         = UIColors.FontSizeS;
-            field.style.marginTop        = 2;
-            field.style.marginBottom     = 2;
+            field.style.marginTop        = 4;
+            field.style.marginBottom     = 4;
 
             // Label portion (for fields that have one)
             if (field is BaseField<string>  f1) StyleFieldLabel(f1.labelElement);

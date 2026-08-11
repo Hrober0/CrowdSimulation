@@ -28,12 +28,12 @@ namespace Examples.Storage.UI.Holders
             root.style.flexDirection = FlexDirection.Row;
             root.style.alignItems = Align.Center;
             root.style.backgroundColor = UIColors.Surface;
-            root.style.SetBorderWidth(1);
+            root.style.SetBorderWidth(2);
             root.style.SetBorderColor(UIColors.Border);
-            root.style.SetBorderRadius(4);
-            root.style.SetPadding(5);
-            root.style.paddingLeft = 10;
-            root.style.marginBottom = 3;
+            root.style.SetBorderRadius(8);
+            root.style.SetPadding(10);
+            root.style.paddingLeft = 20;
+            root.style.marginBottom = 6;
 
             // Hover highlight
             root.RegisterHoverEvent(h =>
@@ -44,35 +44,35 @@ namespace Examples.Storage.UI.Holders
 
             // ── Entity index ─────────────────────────────────────────────────
             _indexLabel = UIStyledElements.NewLabel(root, "—");
-            _indexLabel.style.minWidth = 70;
+            _indexLabel.style.minWidth = 140;
             _indexLabel.style.color = UIColors.TextMuted;
 
             // ── State badge ──────────────────────────────────────────────────
             _stateBadge = UIStyledElements.NewLabel(root, "IDLE");
-            _stateBadge.style.minWidth = 90;
+            _stateBadge.style.minWidth = 180;
             _stateBadge.style.fontSize = UIColors.FontSizeXS;
-            _stateBadge.style.SetPadding(2);
-            _stateBadge.style.paddingLeft = 6;
-            _stateBadge.style.paddingRight = 6;
-            _stateBadge.style.SetBorderRadius(3);
+            _stateBadge.style.SetPadding(4);
+            _stateBadge.style.paddingLeft = 12;
+            _stateBadge.style.paddingRight = 12;
+            _stateBadge.style.SetBorderRadius(6);
             _stateBadge.style.unityTextAlign = TextAnchor.MiddleCenter;
 
             // ── Carried resource + amount ─────────────────────────────────────
             var loadGroup = UIStyledElements.NewHorizontalGroup(root);
             loadGroup.style.flexGrow = 1;
             loadGroup.style.alignItems = Align.Center;
-            loadGroup.style.marginLeft = 8;
+            loadGroup.style.marginLeft = 16;
 
             UIStyledElements.NewLabel(loadGroup, "carrying:");
             _loadLabel = UIStyledElements.NewLabel(loadGroup, "—");
-            _loadLabel.style.marginLeft = 4;
+            _loadLabel.style.marginLeft = 8;
             _loadLabel.style.color = UIColors.TextPrimary;
 
             // ── Assigned job ──────────────────────────────────────────────────
             _jobLabel = UIStyledElements.NewLabel(root, "");
             _jobLabel.style.color = UIColors.TextMuted;
             _jobLabel.style.fontSize = UIColors.FontSizeXS;
-            _jobLabel.style.minWidth = 70;
+            _jobLabel.style.minWidth = 140;
             _jobLabel.style.unityTextAlign = TextAnchor.MiddleRight;
 
             UIStyledElements.NewButtonDanger(root, "×", KillHolder);
@@ -131,7 +131,7 @@ namespace Examples.Storage.UI.Holders
 
             // Active row tint — left border accent when not idle
             bool active = h.State is HolderState.MovingToDestInput or HolderState.MovingToSourceInput;
-            _root.style.borderLeftWidth = active ? 3 : 1;
+            _root.style.borderLeftWidth = active ? 6 : 2;
             _root.style.borderLeftColor = active ? stateColor : UIColors.Border;
 
             // Carried resource

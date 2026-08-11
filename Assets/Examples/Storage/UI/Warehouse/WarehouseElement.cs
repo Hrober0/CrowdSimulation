@@ -17,7 +17,7 @@ namespace Examples.Storage.UI
         public override void Init(VisualElement root)
         {
             _root = root;
-            root.style.SetMargin(2);
+            root.style.SetMargin(4);
             root.RegisterHoverEvent(h => Hovered = h);
 
             var header = UIStyledElements.NewHorizontalGroup(root);

@@ -23,7 +23,7 @@ namespace Examples.Rts.UI
     /// input side needs no knowledge that a UI exists.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
-    public class RtsPanel : MonoBehaviour, ISelectionHandler, IPointerOverUiQuery
+    public class RtsPanel : MonoBehaviour, ISelectionHandler, IPointerOverUiQuery, IUiScreenRectQuery
     {
         [SerializeField] private RtsToolController _tools;
 
@@ -33,6 +33,7 @@ namespace Examples.Rts.UI
         private readonly StringBuilder _text = new();
 
         private UIElementList<RtsSlotRow> _slots;
+        private VisualElement _panel;
         private VisualElement _buildRow;
         private VisualElement _roadRow;
         private Label _selectionTitle;
@@ -45,6 +46,9 @@ namespace Examples.Rts.UI
         private bool _worldReady;
 
         public bool IsPointerOverUi() => _pointerOverUi;
+
+        public Rect UiScreenRect() =>
+            UIPanelScale.TryGetScreenRect(_panel, out Rect rect) ? rect : Rect.zero;
 
         public void OnSelectionChanged(RtsSelection selection) => _selection = selection;
 
@@ -59,14 +63,18 @@ namespace Examples.Rts.UI
 
             EventBus.RegisterHandler<ISelectionHandler>(this);
             EventBus.RegisterSingleHandler<IPointerOverUiQuery>(this);
+            EventBus.RegisterSingleHandler<IUiScreenRectQuery>(this);
 
-            Build(GetComponent<UIDocument>().rootVisualElement);
+            var document = GetComponent<UIDocument>();
+            UIPanelScale.ScaleWithScreen(document);
+            Build(document.rootVisualElement);
         }
 
         private void OnDisable()
         {
             EventBus.UnregisterHandler<ISelectionHandler>(this);
             EventBus.UnregisterSingleHandler<IPointerOverUiQuery>(this);
+            EventBus.UnregisterSingleHandler<IUiScreenRectQuery>(this);
             _pointerOverUi = false;
         }
 
@@ -86,7 +94,8 @@ namespace Examples.Rts.UI
         private void Build(VisualElement root)
         {
             VisualElement panel = UIStyledElements.NewContainer(root);
-            panel.style.width = 380;
+            panel.style.width = 760;
+            _panel = panel;
 
             panel.RegisterCallback<PointerEnterEvent>(_ => _pointerOverUi = true);
             panel.RegisterCallback<PointerLeaveEvent>(_ => _pointerOverUi = false);
@@ -103,7 +112,7 @@ namespace Examples.Rts.UI
             _selectionBody = UIStyledElements.NewLabel(panel, "Click the world with the Inspect tool.");
 
             ScrollView slotScroll = UIStyledElements.NewScrollView(panel);
-            slotScroll.style.maxHeight = 220;
+            slotScroll.style.maxHeight = 440;
             _slots = new UIElementList<RtsSlotRow>(slotScroll.contentContainer);
 
             UIStyledElements.NewDivider(panel);

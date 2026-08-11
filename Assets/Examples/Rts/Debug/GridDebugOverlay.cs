@@ -52,9 +52,12 @@ namespace Examples.Rts
             int2 min = math.max(center - _windowRadius, map.MinCell);
             int2 max = math.min(center + _windowRadius, map.MaxCell);
 
+            // Asked once for the whole draw - see UiGizmos.ClearRect.
+            Rect clear = UiGizmos.ClearRect();
+
             if (_drawChunks)
             {
-                DrawChunks(map, min, max);
+                DrawChunks(map, min, max, clear);
             }
 
             for (int y = min.y; y <= max.y; y++)
@@ -62,11 +65,17 @@ namespace Examples.Rts
                 for (int x = min.x; x <= max.x; x++)
                 {
                     var cell = new int2(x, y);
+                    Vector3 cellCenter = SimToWorld.Position(GridCoords.CellCenter(cell));
+                    if (UiGizmos.Hides(clear, cellCenter))
+                    {
+                        continue;
+                    }
+
                     CellData data = map.GetCell(cell);
 
                     if (_drawCost)
                     {
-                        DrawCost(cell, data);
+                        DrawCost(cellCenter, data);
                     }
 
                     if (_drawOneWay && data.IsOneWay)
@@ -86,7 +95,7 @@ namespace Examples.Rts
             Gizmos.DrawWireCube(SimToWorld.Position((min + max) * 0.5f), SimToWorld.Direction(max - min));
         }
 
-        private static void DrawChunks(GridMap map, int2 min, int2 max)
+        private static void DrawChunks(GridMap map, int2 min, int2 max, in Rect clear)
         {
             int2 firstChunk = map.ChunkCoordOf(min);
             int2 lastChunk = map.ChunkCoordOf(max);
@@ -98,22 +107,24 @@ namespace Examples.Rts
                 {
                     float2 chunkMin = GridCoords.CellMin(map.ChunkMinCell(new int2(x, y)));
                     float2 chunkMax = chunkMin + GridMap.CHUNK_SIZE;
-                    Gizmos.DrawWireCube(
-                        SimToWorld.Position((chunkMin + chunkMax) * 0.5f),
-                        SimToWorld.Direction(chunkMax - chunkMin)
-                    );
+                    Vector3 chunkCenter = SimToWorld.Position((chunkMin + chunkMax) * 0.5f);
+                    if (UiGizmos.Hides(clear, chunkCenter))
+                    {
+                        continue;
+                    }
+
+                    Gizmos.DrawWireCube(chunkCenter, SimToWorld.Direction(chunkMax - chunkMin));
                 }
             }
         }
 
-        private void DrawCost(int2 cell, CellData data)
+        private void DrawCost(Vector3 center, CellData data)
         {
             if (data.CostSum == 0)
             {
                 return;
             }
 
-            Vector3 center = SimToWorld.Position(GridCoords.CellCenter(cell));
             if (!data.IsPassable)
             {
                 Gizmos.color = new Color(0.8f, 0.1f, 0.1f, 0.5f);
