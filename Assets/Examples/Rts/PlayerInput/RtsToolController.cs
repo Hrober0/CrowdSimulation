@@ -52,8 +52,12 @@ namespace Examples.Rts
         private uint _spawnSeed = 1;
         private int2 _hoverCell;
         private int2 _lastPaintCell;
+        private int2 _firstPaintCell;
         private bool _hovering;
         private bool _painting;
+
+        /// <summary>The leading cell of a one-way drag is waiting to be told which way the drag went.</summary>
+        private bool _firstNeedsDirection;
 
         public RtsTool Tool { get; set; } = RtsTool.Inspect;
 
@@ -210,13 +214,23 @@ namespace Examples.Rts
                 _painting = true;
                 _paintedThisDrag.Clear();
                 _lastPaintCell = _hoverCell;
-                PaintRoad(grid, _hoverCell, Direction.North);
+                _firstPaintCell = _hoverCell;
+
+                // The first cell of a drag has no previous cell to take a direction from, so it is laid
+                // two-way and its mask corrected below the moment the drag says which way it is going. A
+                // hardcoded direction here is what used to put the leading cell of every one-way road the
+                // wrong way round; leaving it two-way is also the right answer for a single click, which
+                // never reveals a direction at all.
+                RoadBrushMode firstMode = RoadMode == RoadBrushMode.OneWay ? RoadBrushMode.TwoWay : RoadMode;
+                _firstNeedsDirection = PaintRoad(grid, _hoverCell, firstMode, default)
+                                    && RoadMode == RoadBrushMode.OneWay;
                 return;
             }
 
             if (Input.GetMouseButtonUp(0))
             {
                 _painting = false;
+                _firstNeedsDirection = false;
                 return;
             }
 
@@ -227,33 +241,48 @@ namespace Examples.Rts
 
             if (TryDirectionBetween(_lastPaintCell, _hoverCell, out Direction direction))
             {
-                PaintRoad(grid, _lastPaintCell, direction);
-                PaintRoad(grid, _hoverCell, direction);
+                if (_firstNeedsDirection)
+                {
+                    // The exits only, and only because SetExits is an absolute write rather than a delta:
+                    // painting the cell again would discount it twice, since its first paint is still queued
+                    // and the cell does not read as a road yet.
+                    grid.Edits.Enqueue(
+                        GridEdit.SetExits(_firstPaintCell, RoadBrush.ExitsFor(RoadMode, direction))
+                    );
+
+                    _firstNeedsDirection = false;
+                }
+
+                PaintRoad(grid, _lastPaintCell, RoadMode, direction);
+                PaintRoad(grid, _hoverCell, RoadMode, direction);
             }
 
             _lastPaintCell = _hoverCell;
         }
 
-        private void PaintRoad(in GridWorld grid, int2 cell, Direction direction)
+        /// <summary>Whether the cell was actually laid, which a cell already done or unpaintable was not.</summary>
+        private bool PaintRoad(in GridWorld grid, int2 cell, RoadBrushMode mode, Direction direction)
         {
             if (!_paintedThisDrag.Add(cell))
             {
-                return;
+                return false;
             }
 
             CellData current = grid.Map.GetCell(cell);
             if (!current.IsPassable || current.Has(CellFlags.Building))
             {
-                return;
+                return false;
             }
 
             _edits.Clear();
-            RoadBrush.Paint(_edits, cell, current, RoadMode, direction);
+            RoadBrush.Paint(_edits, cell, current, mode, direction);
 
             foreach (GridEdit edit in _edits)
             {
                 grid.Edits.Enqueue(edit);
             }
+
+            return true;
         }
 
         // ---- picking -----------------------------------------------------------------------------------

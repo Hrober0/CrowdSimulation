@@ -13,10 +13,19 @@ namespace Examples.Rts
     /// </summary>
     public class GridDebugOverlay : MonoBehaviour
     {
+        /// <summary>How far from the centre the blocked-edge wedge stands, in cells. Just inside the edge.</summary>
+        private const float BLOCKED_EDGE_INSET = 0.45f;
+
+        /// <summary>Half the width of the wedge's base, in cells. Short of the full edge, deliberately.</summary>
+        private const float BLOCKED_EDGE_HALF_WIDTH = 0.32f;
+
+        private const int BLOCKED_EDGE_HATCHING = 4;
+
         [SerializeField] private bool _drawBounds = true;
         [SerializeField] private bool _drawChunks = true;
         [SerializeField] private bool _drawCost = true;
-        [SerializeField] private bool _drawOneWay = true;
+        [SerializeField, Tooltip("Marks the edges a one-way cell will not let an agent cross.")]
+        private bool _drawOneWay = true;
 
         [SerializeField, Min(1), Tooltip("Half-size, in cells, of the window drawn around this object.")]
         private int _windowRadius = 32;
@@ -80,7 +89,7 @@ namespace Examples.Rts
 
                     if (_drawOneWay && data.IsOneWay)
                     {
-                        DrawExits(cell, data);
+                        DrawBlockedExits(cell, data);
                     }
                 }
             }
@@ -138,16 +147,20 @@ namespace Examples.Rts
         }
 
         /// <summary>
-        /// Draws what the cell will *not* let an agent do. Forbidden rather than allowed, because a one-way
-        /// road cell forbids exactly one direction and permits the other three (see <see cref="OneWayBrush"/>):
-        /// drawing the permitted set would put three arrows on every road cell and leave the reader to work
-        /// out which one is missing.
+        /// Marks the cell *edge* an agent may not cross: a wedge standing on that edge with its point at the
+        /// cell centre.
+        ///
+        /// An arrow was the obvious thing and the wrong one, both ways round. Drawing the permitted directions
+        /// puts three arrows on every one-way cell and leaves the reader to spot the missing one. Drawing the
+        /// forbidden direction puts one arrow on the cell pointing *against* the traffic, which reads as the
+        /// road running the other way - and did. A shape with no direction in it cannot be read backwards: the
+        /// closed side is the side with the wedge on it.
         /// </summary>
-        private static void DrawExits(int2 cell, CellData data)
+        private static void DrawBlockedExits(int2 cell, CellData data)
         {
             float2 center = GridCoords.CellCenter(cell);
 
-            Gizmos.color = Color.magenta;
+            Gizmos.color = new Color(1f, 0.25f, 0.2f, 0.9f);
             for (int i = 0; i < DirectionUtils.DIRECTION_COUNT; i++)
             {
                 var direction = (Direction)i;
@@ -157,12 +170,29 @@ namespace Examples.Rts
                 }
 
                 float2 offset = DirectionUtils.Offset(direction);
-                float2 tip = center + offset * 0.45f;
-                float2 side = new float2(-offset.y, offset.x) * 0.12f;
 
-                Gizmos.DrawLine(SimToWorld.Position(center), SimToWorld.Position(tip));
-                Gizmos.DrawLine(SimToWorld.Position(tip), SimToWorld.Position(tip - offset * 0.15f + side));
-                Gizmos.DrawLine(SimToWorld.Position(tip), SimToWorld.Position(tip - offset * 0.15f - side));
+                // Just inside the edge, so the two cells either side of a closed seam do not draw over one
+                // another and you can tell which of them is the one refusing to let you out.
+                float2 edge = center + offset * BLOCKED_EDGE_INSET;
+                float2 along = new float2(-offset.y, offset.x) * BLOCKED_EDGE_HALF_WIDTH;
+
+                float2 left = edge + along;
+                float2 right = edge - along;
+
+                Gizmos.DrawLine(SimToWorld.Position(left), SimToWorld.Position(right));
+                Gizmos.DrawLine(SimToWorld.Position(right), SimToWorld.Position(center));
+                Gizmos.DrawLine(SimToWorld.Position(center), SimToWorld.Position(left));
+
+                // Gizmos has no filled triangle. Hatching it with a few lines shrinking towards the point
+                // reads as solid at any zoom worth looking at, and costs three calls rather than a mesh.
+                for (int line = 1; line < BLOCKED_EDGE_HATCHING; line++)
+                {
+                    float t = line / (float)BLOCKED_EDGE_HATCHING;
+                    Gizmos.DrawLine(
+                        SimToWorld.Position(math.lerp(left, center, t)),
+                        SimToWorld.Position(math.lerp(right, center, t))
+                    );
+                }
             }
         }
     }
