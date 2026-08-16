@@ -84,6 +84,72 @@ namespace Tests.EditorTests.RtsTests
         }
 
         /// <summary>
+        /// The tail of a long queue is where the places stop being handed out by hand: rank four and beyond are
+        /// further from the destination than the radius the queue *forms* in, so a ranking that only looked at
+        /// agents inside that radius stopped maintaining them - and an agent still holding a place nobody is
+        /// maintaining waits for a turn that can never come, exempt from the watchdog because it thinks it is
+        /// queueing. That is what "agents stood around far from the door and never delivered" was.
+        /// </summary>
+        [Test]
+        public void ALongQueueDrainsInsteadOfStrandingItsTail()
+        {
+            var destination = new int2(0, 0);
+
+            var agents = new Entity[8];
+            for (int i = 0; i < agents.Length; i++)
+            {
+                agents[i] = _world.CreateAgent(CentreOf(new int2(2 + i, 0)), destination);
+            }
+
+            var reached = new bool[agents.Length];
+
+            for (int frame = 0; frame < 1200; frame++)
+            {
+                _world.TickFrame(0.05f);
+
+                for (int i = 0; i < agents.Length; i++)
+                {
+                    float distance = math.distance(_world.AgentOf(agents[i]).Position, CentreOf(destination));
+                    reached[i] |= distance <= 1.2f;
+                }
+            }
+
+            reached.Should().AllBeEquivalentTo(true, "a queue eight deep still has to be a queue");
+        }
+
+        /// <summary>
+        /// Rank is the cost of the way in, so without something to weigh against it a queue is a race that the
+        /// nearest agent wins every time it is run: a trickle of arrivals nearer than whoever is waiting keeps
+        /// taking the front, and the agent already there is overtaken forever. It is never *stuck* - it is
+        /// holding a place, politely, in a line that never reaches it.
+        /// </summary>
+        [Test]
+        public void AnAgentThatHasBeenWaitingIsNotOvertakenByOneArrivingNearer()
+        {
+            var destination = new int2(10, 10);
+
+            // Standing on the cell for the whole test, so nobody can ever arrive and the queue never drains.
+            Entity occupant = _world.CreateIdleAgent(CentreOf(destination));
+            _world.StepsOf(occupant).Add(TaskStep.GoTo(destination));
+            _world.StepsOf(occupant).Add(TaskStep.Interact(Entity.Null, 60f));
+
+            Entity waiting = _world.CreateIdleAgent(CentreOf(new int2(14, 10)));
+            _world.StepsOf(waiting).Add(TaskStep.GoTo(destination));
+
+            _world.TickFrames(60, 0.1f);
+
+            // Six seconds later, and a good deal nearer than the one that has been waiting all that time.
+            Entity newcomer = _world.CreateIdleAgent(CentreOf(destination) + new float2(1.2f, 0f));
+            _world.StepsOf(newcomer).Add(TaskStep.GoTo(destination));
+
+            _world.TickFrames(10, 0.1f);
+
+            _world.FollowOf(waiting).HoldDistance.Should()
+                  .BeLessThan(_world.FollowOf(newcomer).HoldDistance,
+                              "a queue is a queue - the wait already served is what a newcomer has to beat");
+        }
+
+        /// <summary>
         /// A held agent is exempt from the watchdog, which is only safe because the agent at the front is not.
         /// Here the front can never arrive - the goal is walled in - so the watchdog has to drop *it* and let
         /// the queue behind it move up, rather than the whole line waiting on it forever.

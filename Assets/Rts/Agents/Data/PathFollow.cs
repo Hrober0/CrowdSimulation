@@ -29,17 +29,37 @@ namespace Rts
         public int RoutedChunk;
 
         /// <summary>
-        /// Where to wait instead of pressing on, and whether to. Written by <see cref="ArrivalQueueSystem"/>
-        /// when somebody else has the destination first (§8).
+        /// How close to the goal this agent is allowed to get while it waits its turn, in cells. Written by
+        /// <see cref="ArrivalQueueSystem"/> when somebody else has the destination first (§8).
         ///
-        /// A point, and deliberately not <see cref="WaypointCell"/>: a waypoint is a flow field request, and a
-        /// field per waiting agent per busy door would be a cache full of fields whose whole purpose is to
-        /// move one agent a cell backwards. A hold point is always on the line the agent is already standing
-        /// on, so steering straight at it needs no field at all.
+        /// A distance, and deliberately not a point. A point has to be *somewhere*, and every geometric guess
+        /// at where an agent should wait is wrong as soon as the way in is not a straight line: a point back
+        /// along the line to the goal can land in a wall, on the far side of a one-way road, or off the route
+        /// the agent was actually walking - and steering at it is what made a queue at an awkward door pull
+        /// its own members off the road they had to be on. A distance says only "no closer than this" and
+        /// leaves *how* to the flow field, which is the one thing that knows the way in.
         /// </summary>
-        public float2 HoldPoint;
+        public float HoldDistance;
 
         public bool Holding;
+
+        /// <summary>
+        /// When this agent joined the queue for its goal, in elapsed seconds, or negative when it is not
+        /// queueing for anything.
+        ///
+        /// Waiting has to count for something. Rank is otherwise the cost of the way in and nothing else, so a
+        /// steady trickle of agents arriving nearer than whoever is waiting keeps taking the front and the
+        /// agent already there is never served - it is not even stuck, it is being politely overtaken forever.
+        /// <see cref="ArrivalQueueSystem"/> ages this into the rank, exactly as <c>OrderAgingSystem</c> ages a
+        /// waiting order into its priority (§8), and for the same reason.
+        ///
+        /// Reset by every new walk, so a hauler returning to a warehouse it visited a minute ago queues as a
+        /// newcomer rather than cashing in the wait from its last trip.
+        /// </summary>
+        public float QueuedSince;
+
+        /// <summary>Whether <see cref="QueuedSince"/> holds a time rather than "not queueing".</summary>
+        public readonly bool IsQueued => QueuedSince >= 0f;
     }
 
     /// <summary>One gate on the way to the goal, in the order they are crossed.</summary>

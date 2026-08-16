@@ -210,7 +210,7 @@ namespace Tests.EditorTests.RtsTests
         {
             Entity entity = Entities.CreateEntity(
                 typeof(AgentMove), typeof(PathFollow), typeof(ArrivedTag),
-                typeof(InsideBuilding), typeof(InteriorClaim),
+                typeof(InsideBuilding), typeof(InteriorClaim), typeof(DoorUse),
                 typeof(Carry), typeof(AssignedOrder), typeof(MovementWatchdog), typeof(ViewVisible)
             );
 
@@ -233,6 +233,7 @@ namespace Tests.EditorTests.RtsTests
             Entities.SetComponentEnabled<ArrivedTag>(entity, false);
             Entities.SetComponentEnabled<InsideBuilding>(entity, false);
             Entities.SetComponentEnabled<InteriorClaim>(entity, false);
+            Entities.SetComponentEnabled<DoorUse>(entity, false);
             Entities.SetComponentEnabled<AssignedOrder>(entity, false);
             return entity;
         }
@@ -335,6 +336,27 @@ namespace Tests.EditorTests.RtsTests
         public Interior InteriorOf(Entity building) => Entities.GetComponentData<Interior>(building);
 
         public bool IsInside(Entity agent) => Entities.IsComponentEnabled<InsideBuilding>(agent);
+
+        /// <summary>Whether the agent is in a doorway right now - half in, half out (§15).</summary>
+        public bool IsInDoorway(Entity agent) => Entities.IsComponentEnabled<DoorUse>(agent);
+
+        public DoorUse DoorOf(Entity agent) => Entities.GetComponentData<DoorUse>(agent);
+
+        /// <summary>
+        /// An agent already inside a building, as one that walked in would be: off the map, occupying a slot.
+        /// Its position is the doorstep, which is where <c>InteractionSystem</c> reads its way back out from.
+        /// </summary>
+        public Entity CreateResident(Entity building, int2 doorstep)
+        {
+            Entity agent = CreateIdleAgent(GridCoords.CellCenter(doorstep));
+
+            Entities.SetComponentData(agent, new InsideBuilding { Building = building });
+            Entities.SetComponentEnabled<InsideBuilding>(agent, true);
+            Entities.SetComponentEnabled<AgentMove>(agent, false);
+            Entities.SetComponentEnabled<ViewVisible>(agent, false);
+
+            return agent;
+        }
 
         public bool HasClaim(Entity agent) => Entities.IsComponentEnabled<InteriorClaim>(agent);
 

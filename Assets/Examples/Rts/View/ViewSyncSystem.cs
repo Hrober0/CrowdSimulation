@@ -1,3 +1,4 @@
+using GridNav;
 using Rts;
 using Unity.Entities;
 using Unity.Jobs;
@@ -6,7 +7,8 @@ namespace Examples.Rts
 {
     /// <summary>
     /// One-way sync of agent state onto the pooled GameObjects (design §10, §13.3 #22). Nothing here writes
-    /// simulation state - it reads <see cref="AgentMove"/> and writes transforms, and that is all.
+    /// simulation state - it reads <see cref="AgentMove"/> and <see cref="DoorUse"/> and writes transforms,
+    /// and that is all.
     ///
     /// The pool belongs to the scene rather than to the system: a prefab is a scene decision, and a system
     /// that outlives play mode should not be holding GameObjects. <see cref="AgentViewSettings"/> hands one
@@ -17,6 +19,7 @@ namespace Examples.Rts
     {
         private AgentViewPool _pool;
         private JobHandle _sync;
+        private ComponentLookup<DoorUse> _doors;
 
         /// <summary>Sorting offset towards the camera, in world units. Presentation only.</summary>
         public float Depth { get; set; }
@@ -49,6 +52,8 @@ namespace Examples.Rts
             _pool = null;
         }
 
+        protected override void OnCreate() => _doors = GetComponentLookup<DoorUse>(isReadOnly: true);
+
         protected override void OnUpdate()
         {
             // Last frame's transform writes must be done before the pool can add or remove a transform.
@@ -60,6 +65,7 @@ namespace Examples.Rts
             }
 
             ViewCulling culling = Culling;
+            _doors.Update(this);
 
             _pool.BeginFrame();
 
@@ -68,13 +74,34 @@ namespace Examples.Rts
             {
                 if (culling.IsVisible(agent.ValueRO.Position))
                 {
-                    _pool.Show(entity, agent.ValueRO);
+                    _pool.Show(entity, FrameOf(entity, agent.ValueRO));
                 }
             }
 
             _pool.EndFrame();
 
             _sync = _pool.Schedule(Depth, TurnDegreesPerSecond, SystemAPI.Time.DeltaTime);
+        }
+
+        /// <summary>
+        /// Adds the door transition, if the agent is in one. Asked per agent rather than filtered on, because
+        /// <see cref="DoorUse"/> is optional data on something the view already draws - and an agent whose
+        /// archetype has no door component at all must still be shown rather than quietly disappear.
+        /// </summary>
+        private AgentViewFrame FrameOf(Entity entity, in AgentMove move)
+        {
+            if (!_doors.HasComponent(entity) || !_doors.IsComponentEnabled(entity))
+            {
+                return new AgentViewFrame { Move = move };
+            }
+
+            DoorUse door = _doors[entity];
+            return new AgentViewFrame
+            {
+                Move = move,
+                DoorPoint = GridCoords.CellCenter(door.Cell),
+                DoorBlend = door.Inside,
+            };
         }
 
         protected override void OnDestroy() => CompleteSync();

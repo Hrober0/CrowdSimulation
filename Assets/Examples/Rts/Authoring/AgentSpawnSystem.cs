@@ -39,6 +39,7 @@ namespace Examples.Rts
                 typeof(TaskStep),
                 typeof(InsideBuilding),
                 typeof(InteriorClaim),
+                typeof(DoorUse),
                 typeof(Carry),
                 typeof(AssignedOrder),
                 typeof(MovementWatchdog),
@@ -118,6 +119,7 @@ namespace Examples.Rts
                 state.EntityManager.SetComponentEnabled<ArrivedTag>(agent, false);
                 state.EntityManager.SetComponentEnabled<InsideBuilding>(agent, false);
                 state.EntityManager.SetComponentEnabled<InteriorClaim>(agent, false);
+                state.EntityManager.SetComponentEnabled<DoorUse>(agent, false);
                 state.EntityManager.SetComponentEnabled<AssignedOrder>(agent, false);
             }
         }

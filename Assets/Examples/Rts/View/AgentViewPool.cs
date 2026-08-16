@@ -12,6 +12,24 @@ using UnityEngine.Jobs;
 namespace Examples.Rts
 {
     /// <summary>
+    /// Everything the view needs about one agent for one frame: where the simulation says it is, and how far
+    /// through a doorway it is while it is using one.
+    ///
+    /// The door part is here rather than read from the entity inside the job because the job runs over
+    /// transforms, not entities - and because it keeps <see cref="AgentViewPool"/> ignorant of what a door is.
+    /// </summary>
+    public struct AgentViewFrame
+    {
+        public AgentMove Move;
+
+        /// <summary>Centre of the entrance cell being used. Ignored while <see cref="DoorBlend"/> is zero.</summary>
+        public float2 DoorPoint;
+
+        /// <summary>0 out on the map, 1 gone through the door. See <see cref="DoorUse.Inside"/>.</summary>
+        public float DoorBlend;
+    }
+
+    /// <summary>
     /// The pool of agent GameObjects and the viewIndex &lt;-&gt; entity mapping behind it (design §10).
     ///
     /// The simulation owns every position in native memory; a view is a borrowed prefab instance that happens
@@ -31,23 +49,30 @@ namespace Examples.Rts
     {
         private readonly GameObject _prefab;
 
+        /// <summary>
+        /// The prefab's own scale, which a door transition shrinks towards zero and back. Read once: every
+        /// instance is a copy of the one prefab, so there is one answer for the whole pool.
+        /// </summary>
+        private readonly float3 _baseScale;
+
         private readonly Stack<GameObject> _idle = new();
         private readonly List<GameObject> _created = new();
         private readonly List<ViewSlot> _slots = new();
         private readonly Dictionary<Entity, int> _viewOf = new();
 
         private TransformAccessArray _transforms;
-        private NativeList<AgentMove> _frameData;
+        private NativeList<AgentViewFrame> _frameData;
 
         private int _tick;
 
         public AgentViewPool(GameObject prefab, int prewarm)
         {
             _prefab = prefab != null ? prefab : throw new ArgumentNullException(nameof(prefab));
+            _baseScale = prefab.transform.localScale;
 
             int capacity = math.max(prewarm, 1);
             _transforms = new TransformAccessArray(capacity);
-            _frameData = new NativeList<AgentMove>(capacity, Allocator.Persistent);
+            _frameData = new NativeList<AgentViewFrame>(capacity, Allocator.Persistent);
 
             for (int i = 0; i < prewarm; i++)
             {
@@ -68,7 +93,7 @@ namespace Examples.Rts
         public void BeginFrame() => _tick++;
 
         /// <summary>Claims a view for this agent, taking one from the pool if it does not have one yet.</summary>
-        public void Show(Entity entity, in AgentMove move)
+        public void Show(Entity entity, in AgentViewFrame frame)
         {
             if (!_viewOf.TryGetValue(entity, out int view))
             {
@@ -76,16 +101,16 @@ namespace Examples.Rts
 
                 // A view straight out of the pool is wearing the last agent's heading. Snap it here: the turn
                 // rate exists to stop an agent spinning, not to make a new one unwind a stranger's facing.
-                if (math.lengthsq(move.Velocity) > math.EPSILON)
+                if (math.lengthsq(frame.Move.Velocity) > math.EPSILON)
                 {
-                    _transforms[view].rotation = SimToWorld.Rotation(move.Velocity);
+                    _transforms[view].rotation = SimToWorld.Rotation(frame.Move.Velocity);
                 }
             }
 
             _slots[view] = new ViewSlot
             {
                 Entity = entity,
-                Move = move,
+                Frame = frame,
                 SeenTick = _tick,
             };
         }
@@ -120,7 +145,7 @@ namespace Examples.Rts
             _frameData.ResizeUninitialized(_slots.Count);
             for (int view = 0; view < _slots.Count; view++)
             {
-                _frameData[view] = _slots[view].Move;
+                _frameData[view] = _slots[view].Frame;
             }
 
             return new WriteTransformsJob
@@ -128,6 +153,7 @@ namespace Examples.Rts
                 Views = _frameData.AsArray(),
                 Depth = depth,
                 MaxTurn = math.radians(turnDegreesPerSecond) * deltaTime,
+                BaseScale = _baseScale,
             }.Schedule(_transforms, dependency);
         }
 
@@ -217,7 +243,7 @@ namespace Examples.Rts
         private struct ViewSlot
         {
             public Entity Entity;
-            public AgentMove Move;
+            public AgentViewFrame Frame;
 
             /// <summary>The frame this view was last claimed on. Anything older is handed back.</summary>
             public int SeenTick;
@@ -233,18 +259,28 @@ namespace Examples.Rts
             /// </summary>
             private const float FACING_SPEED_FRACTION = 0.15f;
 
-            [ReadOnly] public NativeArray<AgentMove> Views;
+            [ReadOnly] public NativeArray<AgentViewFrame> Views;
 
             public float Depth;
 
             /// <summary>Radians a view may turn this frame.</summary>
             public float MaxTurn;
 
+            /// <summary>The prefab's scale, which a door transition scales down from.</summary>
+            public float3 BaseScale;
+
             public void Execute(int index, TransformAccess transform)
             {
-                AgentMove move = Views[index];
+                AgentViewFrame frame = Views[index];
+                AgentMove move = frame.Move;
 
-                transform.position = SimToWorld.Position(move.Position, Depth);
+                // Sliding into the doorway and shrinking away is the whole of the door animation, and it is
+                // transform-only on purpose: the view layer's contract is that the transform is driven and
+                // nothing else is (§15), so this stays inside the one parallel job that writes them.
+                float2 position = math.lerp(move.Position, frame.DoorPoint, frame.DoorBlend);
+
+                transform.position = SimToWorld.Position(position, Depth);
+                transform.localScale = BaseScale * (1f - frame.DoorBlend);
 
                 // Only while actually moving, and only while moving fast enough to mean it: a stopped agent
                 // keeps facing wherever it last walked, instead of snapping back to a default heading the

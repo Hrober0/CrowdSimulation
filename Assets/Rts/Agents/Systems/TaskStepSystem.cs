@@ -1,6 +1,5 @@
 using Unity.Burst;
 using Unity.Entities;
-using Unity.Mathematics;
 
 namespace Rts
 {
@@ -13,6 +12,10 @@ namespace Rts
     /// consumed at the top of the next frame (§13.3), so an arrival that closed a <c>GoTo</c> belongs to that
     /// <c>GoTo</c> and to nothing else; retiring two steps at once is how it would end up closing the next
     /// one as well.
+    ///
+    /// The one step this does not run is a door: an <c>Enter</c> or <c>Exit</c> is left at the head for
+    /// <see cref="InteriorTransitionSystem"/>, which is what makes the step itself the record of "waiting for
+    /// a door" (§15).
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(AgentSpatialHashSystem))]
@@ -24,19 +27,17 @@ namespace Rts
 
         public void OnCreate(ref SystemState state)
         {
-            state.RequireForUpdate<InteriorTransitionQueue>();
             state.RequireForUpdate<InteractionQueue>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            InteriorTransitionQueue transitions = SystemAPI.GetSingleton<InteriorTransitionQueue>();
             InteractionQueue interactions = SystemAPI.GetSingleton<InteractionQueue>();
             float deltaTime = SystemAPI.Time.DeltaTime;
 
             // WithPresent on both, because an agent inside a building has PathFollow disabled and is exactly
-            // the agent whose Interact and Exit steps still have to run.
+            // the agent whose Interact steps - a whole shift of them - still have to run.
             foreach ((DynamicBuffer<TaskStep> steps, RefRW<PathFollow> follow,
                       EnabledRefRW<PathFollow> walking, EnabledRefRW<ArrivedTag> arrived, Entity entity)
                      in SystemAPI.Query<DynamicBuffer<TaskStep>, RefRW<PathFollow>,
@@ -82,17 +83,10 @@ namespace Rts
 
                     case TaskStepKind.Enter:
                     case TaskStepKind.Exit:
-                        transitions.Enqueue(new InteriorTransition
-                        {
-                            Agent = entity,
-                            Building = step.Target,
-                            Cell = step.Cell,
-                            Kind = step.Kind == TaskStepKind.Enter
-                                ? InteriorTransitionKind.Enter
-                                : InteriorTransitionKind.Exit,
-                        });
-
-                        steps.RemoveAt(0);
+                        // Left at the head on purpose. A doorway takes time and admits one agent at a time
+                        // (§15), so this step *is* the request to use it: while it is here the agent is either
+                        // queueing for the door or walking through it, and InteriorTransitionSystem is what
+                        // retires it once the agent is through.
                         break;
 
                     case TaskStepKind.Interact:
@@ -137,8 +131,10 @@ namespace Rts
             // step and must not be inherited by whatever the agent is sent to do next.
             follow.ArriveDistance = step.ArriveDistance > 0f ? step.ArriveDistance : DEFAULT_ARRIVE_DISTANCE;
 
-            // A new walk is not a hold. Whatever queue the agent was in was for a destination it no longer has.
+            // A new walk is not a hold, and it starts a fresh wait: whatever queue the agent was in was for a
+            // destination it no longer has, and time spent in it must not be carried into the next one.
             follow.Holding = false;
+            follow.QueuedSince = -1f;
 
             return follow;
         }
