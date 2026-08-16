@@ -86,7 +86,13 @@ namespace GridNav
                     continue;
                 }
 
-                int acquired = cache.AcquireSlot(goalCell, map);
+                // No slot free means every field in the cache is in use this frame. The request is simply not
+                // served - the same outcome as missing the build cap above, and agents ask again next frame.
+                if (!cache.TryAcquireSlot(goalCell, map, out int acquired))
+                {
+                    continue;
+                }
+
                 cache.MarkUsed(acquired);
                 toBuild.Add(acquired);
             }

@@ -234,6 +234,66 @@ namespace Tests.EditorTests.GridNavTests
                   .BeFalse("it went longest without being asked for");
         }
 
+        /// <summary>
+        /// More destinations wanted in one frame than the cache has slots.
+        ///
+        /// This is the sequence <c>FlowFieldCacheSystem</c> produces on a busy map: a frame claims slots for
+        /// the destinations it is about to build, marks every already-cached one as used, and then another
+        /// destination asks. Every slot is spoken for, and what must *not* happen is that one gets handed out
+        /// twice - because the loser of that keeps a mapping to a field built for somewhere else, and every
+        /// agent walking to it is then steered to a destination it has nothing to do with.
+        /// </summary>
+        [Test]
+        public void ADestinationIsNeverServedAFieldBuiltForSomewhereElse()
+        {
+            _world.Tick(); // brings the cache into existence
+
+            FlowFieldCache fields = _world.Fields;
+            GridMap map = _world.Map;
+
+            fields.Tick();
+
+            // Every slot claimed this frame and none of them built yet, exactly as they are between the
+            // request pass and the build job.
+            var goals = new int2[FlowFieldCache.CAPACITY];
+            var slots = new int[FlowFieldCache.CAPACITY];
+
+            for (int i = 0; i < goals.Length; i++)
+            {
+                goals[i] = new int2(i * 2 - 60, 0);
+                fields.TryAcquireSlot(goals[i], map, out slots[i]).Should().BeTrue();
+                fields.MarkUsed(slots[i]);
+            }
+
+            // One more destination, same frame. There is nowhere to put its field, and being told so is the
+            // only safe answer - taking a slot somebody else is already using is what used to leave a
+            // destination pointing at a field built for somewhere else.
+            fields.TryAcquireSlot(new int2(60, 60), map, out int _).Should()
+                  .BeFalse("every field in the cache is being built or read this frame");
+
+            // The build job stamps everything that was acquired.
+            foreach (int slot in slots)
+            {
+                MarkBuilt(fields, slot);
+            }
+
+            foreach (int2 goal in goals)
+            {
+                fields.TryGetSlot(goal, out int slot).Should()
+                      .BeTrue("nothing took the field out from under it");
+
+                fields.GetSlot(slot).GoalCell.Should().Be(goal,
+                    "a field is served for the destination it was built for, or not at all");
+            }
+        }
+
+        private static void MarkBuilt(FlowFieldCache fields, int slot)
+        {
+            FlowFieldSlot entry = fields.GetSlot(slot);
+            entry.Built = true;
+            fields.Storage.SetSlot(slot, entry);
+        }
+
         [Test]
         public void KeepingAskingForAFieldKeepsIt()
         {
