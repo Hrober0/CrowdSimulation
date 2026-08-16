@@ -1,3 +1,4 @@
+using CustomNativeCollections;
 using GridNav;
 using Unity.Collections;
 using Unity.Entities;
@@ -27,24 +28,45 @@ namespace Rts
         /// <summary>How far an agent standing somewhere it should not will look for somewhere it may.</summary>
         private const int PARK_SEARCH_RADIUS = 6;
 
+        /// <summary>
+        /// How much room a parking spot needs to itself, in cells. A shade over a body diameter, so two agents
+        /// never park on top of each other but neighbouring cells stay usable.
+        ///
+        /// Without it every idle agent within range of the same patch of free ground is sent to the same cell -
+        /// the search is deterministic, so agents standing near each other resolve it the same way - and a
+        /// crowd converging on one cell is a crowd where nobody can reach it. That is not a queue and nothing
+        /// treats it as one: they mill about, the watchdog gives up on each of them in turn, the idle rule
+        /// hands them the same cell again, and they circle forever a few cells from where they started.
+        /// </summary>
+        private const float PARK_SPACING = 0.8f;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<GridWorld>();
+            state.RequireForUpdate<FlowFieldCache>();
+            state.RequireForUpdate<AgentSpatialHash>();
         }
 
         public void OnUpdate(ref SystemState state)
         {
             GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
+            FlowFieldCache cache = SystemAPI.GetSingleton<FlowFieldCache>();
+            NativeSpatialHash<AgentMove> crowd = SystemAPI.GetSingleton<AgentSpatialHash>().Hash;
 
             NativeList<ShelterCandidate> shelters = CollectShelters(ref state);
+
+            // Spots handed out this tick. The spatial hash is a frame old and nobody has walked anywhere yet,
+            // so without this two agents in the same tick are both told to stand on the same free cell.
+            var promised = new NativeHashSet<int2>(16, Allocator.Temp);
             int claims = 0;
 
             foreach ((DynamicBuffer<TaskStep> steps, RefRO<AgentMove> agent, EnabledRefRO<PathFollow> walking,
-                      RefRW<InteriorClaim> claim, EnabledRefRW<InteriorClaim> claimed)
+                      RefRW<InteriorClaim> claim, EnabledRefRW<InteriorClaim> claimed, Entity entity)
                      in SystemAPI.Query<DynamicBuffer<TaskStep>, RefRO<AgentMove>, EnabledRefRO<PathFollow>,
                                         RefRW<InteriorClaim>, EnabledRefRW<InteriorClaim>>()
                                  .WithPresent<PathFollow, InteriorClaim>()
-                                 .WithDisabled<InsideBuilding, AssignedOrder>())
+                                 .WithDisabled<InsideBuilding, AssignedOrder>()
+                                 .WithEntityAccess())
             {
                 // Idle is "nothing left to do and not already on the way somewhere".
                 if (!steps.IsEmpty || walking.ValueRO)
@@ -63,7 +85,7 @@ namespace Rts
 
                 float2 position = agent.ValueRO.Position;
 
-                if (claims < MAX_CLAIMS_PER_TICK && TryNearestShelter(shelters, position, out int index))
+                if (claims < MAX_CLAIMS_PER_TICK && TryNearestShelter(shelters, cache, map, position, out int index))
                 {
                     ShelterCandidate shelter = shelters[index];
                     shelter.Free--;
@@ -89,13 +111,26 @@ namespace Rts
                     continue;
                 }
 
-                if (TryFindPark(map, cell, out int2 park))
+                // Against the same budget as the claims above, and for the same reason: this is a search over
+                // a hundred and sixty cells, and a map roaded end to end makes every idle agent run it.
+                if (claims >= MAX_CLAIMS_PER_TICK)
                 {
-                    steps.Add(TaskStep.GoTo(park));
+                    continue;
+                }
+
+                claims++;
+
+                // Nowhere free within reach is a real answer, and the right response to it is to stand still.
+                // Somewhere to be is not owed to an agent standing on a road the player painted under it.
+                if (TryFindPark(map, cache, crowd, promised, entity, cell, out int2 park))
+                {
+                    promised.Add(park);
+                    steps.Add(TaskStep.Park(park));
                 }
             }
 
             ApplyClaims(ref state, shelters);
+            promised.Dispose();
             shelters.Dispose();
         }
 
@@ -161,14 +196,33 @@ namespace Rts
             SystemAPI.SetComponent(building, interior);
         }
 
-        private static bool TryNearestShelter(in NativeList<ShelterCandidate> shelters, float2 position, out int index)
+        /// <summary>
+        /// The nearest shelter with a free slot that this agent can actually walk to.
+        ///
+        /// The reachability half costs one array read per candidate and is what stops the whole system
+        /// grinding: without it, a hut sealed off by a one-way road is still the nearest hut, so the agent
+        /// claims a bed there, fails to arrive, is given up on by the watchdog, and is handed the same bed
+        /// again on the next tick - forever, standing still, while a hut it could walk into goes unused.
+        /// </summary>
+        private static bool TryNearestShelter(
+            in NativeList<ShelterCandidate> shelters,
+            in FlowFieldCache cache,
+            in GridMap map,
+            float2 position,
+            out int index)
         {
             index = -1;
             float best = float.MaxValue;
+            int2 from = GridCoords.CellOf(position);
 
             for (int i = 0; i < shelters.Length; i++)
             {
                 if (shelters[i].Free <= 0)
+                {
+                    continue;
+                }
+
+                if (cache.IsKnownUnreachable(shelters[i].Entrance, from, map))
                 {
                     continue;
                 }
@@ -186,8 +240,21 @@ namespace Rts
             return index >= 0;
         }
 
-        /// <summary>Nearest cell an idle agent is allowed to stand on, searched ring by ring outwards.</summary>
-        private static bool TryFindPark(in GridMap map, int2 from, out int2 park)
+        /// <summary>
+        /// Nearest cell this agent may stand on *and* actually have to itself, searched ring by ring outwards.
+        ///
+        /// "To itself" is the half that took a bug to notice. The search is deterministic, so every agent
+        /// within range of the same patch of free ground resolves it the same way and they are all sent to one
+        /// cell - see <see cref="PARK_SPACING"/>.
+        /// </summary>
+        private static bool TryFindPark(
+            in GridMap map,
+            in FlowFieldCache cache,
+            in NativeSpatialHash<AgentMove> crowd,
+            in NativeHashSet<int2> promised,
+            Entity agent,
+            int2 from,
+            out int2 park)
         {
             for (int radius = 1; radius <= PARK_SEARCH_RADIUS; radius++)
             {
@@ -201,8 +268,7 @@ namespace Rts
                         }
 
                         var cell = new int2(from.x + x, from.y + y);
-                        CellData data = map.GetCell(cell);
-                        if (data.IsPassable && !data.Has(CellFlags.NoIdle))
+                        if (IsParkable(map, cache, crowd, promised, agent, from, cell))
                         {
                             park = cell;
                             return true;
@@ -213,6 +279,59 @@ namespace Rts
 
             park = default;
             return false;
+        }
+
+        private static bool IsParkable(
+            in GridMap map,
+            in FlowFieldCache cache,
+            in NativeSpatialHash<AgentMove> crowd,
+            in NativeHashSet<int2> promised,
+            Entity agent,
+            int2 from,
+            int2 cell)
+        {
+            CellData data = map.GetCell(cell);
+            if (!data.IsPassable || data.Has(CellFlags.NoIdle) || promised.Contains(cell))
+            {
+                return false;
+            }
+
+            // Somewhere it cannot walk to is not somewhere to stand. Same question, same answer, as the
+            // shelter search above.
+            if (cache.IsKnownUnreachable(cell, from, map))
+            {
+                return false;
+            }
+
+            float2 centre = GridCoords.CellCenter(cell);
+            var probe = new CrowdProbe
+            {
+                Self = agent,
+                Point = centre,
+                RadiusSq = PARK_SPACING * PARK_SPACING,
+            };
+
+            crowd.ForEachInAABB(centre - PARK_SPACING, centre + PARK_SPACING, ref probe);
+            return !probe.Taken;
+        }
+
+        /// <summary>Whether anybody else is already standing where this agent is thinking of standing.</summary>
+        private struct CrowdProbe : ISpatialQueryProcessor<AgentMove>
+        {
+            public Entity Self;
+            public float2 Point;
+            public float RadiusSq;
+            public bool Taken;
+
+            public void Process(AgentMove agent)
+            {
+                if (agent.Entity == Self)
+                {
+                    return;
+                }
+
+                Taken |= math.distancesq(agent.Position, Point) < RadiusSq;
+            }
         }
 
         private struct ShelterCandidate

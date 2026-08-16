@@ -45,6 +45,17 @@ namespace Rts
         /// </summary>
         public const float DOOR_ARRIVE_DISTANCE = 1.1f;
 
+        /// <summary>
+        /// How close to a parking spot counts as parked, in cells: anywhere inside the cell rather than on its
+        /// centre.
+        ///
+        /// Parking is "stand over there, out of the way", and there is nothing at the cell to be exact about -
+        /// so the same argument as <see cref="DOOR_ARRIVE_DISTANCE"/> applies twice over. It matters more than
+        /// at a door, because an agent that never finishes arriving is one the idle rule keeps handing a new
+        /// place to stand, which is a walk that never ends rather than a queue that never moves.
+        /// </summary>
+        public const float PARK_ARRIVE_DISTANCE = 0.7f;
+
         public TaskStepKind Kind;
 
         /// <summary>The building or object the step is about, if it is about one.</summary>
@@ -80,6 +91,14 @@ namespace Rts
             Kind = TaskStepKind.GoTo,
             Cell = cell,
             ArriveDistance = DOOR_ARRIVE_DISTANCE,
+        };
+
+        /// <summary>Somewhere to stand out of the way. See <see cref="PARK_ARRIVE_DISTANCE"/>.</summary>
+        public static TaskStep Park(int2 cell) => new()
+        {
+            Kind = TaskStepKind.GoTo,
+            Cell = cell,
+            ArriveDistance = PARK_ARRIVE_DISTANCE,
         };
 
         public static TaskStep Enter(Entity building, int2 entranceCell) => new()

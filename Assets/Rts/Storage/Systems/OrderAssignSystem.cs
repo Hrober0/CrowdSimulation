@@ -31,8 +31,16 @@ namespace Rts
     {
         private const int MAX_CLAIMS_PER_TICK = 16;
 
-        /// <summary>Used by buildings that do not set their own <see cref="HaulLimit"/> (§15: tuning).</summary>
-        private const int DEFAULT_MAX_CONCURRENT_HAULERS = 4;
+        /// <summary>
+        /// Used by buildings that do not set their own <see cref="HaulLimit"/> (§15: tuning).
+        ///
+        /// Raised from the four §15 said to start at, once the door became a resource with a known service
+        /// time and the queue for it formed along the road in (§15, <see cref="ArrivalQueueSystem"/>). The cap
+        /// exists to stop a crowd converging on one step, and what a crowd does at a step is now a line: the
+        /// eighth hauler waits its turn a few cells back instead of pressing into the seven in front. Keeping
+        /// it at four with all of that in place means haulers wait in a hut for a door that is standing idle.
+        /// </summary>
+        private const int DEFAULT_MAX_CONCURRENT_HAULERS = 8;
 
         /// <summary>How far an agent will walk to start a haul. Beyond this someone nearer should do it.</summary>
         private const float MAX_HAUL_RANGE = 64f;
@@ -52,6 +60,8 @@ namespace Rts
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<OrderBook>();
+            state.RequireForUpdate<GridWorld>();
+            state.RequireForUpdate<FlowFieldCache>();
 
             _slots = state.GetBufferLookup<StorageSlot>();
             _entrances = state.GetBufferLookup<BuildingEntranceCell>(isReadOnly: true);
@@ -91,10 +101,15 @@ namespace Rts
             NativeHashMap<Entity, int> busy = CountHaulersPerTarget(ref state);
             NativeArray<OrderRank> ranked = RankOrders(book);
 
+            var reach = new Reachability(
+                SystemAPI.GetSingleton<FlowFieldCache>(),
+                SystemAPI.GetSingleton<GridWorld>().Map
+            );
+
             int claims = 0;
             for (int i = 0; i < ranked.Length && claims < MAX_CLAIMS_PER_TICK && agents.Length > 0; i++)
             {
-                if (TryAssign(book, ranked[i].Index, sites, agents, busy))
+                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach))
                 {
                     claims++;
                 }
@@ -113,12 +128,13 @@ namespace Rts
             int orderIndex,
             in NativeList<StorageSite> sites,
             NativeList<FreeAgent> agents,
-            NativeHashMap<Entity, int> busy)
+            NativeHashMap<Entity, int> busy,
+            in Reachability reach)
         {
             return book[orderIndex].Kind switch
             {
-                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy),
-                OrderKind.Work => TryAssignWork(book, orderIndex, agents),
+                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy, reach),
+                OrderKind.Work => TryAssignWork(book, orderIndex, agents, reach),
                 _ => false,
             };
         }
@@ -128,7 +144,11 @@ namespace Rts
         /// exactly as a bed in a hut is, which is what keeps six agents from converging on a workshop with
         /// two benches (§6, §8).
         /// </summary>
-        private bool TryAssignWork(OrderBook book, int orderIndex, NativeList<FreeAgent> agents)
+        private bool TryAssignWork(
+            OrderBook book,
+            int orderIndex,
+            NativeList<FreeAgent> agents,
+            in Reachability reach)
         {
             Order order = book[orderIndex];
             if (order.Amount <= 0 || !TryEntranceOf(order.Target, out int2 door))
@@ -141,7 +161,7 @@ namespace Rts
                 return false;
             }
 
-            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), out int agentIndex))
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex))
             {
                 return false;
             }
@@ -192,7 +212,8 @@ namespace Rts
             int orderIndex,
             in NativeList<StorageSite> sites,
             NativeList<FreeAgent> agents,
-            NativeHashMap<Entity, int> busy)
+            NativeHashMap<Entity, int> busy,
+            in Reachability reach)
         {
             Order order = book[orderIndex];
             if (order.Amount <= 0)
@@ -218,7 +239,17 @@ namespace Rts
             }
 
             StorageSite source = sites[siteIndex];
-            if (!TryNearestAgent(agents, source.Point, out int agentIndex, mustCarry: true))
+
+            // The loaded leg, checked before anyone is sent on the empty one. A source an agent can walk to
+            // but cannot carry anything *from* is a whole round trip thrown away, and the trip after that
+            // would be the same one again.
+            if (!reach.CanTry(targetDoor, source.EntranceCell))
+            {
+                return false;
+            }
+
+            if (!TryNearestAgent(agents, source.Point, reach, source.EntranceCell, out int agentIndex,
+                                 mustCarry: true))
             {
                 return false;
             }
@@ -332,9 +363,16 @@ namespace Rts
         /// Hauling needs hands; working does not. An agent with no carry capacity is still a perfectly good
         /// worker, so the check belongs to the kind of order rather than to who counts as free.
         /// </param>
+        /// <param name="destination">
+        /// Where this agent would have to walk first. An agent the field says cannot get there is passed over
+        /// rather than the order being abandoned - the point is to give the job to somebody who *can*, and on
+        /// a map cut in half by a one-way road that is usually the second-nearest agent rather than nobody.
+        /// </param>
         private static bool TryNearestAgent(
             in NativeList<FreeAgent> agents,
             float2 point,
+            in Reachability reach,
+            int2 destination,
             out int index,
             bool mustCarry = false)
         {
@@ -344,6 +382,11 @@ namespace Rts
             for (int i = 0; i < agents.Length; i++)
             {
                 if (mustCarry && agents[i].CarryCapacity <= 0)
+                {
+                    continue;
+                }
+
+                if (!reach.CanTry(destination, agents[i].Position))
                 {
                     continue;
                 }
@@ -483,6 +526,32 @@ namespace Rts
             _limits.TryGetComponent(building, out HaulLimit limit) && limit.MaxConcurrent > 0
                 ? limit.MaxConcurrent
                 : DEFAULT_MAX_CONCURRENT_HAULERS;
+
+        /// <summary>
+        /// The two grid readings that answer "is it even worth sending anyone there", carried together so the
+        /// question can be asked in one line wherever a destination is being chosen.
+        ///
+        /// It only ever *refuses* on a definite no - see <see cref="FlowFieldCache.IsKnownUnreachable"/>. The
+        /// first attempt at a destination nobody has walked to is always allowed, which is what builds the
+        /// field that answers the question properly from then on.
+        /// </summary>
+        private readonly struct Reachability
+        {
+            private readonly FlowFieldCache _fields;
+            private readonly GridMap _map;
+
+            public Reachability(FlowFieldCache fields, GridMap map)
+            {
+                _fields = fields;
+                _map = map;
+            }
+
+            public bool CanTry(int2 destination, int2 from) =>
+                !_fields.IsKnownUnreachable(destination, from, _map);
+
+            public bool CanTry(int2 destination, float2 from) =>
+                CanTry(destination, GridCoords.CellOf(from));
+        }
 
         private struct FreeAgent
         {

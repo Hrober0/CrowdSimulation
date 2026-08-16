@@ -144,8 +144,9 @@ namespace Tests.EditorTests.RtsTests
             _world.TickFrames(400, 0.05f);
             _world.IsInside(agent).Should().BeTrue();
 
-            // One frame only: the step machine queues the exit and the transition system applies it in the
-            // same frame, and by the next one the agent is idle again and claims a fresh slot.
+            // One frame only. Walking out through the door takes time (§15), but the agent is put back on the
+            // map at the *start* of it - visible, standing on its doorstep, and no longer an occupant - so
+            // everything below is settled by the first frame. Only the step retires later.
             var doorstep = new int2(8, 7);
             _world.StepsOf(agent).Add(TaskStep.Exit(shelter, doorstep));
             _world.TickFrame(0.1f);
@@ -174,6 +175,57 @@ namespace Tests.EditorTests.RtsTests
 
             GridCoords.CellOf(_world.AgentOf(agent).Position).Should()
                       .NotBe(doorstep, "roads and doorways carry NoIdle and idle agents must clear them");
+        }
+
+        /// <summary>
+        /// A map with roads painted over most of it, which is what a player does. A road carries
+        /// <see cref="CellFlags.NoIdle"/>, so "somewhere an idle agent may stand" becomes a handful of cells
+        /// that every idle agent on the map is sent to at once.
+        ///
+        /// The property that has to hold is quiescence: agents with nothing to do must end up doing nothing.
+        /// Whether they all fit on the island is not the question - the ones that do not have to *stop*, not
+        /// keep being handed somewhere new to be.
+        /// </summary>
+        [Test]
+        public void IdleAgentsOnARoadedMapSettleInsteadOfCirclingForever()
+        {
+            // Everything is NoIdle except a 3x3 island at (6,0) - far too small for the crowd sent to it.
+            for (int y = -12; y <= 12; y++)
+            {
+                for (int x = -12; x <= 12; x++)
+                {
+                    if (math.abs(x - 6) > 1 || math.abs(y) > 1)
+                    {
+                        _world.Enqueue(GridEdit.AddFlags(new int2(x, y), CellFlags.NoIdle));
+                    }
+                }
+            }
+
+            _world.Tick();
+
+            var agents = new Entity[10];
+            for (int i = 0; i < agents.Length; i++)
+            {
+                agents[i] = _world.CreateIdleAgent(CentreOf(new int2(i % 5, i / 5)));
+            }
+
+            _world.TickFrames(600, 0.05f);
+
+            foreach (Entity agent in agents)
+            {
+                _world.StepsOf(agent).IsEmpty.Should()
+                      .BeTrue("half a minute is long enough for an agent with nothing to do to settle");
+            }
+
+            // And they stay settled: an agent being handed a new place to stand every few seconds looks
+            // exactly like one that has settled, until you watch it for another five.
+            _world.TickFrames(200, 0.05f);
+
+            foreach (Entity agent in agents)
+            {
+                _world.StepsOf(agent).IsEmpty.Should()
+                      .BeTrue("nothing should still be sending idle agents somewhere");
+            }
         }
 
         [Test]
