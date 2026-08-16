@@ -39,9 +39,24 @@ namespace Rts
         public double PostedTime;
 
         /// <summary>
-        /// <see cref="Priority"/> plus age, recomputed each tick by <see cref="OrderAgingSystem"/>. Aging is
-        /// what stops a low-priority request from starving forever behind a busy high-priority one - it
-        /// generalises the "oldest pickup first" tie-break the delivery example used.
+        /// When a batch of this order was last handed to somebody, or <see cref="PostedTime"/> if it never
+        /// has been. This is what <see cref="OrderAgingSystem"/> ages from, and the difference matters.
+        ///
+        /// Aging from <see cref="PostedTime"/> makes being served **free**: two orders of the same priority
+        /// climb at the same rate, so whichever was posted first leads by a fixed margin forever, and the
+        /// sort only reads the sign of that margin. The leader wins every tick until it is *fully* satisfied
+        /// and retired - and a warehouse's standing "always wants more" request never is, so it never yields
+        /// and its equals never get a look in. Aging from the last claim makes service cost an order the age
+        /// it had banked, so two equally hungry buildings take turns, while an order nobody touches still
+        /// climbs exactly as before.
+        /// </summary>
+        public double LastClaimedTime;
+
+        /// <summary>
+        /// <see cref="Priority"/> plus time since <see cref="LastClaimedTime"/>, recomputed each tick by
+        /// <see cref="OrderAgingSystem"/>. Aging is what stops a low-priority request from starving forever
+        /// behind a busy high-priority one - it generalises the "oldest pickup first" tie-break the delivery
+        /// example used.
         /// </summary>
         public float Effective;
     }

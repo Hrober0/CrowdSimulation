@@ -199,7 +199,7 @@ A warehouse's standing low-priority request reproduces the whole point of the ol
 ## 8. L5 — Order market
 
 ```
-Order { Kind(Haul|Work|Fight), Source, Target, ItemId, Amount, Priority, ClaimedBy, PostedTime }
+Order { Kind(Haul|Work|Fight), Source, Target, ItemId, Amount, Priority, ClaimedBy, PostedTime, LastClaimedTime }
 ```
 
 Orders are posted by **demand only — pull, never push**:
@@ -219,8 +219,21 @@ Congestion and deadlock, handled structurally:
 | head-on jams in corridors | player-painted one-way `Exits` |
 | mutual stationary block | per-agent watchdog: blocked > T seconds -> release claim, re-plan. One generic rule |
 | low-priority starvation | `effective = Priority + age * agingRate` (generalises the old `LastPickupTime` tie-break) |
+| one of two equal claimants always wins | age is measured from `LastClaimedTime`, not `PostedTime` — see below |
 | item taken while hauler en route | reservations, plus the existing `ExecutePickup` shortfall path |
 | ping-pong between stores | strict priority inequality (§7) |
+
+### Aging measures time since served, not time since asked
+
+Aging was written to stop a low-priority order starving behind a high-priority one, and it does. What it did not do was stop an order starving behind an **equal** one, because age measured from posting is never spent.
+
+Two warehouses of the same priority, both posted in the same request pass, tie exactly, and the sort settles a tie the same way every tick. Even a tenth of a second between their posts is no better: both climb at the same rate, so the gap is a constant, and the sort only reads its sign. The leader wins every tick until it is *fully* satisfied and retired — and a warehouse's standing "always wants more" request is never fully satisfied, so it never yields and its equal never gets a turn. Nothing about this is a tie-break accident; being served simply cost an order nothing, so there was no mechanism by which taking turns could happen.
+
+`LastClaimedTime` is the fix and it is one field: seeded to the post time, stamped on every claim, and what `effective` ages from. Service now costs an order the age it had banked, so two equally hungry buildings alternate, while an order nobody touches climbs exactly as it did before. It is also the more honest metric — *time since anything happened* is what starvation means, and a five-hundred-plank order being delivered ten at a time is not starving however long ago it was posted.
+
+Work orders were already covered by accident: a claimed one is zeroed, pruned, and reposted fresh next tick, so its age resets on its own. The frozen-order case belongs to hauls that are never fully satisfied.
+
+One known wart: an order whose claim later fails — the agent is cut short, the target is demolished — has already spent its age on a haul that never happened. It re-posts with the stock given back, so the cost is bounded by the aging rate and only appears when tasks are being cut short.
 
 ### Doorway contention — the queue slot, and why it is not a claim
 

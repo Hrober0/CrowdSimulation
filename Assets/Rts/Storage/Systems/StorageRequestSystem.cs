@@ -76,6 +76,10 @@ namespace Rts
                 Amount = slot.WantedIn,
                 Priority = slot.Priority,
                 PostedTime = now,
+
+                // Seeded, not left at zero: aging reads the difference from *now*, so a default of zero is
+                // an order that has been waiting since the world began and outranks everything on sight.
+                LastClaimedTime = now,
                 Effective = slot.Priority,
             });
         }

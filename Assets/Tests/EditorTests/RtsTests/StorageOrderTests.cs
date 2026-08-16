@@ -206,6 +206,55 @@ namespace Tests.EditorTests.RtsTests
             working.Should().Be(2, "demand size does not set the number of trips - the cap does");
         }
 
+        /// <summary>
+        /// The two warehouses are identical and posted in the same pass, so they tie exactly and the sort
+        /// settles it the same way every tick. Aging from the post time never breaks that tie - both climb at
+        /// the same rate - so the winner won every tick until it was fully satisfied, which a warehouse that
+        /// always wants more never is.
+        /// </summary>
+        [Test]
+        public void ServingAnOrderSpendsTheAgeItHadBanked()
+        {
+            _world.CreateSource(new int2(10, 2), Bread, amount: 500);
+            Entity west = _world.CreateWarehouse(new int2(6, 10), Bread, capacity: 500);
+            Entity east = _world.CreateWarehouse(new int2(14, 10), Bread, capacity: 500);
+
+            // Ten seconds of nobody to send, so both orders bank the same age. Without this the claim lands
+            // on the very frame the order was posted and there is nothing yet for serving it to cost.
+            _world.TickFrames(20, 0.5f);
+
+            Entity hauler = _world.CreateIdleAgent(Centre(new int2(10, 6)), carryCapacity: 10);
+            _world.TickFrames(3);
+
+            _world.HasOrder(hauler).Should().BeTrue();
+            Entity served = _world.OrderOf(hauler).Target;
+            Entity waiting = served == west ? east : west;
+
+            _world.TickFrame(0.1f); // aging runs before assignment, so the new claim time lands next tick
+
+            _world.Orders.TryFind(served, Bread, out int servedIndex).Should().BeTrue();
+            _world.Orders.TryFind(waiting, Bread, out int waitingIndex).Should().BeTrue();
+
+            _world.Orders[servedIndex].Effective.Should().BeLessThan(
+                _world.Orders[waitingIndex].Effective,
+                "an order that has just been served goes to the back of its own priority band");
+        }
+
+        [Test]
+        public void TwoEquallyHungryWarehousesTakeTurns()
+        {
+            _world.CreateSource(new int2(10, 2), Bread, amount: 500);
+            Entity west = _world.CreateWarehouse(new int2(6, 10), Bread, capacity: 500);
+            Entity east = _world.CreateWarehouse(new int2(14, 10), Bread, capacity: 500);
+            _world.CreateIdleAgent(Centre(new int2(10, 6)), carryCapacity: 10);
+
+            _world.TickFrames(600, 0.05f);
+
+            _world.SlotOf(west, Bread).Amount.Should().BeGreaterThan(0);
+            _world.SlotOf(east, Bread).Amount.Should()
+                  .BeGreaterThan(0, "one hauler and two equal claims means alternating, not a permanent winner");
+        }
+
         [Test]
         public void AgingLetsAWaitingOrderClimb()
         {

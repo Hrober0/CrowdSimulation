@@ -106,10 +106,12 @@ namespace Rts
                 SystemAPI.GetSingleton<GridWorld>().Map
             );
 
+            double now = SystemAPI.Time.ElapsedTime;
+
             int claims = 0;
             for (int i = 0; i < ranked.Length && claims < MAX_CLAIMS_PER_TICK && agents.Length > 0; i++)
             {
-                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach))
+                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, now))
                 {
                     claims++;
                 }
@@ -129,12 +131,13 @@ namespace Rts
             in NativeList<StorageSite> sites,
             NativeList<FreeAgent> agents,
             NativeHashMap<Entity, int> busy,
-            in Reachability reach)
+            in Reachability reach,
+            double now)
         {
             return book[orderIndex].Kind switch
             {
-                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy, reach),
-                OrderKind.Work => TryAssignWork(book, orderIndex, agents, reach),
+                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy, reach, now),
+                OrderKind.Work => TryAssignWork(book, orderIndex, agents, reach, now),
                 _ => false,
             };
         }
@@ -148,7 +151,8 @@ namespace Rts
             OrderBook book,
             int orderIndex,
             NativeList<FreeAgent> agents,
-            in Reachability reach)
+            in Reachability reach,
+            double now)
         {
             Order order = book[orderIndex];
             if (order.Amount <= 0 || !TryEntranceOf(order.Target, out int2 door))
@@ -201,6 +205,7 @@ namespace Rts
             _orders.SetComponentEnabled(agent.Entity, true);
 
             order.Amount = 0;
+            order.LastClaimedTime = now;
             book[orderIndex] = order;
 
             agents.RemoveAtSwapBack(agentIndex);
@@ -213,7 +218,8 @@ namespace Rts
             in NativeList<StorageSite> sites,
             NativeList<FreeAgent> agents,
             NativeHashMap<Entity, int> busy,
-            in Reachability reach)
+            in Reachability reach,
+            double now)
         {
             Order order = book[orderIndex];
             if (order.Amount <= 0)
@@ -281,6 +287,10 @@ namespace Rts
             _orders.SetComponentEnabled(agent.Entity, true);
 
             order.Amount -= amount;
+
+            // What makes the queue take turns rather than freeze: this order has just been served, so it
+            // starts banking age again from zero and its equals move ahead of it (see Order.LastClaimedTime).
+            order.LastClaimedTime = now;
             book[orderIndex] = order;
 
             agents.RemoveAtSwapBack(agentIndex);

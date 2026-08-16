@@ -71,6 +71,9 @@ namespace Rts
                 Amount = 1,
                 Priority = recipe.Priority,
                 PostedTime = now,
+
+                // See StorageRequestSystem.Post: zero here would be an order older than the world.
+                LastClaimedTime = now,
                 Effective = recipe.Priority,
             });
         }
