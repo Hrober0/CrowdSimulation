@@ -330,10 +330,7 @@ namespace Examples.Rts.UI
                                      : $"Carrying {carry.Amount} {ItemCatalog.Name(carry.Item)}");
             }
 
-            if (_entities.IsComponentEnabled<InsideBuilding>(agent))
-            {
-                _text.AppendLine("Inside a building");
-            }
+            _text.AppendLine(DescribeMovement(agent));
 
             _text.AppendLine(_entities.IsComponentEnabled<AssignedOrder>(agent)
                                  ? DescribeOrder(_entities.GetComponentData<AssignedOrder>(agent))
@@ -354,19 +351,88 @@ namespace Examples.Rts.UI
             _selectionBody.text = _text.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// The one line that answers "why is it standing there".
+        ///
+        /// Every way an agent can be motionless is a different thing to fix, and they look identical on
+        /// screen: inside a building, half way through a door, waiting its turn in a queue, or walking at a
+        /// destination the grid has no route to. The last one is the one worth shouting about - it is what a
+        /// one-way road painted across the only way in produces.
+        /// </summary>
+        private string DescribeMovement(Entity agent)
+        {
+            if (_entities.IsComponentEnabled<InsideBuilding>(agent))
+            {
+                return "Inside a building";
+            }
+
+            if (_entities.HasComponent<DoorUse>(agent) && _entities.IsComponentEnabled<DoorUse>(agent))
+            {
+                var door = _entities.GetComponentData<DoorUse>(agent);
+                return $"In the doorway at {door.Cell.x},{door.Cell.y} "
+                       + $"({(door.Kind == DoorUseKind.Enter ? "going in" : "coming out")}, {door.Remaining:0.0}s left)";
+            }
+
+            DynamicBuffer<TaskStep> steps = _entities.GetBuffer<TaskStep>(agent);
+            bool atADoor = !steps.IsEmpty
+                           && (steps[0].Kind == TaskStepKind.Enter || steps[0].Kind == TaskStepKind.Exit);
+
+            if (!_entities.IsComponentEnabled<PathFollow>(agent))
+            {
+                return atADoor ? "Waiting for the door to be free" : "Standing";
+            }
+
+            var path = _entities.GetComponentData<PathFollow>(agent);
+            string goal = $"{path.GoalCell.x},{path.GoalCell.y}";
+
+            if (path.Holding)
+            {
+                return $"Queueing for {goal}, waiting {path.HoldDistance:0.#} cells out";
+            }
+
+            return HasNoRoute(agent, path)
+                ? $"Walking to {goal} - NO ROUTE FROM HERE"
+                : $"Walking to {goal}";
+        }
+
+        /// <summary>Whether the destination's own flow field says there is no way in from where it stands.</summary>
+        private bool HasNoRoute(Entity agent, in PathFollow path)
+        {
+            if (!TryGetGrid(out GridMap map))
+            {
+                return false;
+            }
+
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<FlowFieldCache>());
+            if (!query.TryGetSingleton(out FlowFieldCache fields) || !fields.IsCreated)
+            {
+                return false;
+            }
+
+            float2 position = _entities.GetComponentData<AgentMove>(agent).Position;
+            return fields.IsKnownUnreachable(path.GoalCell, GridCoords.CellOf(position), map);
+        }
+
+        private bool TryGetGrid(out GridMap map)
+        {
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<GridWorld>());
+
+            map = query.TryGetSingleton(out GridWorld grid) ? grid.Map : default;
+            return map.IsCreated;
+        }
+
         private void ShowCell(int2 cell)
         {
             _selectionTitle.text = $"Cell {cell.x}, {cell.y}";
             _slots.Clear();
 
-            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<GridWorld>());
-            if (!query.TryGetSingleton(out GridWorld grid) || !grid.Map.IsCreated)
+            if (!TryGetGrid(out GridMap map))
             {
                 _selectionBody.text = "No grid.";
                 return;
             }
 
-            CellData data = grid.Map.GetCell(cell);
+            CellData data = map.GetCell(cell);
 
             _text.Clear();
             _text.AppendLine($"Cost {data.CostSum}   {(data.IsPassable ? "passable" : "BLOCKED")}");
@@ -403,6 +469,14 @@ namespace Examples.Rts.UI
             _ => order.Kind.ToString(),
         };
 
+        /// <summary>
+        /// The task as the agent is actually running it, head first and marked with brackets.
+        ///
+        /// Printing <see cref="TaskStep.Kind"/> is not enough to read a task by: a pickup, a deposit and a
+        /// shift at a workbench are all <see cref="TaskStepKind.Interact"/>, and the walk to a doorway is an
+        /// ordinary <see cref="TaskStepKind.GoTo"/> - so a hauler's whole round trip printed as
+        /// "GoTo -> Interact -> GoTo -> Interact", which says nothing about what it is doing or where.
+        /// </summary>
         private static string DescribeTask(in DynamicBuffer<TaskStep> steps)
         {
             if (steps.IsEmpty)
@@ -418,11 +492,27 @@ namespace Examples.Rts.UI
                     text.Append(" -> ");
                 }
 
-                text.Append(steps[i].Kind);
+                // The head is the step being run right now; everything after it is the plan.
+                text.Append(i == 0 ? $"[{Describe(steps[0])}]" : Describe(steps[i]));
             }
 
             return text.ToString();
         }
+
+        private static string Describe(in TaskStep step) => step.Kind switch
+        {
+            TaskStepKind.GoTo => $"GoTo {step.Cell.x},{step.Cell.y}",
+            TaskStepKind.Enter => $"Enter at {step.Cell.x},{step.Cell.y}",
+            TaskStepKind.Exit => $"Exit at {step.Cell.x},{step.Cell.y}",
+            TaskStepKind.Interact => step.Interaction switch
+            {
+                InteractionKind.Pickup => "Pickup",
+                InteractionKind.Deposit => "Deposit",
+                InteractionKind.Work => "Work",
+                _ => $"Wait {step.Duration:0.0}s",
+            },
+            _ => step.Kind.ToString(),
+        };
 
         private static string Describe(in DynamicBuffer<RecipeInput> inputs)
         {

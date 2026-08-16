@@ -171,12 +171,19 @@ namespace Examples.Rts
         /// Ground is laid down deliberately expensive, because a road is a *discount* (§3) and a discount off
         /// zero changes no routing at all.
         ///
+        /// **The whole map, not the radius that was asked for.** A grid is rounded up to whole 32-cell chunks,
+        /// so asking for 48 cells gets 64 - and painting only the 48 leaves a ring of cost-zero cells right
+        /// round the edge. That ring is a road nobody laid and nothing draws: cost zero is 10 to step onto
+        /// against the ground's 16, so it is a permanent free lane, and the flow field will happily send an
+        /// agent out to the border and along it on the way to somewhere that has nothing to do with the edge
+        /// of the map.
+        ///
         /// Once only. The patch is a cost delta like every other contribution, so painting it again on every
         /// rebuild would make the world steadily more expensive to walk across until nothing was passable.
         /// </summary>
         private void PaintGround()
         {
-            if (_groundPainted || _groundCost <= 0)
+            if (_groundPainted || _groundCost <= 0 || !TryGetMap(out GridMap map))
             {
                 return;
             }
@@ -186,12 +193,20 @@ namespace Examples.Rts
             Entity patch = _entities.CreateEntity(typeof(GridCostPatch));
             _entities.SetComponentData(patch, new GridCostPatch
             {
-                MinCell = new int2(-_worldRadius, -_worldRadius),
-                SizeInCells = new int2(_worldRadius * 2, _worldRadius * 2),
+                MinCell = map.MinCell,
+                SizeInCells = map.SizeInCells,
                 Cost = _groundCost,
                 Flags = CellFlags.None,
                 Exits = DirectionUtils.ALL_EXITS,
             });
+        }
+
+        private bool TryGetMap(out GridMap map)
+        {
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<GridWorld>());
+
+            map = query.TryGetSingleton(out GridWorld grid) ? grid.Map : default;
+            return map.IsCreated;
         }
 
         private void ScatterTrees()

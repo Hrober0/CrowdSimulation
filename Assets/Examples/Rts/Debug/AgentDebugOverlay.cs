@@ -41,6 +41,12 @@ namespace Examples.Rts
         [SerializeField, Tooltip("Goal cell, and the waypoint being steered at when it is not the goal.")]
         private bool _drawGoal = true;
 
+        [SerializeField, Tooltip("For an agent waiting its turn: the ring around the destination it may not cross.")]
+        private bool _drawQueue = true;
+
+        [SerializeField, Tooltip("Agents in a doorway: a box on the entrance cell that shrinks as they go through.")]
+        private bool _drawDoors = true;
+
         [SerializeField, Tooltip("Dots dropped on a timer. Even spacing means an even speed.")]
         private bool _drawTrail = true;
 
@@ -198,9 +204,24 @@ namespace Examples.Rts
                     DrawRay(move.Position, move.Velocity, move.MaxSpeed);
                 }
 
-                if (_drawGoal && entities.IsComponentEnabled<PathFollow>(agent))
+                if (entities.IsComponentEnabled<PathFollow>(agent))
                 {
-                    DrawGoal(move, entities.GetComponentData<PathFollow>(agent));
+                    PathFollow path = entities.GetComponentData<PathFollow>(agent);
+
+                    if (_drawGoal)
+                    {
+                        DrawGoal(move, path);
+                    }
+
+                    if (_drawQueue && path.Holding)
+                    {
+                        DrawHold(move, path);
+                    }
+                }
+
+                if (_drawDoors)
+                {
+                    DrawDoorUse(entities, agent, move);
                 }
             }
         }
@@ -253,6 +274,46 @@ namespace Examples.Rts
                 SimToWorld.Position(GridCoords.CellCenter(path.WaypointCell)),
                 SimToWorld.Direction(new float2(0.4f, 0.4f))
             );
+        }
+
+        /// <summary>
+        /// An agent waiting its turn, drawn as the ring it has been told not to cross.
+        ///
+        /// The ring is the readable part. A queue is a set of distances from one cell (see
+        /// <c>ArrivalQueueSystem</c>), so concentric rings around a busy door *are* the queue - and an agent
+        /// sitting on its own ring is waiting correctly, while one drifting inside somebody else's is the bug.
+        /// </summary>
+        private static void DrawHold(in AgentMove move, in PathFollow path)
+        {
+            Vector3 goal = SimToWorld.Position(GridCoords.CellCenter(path.GoalCell));
+
+            Gizmos.color = new Color(1f, 0.75f, 0.2f, 0.7f);
+            Gizmos.DrawWireSphere(goal, path.HoldDistance);
+            Gizmos.DrawLine(SimToWorld.Position(move.Position), goal);
+        }
+
+        /// <summary>
+        /// An agent in a doorway: a box on the entrance cell that shrinks as it goes through, green on the way
+        /// in and blue on the way out. Two boxes on one cell would be the one-agent-at-a-time rule broken.
+        /// </summary>
+        private static void DrawDoorUse(EntityManager entities, Entity agent, in AgentMove move)
+        {
+            if (!entities.HasComponent<DoorUse>(agent) || !entities.IsComponentEnabled<DoorUse>(agent))
+            {
+                return;
+            }
+
+            DoorUse door = entities.GetComponentData<DoorUse>(agent);
+
+            Gizmos.color = door.Kind == DoorUseKind.Enter
+                ? new Color(0.3f, 1f, 0.5f, 0.8f)
+                : new Color(0.4f, 0.7f, 1f, 0.8f);
+
+            float size = math.lerp(0.9f, 0.15f, door.Inside);
+            Vector3 cell = SimToWorld.Position(GridCoords.CellCenter(door.Cell));
+
+            Gizmos.DrawWireCube(cell, SimToWorld.Direction(new float2(size, size)));
+            Gizmos.DrawLine(SimToWorld.Position(move.Position), cell);
         }
 
         private void DrawTrail(Trail trail)

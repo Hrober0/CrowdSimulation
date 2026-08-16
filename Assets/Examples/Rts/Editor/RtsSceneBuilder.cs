@@ -26,8 +26,11 @@ namespace Examples.Rts.EditorTools
         private const string GENERATED_DIR = "Assets/Examples/Rts/Generated";
         private const string AGENT_PREFAB = GENERATED_DIR + "/RtsAgentView.prefab";
         private const string BUILDING_PREFAB = GENERATED_DIR + "/RtsBuildingView.prefab";
+        private const string OBJECT_PREFAB = GENERATED_DIR + "/RtsObjectView.prefab";
         private const string AGENT_MATERIAL = GENERATED_DIR + "/RtsAgentView.mat";
         private const string BUILDING_MATERIAL = GENERATED_DIR + "/RtsBuildingView.mat";
+        private const string OBJECT_MATERIAL = GENERATED_DIR + "/RtsObjectView.mat";
+        private const string CIRCLE_MESH = GENERATED_DIR + "/RtsCircle.mesh";
         private const string PANEL_SETTINGS = GENERATED_DIR + "/RtsPanelSettings.asset";
         private const string RUNTIME_THEME = "Assets/UI Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss";
 
@@ -38,6 +41,7 @@ namespace Examples.Rts.EditorTools
 
             BuildQuadPrefab(AGENT_PREFAB, AGENT_MATERIAL, "RtsAgentView", new Color(0.95f, 0.85f, 0.35f), 0.7f);
             BuildQuadPrefab(BUILDING_PREFAB, BUILDING_MATERIAL, "RtsBuildingView", Color.white, 1f);
+            BuildCirclePrefab(OBJECT_PREFAB, OBJECT_MATERIAL, "RtsObjectView", new Color(0.28f, 0.62f, 0.32f));
             BuildPanelSettings();
 
             // Flushed to disk before anything in the scene points at them. A scene can only serialise a
@@ -53,10 +57,11 @@ namespace Examples.Rts.EditorTools
             // still non-null to C# but serialises as a null reference, silently.
             GameObject agentPrefab = Load<GameObject>(AGENT_PREFAB);
             GameObject buildingPrefab = Load<GameObject>(BUILDING_PREFAB);
+            GameObject objectPrefab = Load<GameObject>(OBJECT_PREFAB);
             var panel = Load<PanelSettings>(PANEL_SETTINGS);
 
             BuildCamera();
-            GameObject sandbox = BuildSandbox(agentPrefab, buildingPrefab);
+            GameObject sandbox = BuildSandbox(agentPrefab, buildingPrefab, objectPrefab);
             BuildUi(panel, sandbox.GetComponent<RtsToolController>());
 
             EditorSceneManager.SaveScene(scene, SCENE_PATH);
@@ -81,7 +86,10 @@ namespace Examples.Rts.EditorTools
             cameraObject.AddComponent<RtsCameraController>();
         }
 
-        private static GameObject BuildSandbox(GameObject agentPrefab, GameObject buildingPrefab)
+        private static GameObject BuildSandbox(
+            GameObject agentPrefab,
+            GameObject buildingPrefab,
+            GameObject objectPrefab)
         {
             var sandbox = new GameObject("RTS Sandbox");
 
@@ -89,12 +97,15 @@ namespace Examples.Rts.EditorTools
             sandbox.AddComponent<RtsStartWorld>();
             sandbox.AddComponent<GridDebugOverlay>();
             sandbox.AddComponent<AgentDebugOverlay>();
+            sandbox.AddComponent<SelectedAgentOverlay>();
 
             AgentViewSettings agents = sandbox.AddComponent<AgentViewSettings>();
             BuildingViewSettings buildings = sandbox.AddComponent<BuildingViewSettings>();
+            CellObjectViewSettings objects = sandbox.AddComponent<CellObjectViewSettings>();
 
             SetPrivate(agents, "_agentPrefab", agentPrefab);
             SetPrivate(buildings, "_buildingPrefab", buildingPrefab);
+            SetPrivate(objects, "_objectPrefab", objectPrefab);
 
             // Nothing to set on the tool controller here: the panel drives it, and the camera resolves to
             // Camera.main when its own field is empty.
@@ -150,6 +161,63 @@ namespace Examples.Rts.EditorTools
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(quad, prefabPath);
             Object.DestroyImmediate(quad);
             return prefab;
+        }
+
+        /// <summary>
+        /// A flat disc, for the things on the map that are round: a tree reads as a circle where a building
+        /// reads as a box, which is the whole of "what kind of thing is that" at a glance.
+        ///
+        /// Scale 1 is one cell across, so <see cref="CellObjectViewSystem"/> can size an instance in cells and
+        /// not care that the mesh is a fan.
+        /// </summary>
+        private static GameObject BuildCirclePrefab(
+            string prefabPath,
+            string materialPath,
+            string name,
+            Color colour)
+        {
+            Material material = CreateUnlitMaterial(materialPath, colour);
+
+            // Two-sided. Which way a generated mesh faces depends on the winding *and* on which side of the
+            // plane the camera ends up, and a disc that is invisible from one of them is a trap for whoever
+            // switches SimToWorld to XZ later. Turning culling off costs nothing on a 24-triangle mesh.
+            material.SetFloat("_Cull", 0f);
+
+            var circle = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            circle.GetComponent<MeshFilter>().sharedMesh = CreateCircleMesh(CIRCLE_MESH);
+            circle.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(circle, prefabPath);
+            Object.DestroyImmediate(circle);
+            return prefab;
+        }
+
+        /// <summary>A triangle fan of radius 0.5 in the XY plane, saved as an asset the prefab can point at.</summary>
+        private static Mesh CreateCircleMesh(string path)
+        {
+            const int segments = 24;
+
+            var vertices = new Vector3[segments + 1];
+            var triangles = new int[segments * 3];
+
+            vertices[0] = Vector3.zero;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i / (float)segments * Mathf.PI * 2f;
+                vertices[i + 1] = new Vector3(Mathf.Cos(angle) * 0.5f, Mathf.Sin(angle) * 0.5f, 0f);
+
+                triangles[i * 3] = 0;
+                triangles[i * 3 + 1] = i + 1;
+                triangles[i * 3 + 2] = (i + 1) % segments + 1;
+            }
+
+            var mesh = new Mesh { name = "RtsCircle", vertices = vertices, triangles = triangles };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            // CreateAsset turns the instance it is given *into* the asset, so this is the thing to hand back.
+            AssetDatabase.CreateAsset(mesh, path);
+            return mesh;
         }
 
         private static Material CreateUnlitMaterial(string path, Color colour)

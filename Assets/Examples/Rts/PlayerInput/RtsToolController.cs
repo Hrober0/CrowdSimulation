@@ -150,15 +150,62 @@ namespace Examples.Rts
             EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Of(building, cell)));
         }
 
+        /// <summary>
+        /// Takes away whatever is on the cell: a building, or the trees and rocks that were the one thing on
+        /// the map nothing could remove.
+        ///
+        /// A tree blocks a cell exactly as a building does - it is 255 of cost and nothing may walk through it
+        /// (§3, §5) - but it has no view of its own, so on screen it is a red square with no explanation, and
+        /// the demolish tool only ever looked for buildings. Clearing land is what the cell -> object map is
+        /// there for.
+        /// </summary>
         private void Demolish(int2 cell)
         {
-            if (!TryFindBuildingAt(cell, out Entity building))
+            if (TryFindBuildingAt(cell, out Entity building))
             {
+                RtsConstruction.Demolish(_entities, building);
+                EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Nothing));
                 return;
             }
 
-            RtsConstruction.Demolish(_entities, building);
-            EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Nothing));
+            if (ClearObjectsAt(cell))
+            {
+                EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Ground(cell)));
+            }
+        }
+
+        /// <summary>
+        /// Destroys every world object standing on a cell. The cost and the map entry are given back by
+        /// <c>CellObjectRegistrationSystem</c> on the next grid phase, from its cleanup component - so this
+        /// really is just "destroy the entity", exactly as demolishing a building is.
+        /// </summary>
+        private bool ClearObjectsAt(int2 cell)
+        {
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<CellObjectMap>());
+            if (!query.TryGetSingleton(out CellObjectMap objects) || !objects.IsCreated)
+            {
+                return false;
+            }
+
+            // Collected first: destroying an entity while walking the map that lists it is asking the
+            // enumerator to skip the rest of the cell.
+            var doomed = new NativeList<Entity>(4, Allocator.Temp);
+            foreach (Entity standing in objects.GetObjectsAt(cell))
+            {
+                doomed.Add(standing);
+            }
+
+            foreach (Entity standing in doomed)
+            {
+                if (_entities.Exists(standing))
+                {
+                    _entities.DestroyEntity(standing);
+                }
+            }
+
+            bool cleared = !doomed.IsEmpty;
+            doomed.Dispose();
+            return cleared;
         }
 
         private void Spawn(in GridWorld grid, int2 cell)

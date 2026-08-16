@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &179190305
+--- !u!1 &1540661641
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,9 +127,249 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 179190308}
-  - component: {fileID: 179190307}
-  - component: {fileID: 179190306}
+  - component: {fileID: 1540661650}
+  - component: {fileID: 1540661642}
+  - component: {fileID: 1540661649}
+  - component: {fileID: 1540661648}
+  - component: {fileID: 1540661647}
+  - component: {fileID: 1540661646}
+  - component: {fileID: 1540661645}
+  - component: {fileID: 1540661644}
+  - component: {fileID: 1540661643}
+  m_Layer: 0
+  m_Name: RTS Sandbox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1540661642
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bfa6a09247a399a4a95a9983d43c10d7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.RtsToolController
+  _camera: {fileID: 0}
+  _spawnCount: 5
+  _agentPickRadius: 0.6
+--- !u!114 &1540661643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bd874768d9439f64e833646b9031c9d1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.CellObjectViewSettings
+  _objectPrefab: {fileID: 7714322310898167332, guid: 227857651c8c9b847940033efb534e10, type: 3}
+--- !u!114 &1540661644
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e577ef94e0f8e7b47a3803d7e7d48b09, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.BuildingViewSettings
+  _buildingPrefab: {fileID: 374207342302481983, guid: 22a6ca8573223c848861ad1b006eee67, type: 3}
+--- !u!114 &1540661645
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f53a7572cbda3384eb2a09eb16d58c56, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.AgentViewSettings
+  _agentPrefab: {fileID: 1683616565734441140, guid: 9069ebefbb211634e8241a244ca481ed, type: 3}
+  _prewarm: 256
+  _depth: 0
+  _turnDegreesPerSecond: 540
+  _cullRadius: 0
+  _focus: {fileID: 0}
+--- !u!114 &1540661646
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a23d476f26c5d7e4f8525711e8ef5500, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.SelectedAgentOverlay
+  _drawPlan: 1
+  _drawRoute: 1
+  _drawHold: 1
+--- !u!114 &1540661647
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 83b1f2a704dd3664c8fbd069750eebb2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.AgentDebugOverlay
+  _drawSpeed: 0
+  _drawVelocity: 0
+  _drawIntent: 1
+  _drawRadius: 0
+  _drawGoal: 1
+  _drawQueue: 1
+  _drawDoors: 1
+  _drawTrail: 0
+  _windowRadius: 24
+  _trailInterval: 0.1
+  _trailLength: 40
+--- !u!114 &1540661648
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6b9288e0696a9545b0c97ff46467cc1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.GridDebugOverlay
+  _drawBounds: 0
+  _drawChunks: 0
+  _drawCost: 0
+  _drawOneWay: 1
+  _windowRadius: 32
+  _hottestCost: 32
+--- !u!114 &1540661649
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f25c526f222c3f543aa132dcc703250c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.RtsStartWorld
+  _buildOnStart: 1
+  _haulers: 12
+  _groundCost: 6
+  _trees: 60
+  _worldRadius: 24
+--- !u!4 &1540661650
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1540661641}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1675682396
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1675682399}
+  - component: {fileID: 1675682398}
+  - component: {fileID: 1675682397}
+  m_Layer: 0
+  m_Name: UI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1675682397
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1675682396}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69c55dd5a713b204ba2d631641ebc7db, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.UI.RtsPanel
+  _tools: {fileID: 1540661642}
+--- !u!114 &1675682398
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1675682396}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
+  m_PanelSettings: {fileID: 11400000, guid: 5de8d7709f4a57f4fa855035b23df455, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 0}
+  m_SortingOrder: 0
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
+--- !u!4 &1675682399
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1675682396}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1928500321
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1928500324}
+  - component: {fileID: 1928500323}
+  - component: {fileID: 1928500322}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -137,13 +377,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &179190306
+--- !u!114 &1928500322
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 179190305}
+  m_GameObject: {fileID: 1928500321}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5f2abbc705abee24bbfe65ad9531697d, type: 3}
@@ -153,13 +393,13 @@ MonoBehaviour:
   _zoomSpeed: 8
   _minZoom: 4
   _maxZoom: 60
---- !u!20 &179190307
+--- !u!20 &1928500323
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 179190305}
+  m_GameObject: {fileID: 1928500321}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -204,13 +444,13 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!4 &179190308
+--- !u!4 &1928500324
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 179190305}
+  m_GameObject: {fileID: 1928500321}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -20}
@@ -219,218 +459,10 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &524026521
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 524026524}
-  - component: {fileID: 524026523}
-  - component: {fileID: 524026522}
-  m_Layer: 0
-  m_Name: UI
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &524026522
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 524026521}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 69c55dd5a713b204ba2d631641ebc7db, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.UI.RtsPanel
-  _tools: {fileID: 766113047}
---- !u!114 &524026523
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 524026521}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
-  m_Name: 
-  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
-  m_PanelSettings: {fileID: 11400000, guid: 5de8d7709f4a57f4fa855035b23df455, type: 2}
-  m_ParentUI: {fileID: 0}
-  sourceAsset: {fileID: 0}
-  m_SortingOrder: 0
-  m_Position: 0
-  m_WorldSpaceSizeMode: 1
-  m_WorldSpaceWidth: 1920
-  m_WorldSpaceHeight: 1080
-  m_PivotReferenceSize: 0
-  m_Pivot: 0
-  m_WorldSpaceCollider: {fileID: 0}
---- !u!4 &524026524
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 524026521}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &766113046
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 766113052}
-  - component: {fileID: 766113047}
-  - component: {fileID: 766113051}
-  - component: {fileID: 766113050}
-  - component: {fileID: 766113053}
-  - component: {fileID: 766113049}
-  - component: {fileID: 766113048}
-  m_Layer: 0
-  m_Name: RTS Sandbox
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &766113047
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bfa6a09247a399a4a95a9983d43c10d7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.RtsToolController
-  _camera: {fileID: 0}
-  _spawnCount: 5
-  _agentPickRadius: 0.6
---- !u!114 &766113048
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e577ef94e0f8e7b47a3803d7e7d48b09, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.BuildingViewSettings
-  _buildingPrefab: {fileID: 374207342302481983, guid: 22a6ca8573223c848861ad1b006eee67, type: 3}
---- !u!114 &766113049
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f53a7572cbda3384eb2a09eb16d58c56, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.AgentViewSettings
-  _agentPrefab: {fileID: 1683616565734441140, guid: 9069ebefbb211634e8241a244ca481ed, type: 3}
-  _prewarm: 256
-  _depth: 0
-  _turnDegreesPerSecond: 540
-  _cullRadius: 0
-  _focus: {fileID: 0}
---- !u!114 &766113050
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b6b9288e0696a9545b0c97ff46467cc1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.GridDebugOverlay
-  _drawBounds: 1
-  _drawChunks: 1
-  _drawCost: 1
-  _drawOneWay: 1
-  _windowRadius: 32
-  _hottestCost: 32
---- !u!114 &766113051
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f25c526f222c3f543aa132dcc703250c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.RtsStartWorld
-  _buildOnStart: 1
-  _haulers: 12
-  _groundCost: 6
-  _trees: 60
-  _worldRadius: 24
---- !u!4 &766113052
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &766113053
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 766113046}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 83b1f2a704dd3664c8fbd069750eebb2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Examples.Rts.AgentDebugOverlay
-  _drawSpeed: 0
-  _drawVelocity: 0
-  _drawIntent: 0
-  _drawRadius: 0
-  _drawGoal: 0
-  _drawTrail: 0
-  _windowRadius: 24
-  _trailInterval: 0.1
-  _trailLength: 40
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 179190308}
-  - {fileID: 766113052}
-  - {fileID: 524026524}
+  - {fileID: 1928500324}
+  - {fileID: 1540661650}
+  - {fileID: 1675682399}
