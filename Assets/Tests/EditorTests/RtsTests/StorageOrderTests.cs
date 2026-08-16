@@ -255,6 +255,38 @@ namespace Tests.EditorTests.RtsTests
                   .BeGreaterThan(0, "one hauler and two equal claims means alternating, not a permanent winner");
         }
 
+        /// <summary>
+        /// Eighty-five cells between the only hauler and the only source. There used to be a sixty-four cell
+        /// limit on how far an agent would walk to start a haul, which sounds like a preference and behaved
+        /// like a veto: no agent within it meant the order was refused, refused again next tick, and refused
+        /// for as long as nobody happened to wander closer.
+        /// </summary>
+        [Test]
+        public void AnOrderWithNobodyNearbyStillGetsDone()
+        {
+            _world.CreateSource(new int2(-30, -30), Bread, amount: 40);
+            Entity warehouse = _world.CreateWarehouse(new int2(-27, -30), Bread, capacity: 50);
+            Entity hauler = _world.CreateIdleAgent(Centre(new int2(30, 30)), carryCapacity: 10);
+
+            _world.TickFrames(3);
+
+            _world.HasOrder(hauler).Should().BeTrue("a long walk beats never going");
+            _world.OrderOf(hauler).Target.Should().Be(warehouse);
+        }
+
+        /// <summary>The same veto applied to workers, through the same shared search.</summary>
+        [Test]
+        public void ACrafterWithNobodyNearbyStillGetsAWorker()
+        {
+            _world.CreateCrafter(new int2(-30, -30), Bread, new ItemId(2), inputStock: 5);
+            Entity worker = _world.CreateIdleAgent(Centre(new int2(30, 30)));
+
+            _world.TickFrames(3);
+
+            _world.HasOrder(worker).Should().BeTrue();
+            _world.OrderOf(worker).Kind.Should().Be(OrderKind.Work);
+        }
+
         [Test]
         public void AgingLetsAWaitingOrderClimb()
         {

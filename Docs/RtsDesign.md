@@ -208,7 +208,11 @@ Orders are posted by **demand only — pull, never push**:
 - Work — a building with a free work slot and inputs on hand.
 - Fight — threat detection.
 
-Claiming an order reserves both ends via the ported `StorageSlotUtils.TryReserveBoth`. Assignment is spatially bounded: agents consider orders within range, scored `effectivePriority / travelCost`, with a cap on claims per tick.
+Claiming an order reserves both ends via the ported `StorageSlotUtils.TryReserveBoth`. Orders are taken in effective-priority order and given to the nearest agent that can reach the first leg, with a cap on claims per tick.
+
+**Not spatially bounded, deliberately.** This said "agents consider orders within range" and there was a sixty-four cell limit implementing it, on the reasoning that beyond it somebody nearer should take the job. It never chose between two agents. The nearest reachable agent anywhere *is* the nearest reachable agent in range whenever one is in range, so the limit only ever fired when nobody was — and then it did not defer the work to somebody nearer, it refused the order. Refused it identically on the next tick, and every tick after, because nothing about the geometry had changed: a permanent deadlock wearing the face of an order patiently waiting its turn. A radius is only a preference if something happens when it is empty. Distance still decides *who* goes; it no longer decides whether anyone does.
+
+The scan is ordered cheap-test-first as a result — squared distance, then reachability only for an agent that is a new nearest. Reachability is a hash probe and a pair of field reads, so gating it on being a new leader turns roughly one probe per agent into roughly one per new nearest, and the unbounded search costs less than the bounded one did.
 
 Congestion and deadlock, handled structurally:
 
@@ -220,6 +224,7 @@ Congestion and deadlock, handled structurally:
 | mutual stationary block | per-agent watchdog: blocked > T seconds -> release claim, re-plan. One generic rule |
 | low-priority starvation | `effective = Priority + age * agingRate` (generalises the old `LastPickupTime` tie-break) |
 | one of two equal claimants always wins | age is measured from `LastClaimedTime`, not `PostedTime` — see below |
+| an order nobody stands near is never taken | no distance veto on assignment; the nearest reachable agent takes it however far away it is |
 | item taken while hauler en route | reservations, plus the existing `ExecutePickup` shortfall path |
 | ping-pong between stores | strict priority inequality (§7) |
 

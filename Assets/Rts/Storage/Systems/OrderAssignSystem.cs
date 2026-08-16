@@ -42,9 +42,6 @@ namespace Rts
         /// </summary>
         private const int DEFAULT_MAX_CONCURRENT_HAULERS = 8;
 
-        /// <summary>How far an agent will walk to start a haul. Beyond this someone nearer should do it.</summary>
-        private const float MAX_HAUL_RANGE = 64f;
-
         private const float PICKUP_SECONDS = 0.5f;
         private const float DEPOSIT_SECONDS = 0.5f;
 
@@ -378,6 +375,21 @@ namespace Rts
         /// rather than the order being abandoned - the point is to give the job to somebody who *can*, and on
         /// a map cut in half by a one-way road that is usually the second-nearest agent rather than nobody.
         /// </param>
+        /// <remarks>
+        /// **No maximum distance.** There used to be one - sixty-four cells, on the reasoning that beyond it
+        /// somebody nearer should take the job. But it never chose between two agents: the nearest reachable
+        /// agent anywhere *is* the nearest reachable agent in range whenever one is in range, so the cap only
+        /// ever fired when nobody was, and then it did not defer the work to somebody nearer, it refused the
+        /// order outright. Refused identically on the next tick, and every tick after, because nothing about
+        /// the geometry had changed - a permanent deadlock that looked exactly like an order patiently
+        /// waiting its turn. A long walk is worse than a short one; it is much better than never going.
+        ///
+        /// The two tests are ordered cheap-first and the expensive one is gated on being a new leader.
+        /// <see cref="Reachability.CanTry"/> is a hash probe and a pair of field reads, and asking it about
+        /// an agent standing further away than one already found is work whose answer cannot change anything.
+        /// That turns roughly one probe per agent into roughly one per new nearest, which is why dropping the
+        /// cap leaves this loop cheaper than it was with it.
+        /// </remarks>
         private static bool TryNearestAgent(
             in NativeList<FreeAgent> agents,
             float2 point,
@@ -387,11 +399,17 @@ namespace Rts
             bool mustCarry = false)
         {
             index = -1;
-            float best = MAX_HAUL_RANGE * MAX_HAUL_RANGE;
+            float best = float.MaxValue;
 
             for (int i = 0; i < agents.Length; i++)
             {
                 if (mustCarry && agents[i].CarryCapacity <= 0)
+                {
+                    continue;
+                }
+
+                float distance = math.distancesq(agents[i].Position, point);
+                if (distance >= best)
                 {
                     continue;
                 }
@@ -401,12 +419,8 @@ namespace Rts
                     continue;
                 }
 
-                float distance = math.distancesq(agents[i].Position, point);
-                if (distance < best)
-                {
-                    best = distance;
-                    index = i;
-                }
+                best = distance;
+                index = i;
             }
 
             return index >= 0;
