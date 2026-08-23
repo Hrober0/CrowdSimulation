@@ -11,6 +11,12 @@ namespace Examples.Rts
         Bakery,
         Warehouse,
         Hut,
+
+        /// <summary>A one-way crossing: two piers with one cell of open ground under it.</summary>
+        Bridge,
+
+        /// <summary>The same, two cells longer under the deck.</summary>
+        LongBridge,
     }
 
     /// <summary>
@@ -41,6 +47,15 @@ namespace Examples.Rts
 
         public readonly bool IsShelter;
 
+        /// <summary>
+        /// Structure cells of a bridge, or zero for anything that is not one.
+        ///
+        /// A fixed length rather than something the player drags out, so a bridge is chosen from the menu and
+        /// placed with one click like every other building. Three is a pier, a cell of open ground and a pier;
+        /// each extra cell is one more cell of ground the deck passes over.
+        /// </summary>
+        public readonly int BridgeCells;
+
         public BuildingBlueprint(
             BuildingKind kind,
             string name,
@@ -50,7 +65,8 @@ namespace Examples.Rts
             ItemId input = default,
             ItemId output = default,
             float craftSeconds = 0f,
-            bool isShelter = false)
+            bool isShelter = false,
+            int bridgeCells = 0)
         {
             Kind = kind;
             Name = name;
@@ -61,7 +77,10 @@ namespace Examples.Rts
             Output = output;
             CraftSeconds = craftSeconds;
             IsShelter = isShelter;
+            BridgeCells = bridgeCells;
         }
+
+        public bool IsBridge => BridgeCells > 0;
 
         public bool Crafts => CraftSeconds > 0f && !Output.IsNone;
 
@@ -97,6 +116,14 @@ namespace Examples.Rts
             new BuildingBlueprint(
                 BuildingKind.Hut, "Hauler Hut", new int2(2, 2), new Color(0.55f, 0.45f, 0.60f),
                 interior: 6, isShelter: true),
+
+            new BuildingBlueprint(
+                BuildingKind.Bridge, "Bridge", new int2(3, 1), new Color(0.62f, 0.52f, 0.38f),
+                bridgeCells: 3),
+
+            new BuildingBlueprint(
+                BuildingKind.LongBridge, "Long Bridge", new int2(4, 1), new Color(0.55f, 0.45f, 0.32f),
+                bridgeCells: 4),
         };
 
         public static BuildingBlueprint Of(BuildingKind kind)

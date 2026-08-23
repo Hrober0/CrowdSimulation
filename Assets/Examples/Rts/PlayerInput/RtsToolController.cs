@@ -63,6 +63,15 @@ namespace Examples.Rts
 
         public BuildingKind BuildKind { get; set; } = BuildingKind.Farm;
 
+        /// <summary>
+        /// Which way round the next building goes. Rotated with R.
+        ///
+        /// It exists because of bridges and is useful to everything: a one-way crossing that could only ever
+        /// run east would be a feature the map has to be built around. `BuildingPlacement.Rotation` and
+        /// `RotationUtils` were already there and already tested - all that was missing was a key.
+        /// </summary>
+        public GridRotation BuildRotation { get; private set; } = GridRotation.None;
+
         public RoadBrushMode RoadMode { get; set; } = RoadBrushMode.TwoWay;
 
         /// <summary>Whether the cell under the cursor would accept the building currently selected.</summary>
@@ -91,8 +100,15 @@ namespace Examples.Rts
 
             _hoverCell = CellUnderCursor();
             _hovering = true;
+
+            if (Tool == RtsTool.Build && Input.GetKeyDown(KeyCode.R))
+            {
+                BuildRotation = (GridRotation)(((int)BuildRotation + 1) & 3);
+            }
+
             CanPlaceHere = Tool == RtsTool.Build
-                           && RtsConstruction.CanPlace(grid.Map, BuildingCatalog.Of(BuildKind), _hoverCell);
+                           && RtsConstruction.CanPlace(
+                               grid.Map, BuildingCatalog.Of(BuildKind), _hoverCell, BuildRotation);
 
             if (EventBus.InvokeWithResult<IPointerOverUiQuery, bool>(q => q.IsPointerOverUi(), false))
             {
@@ -141,12 +157,12 @@ namespace Examples.Rts
         private void Build(in GridWorld grid, int2 cell)
         {
             BuildingBlueprint blueprint = BuildingCatalog.Of(BuildKind);
-            if (!RtsConstruction.CanPlace(grid.Map, blueprint, cell))
+            if (!RtsConstruction.CanPlace(grid.Map, blueprint, cell, BuildRotation))
             {
                 return;
             }
 
-            Entity building = RtsConstruction.Place(_entities, blueprint, cell);
+            Entity building = RtsConstruction.Place(_entities, blueprint, cell, BuildRotation);
             EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Of(building, cell)));
         }
 
@@ -222,7 +238,7 @@ namespace Examples.Rts
                 Center = GridCoords.CellCenter(cell),
                 Size = new float2(4f, 4f),
                 MaxSpeed = 3f,
-                Radius = 0.35f,
+                Radius = 0.42f,
                 CarryCapacity = 10,
                 Idle = true,
 
@@ -434,12 +450,7 @@ namespace Examples.Rts
 
             if (Tool == RtsTool.Build)
             {
-                BuildingBlueprint blueprint = BuildingCatalog.Of(BuildKind);
-                float2 min = GridCoords.CellMin(_hoverCell);
-                float2 max = GridCoords.CellMax(_hoverCell + blueprint.Size - 1);
-
-                Gizmos.color = CanPlaceHere ? new Color(0.3f, 0.9f, 0.4f) : new Color(0.9f, 0.3f, 0.3f);
-                Gizmos.DrawWireCube(SimToWorld.Position((min + max) * 0.5f), SimToWorld.Direction(max - min));
+                DrawBuildPreview();
                 return;
             }
 
@@ -452,6 +463,86 @@ namespace Examples.Rts
             };
 
             Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(_hoverCell)), size);
+        }
+
+        /// <summary>
+        /// The building as it will actually be laid: every cell it takes, rotated, plus the doorstep.
+        ///
+        /// Drawn cell by cell rather than as one box, because a box is a lie about two of the three shapes here.
+        /// An L or a ring is not its extent, and a bridge is emphatically not its extent - the cells under the
+        /// deck are *not* being taken, and an outline over them would say they were.
+        ///
+        /// **The doorstep is drawn because it is the half of a placement the player cannot otherwise see.** A
+        /// building whose door lands against a wall is sealed, and the rule that decides it - the south wall,
+        /// turned by the rotation - is invisible until an agent fails to reach it. It is the one thing rotation
+        /// is usually *for*.
+        /// </summary>
+        private void DrawBuildPreview()
+        {
+            BuildingBlueprint blueprint = BuildingCatalog.Of(BuildKind);
+            int2 origin = RtsConstruction.OriginFor(blueprint, _hoverCell, BuildRotation);
+
+            Gizmos.color = CanPlaceHere ? new Color(0.3f, 0.9f, 0.4f) : new Color(0.9f, 0.3f, 0.3f);
+
+            if (blueprint.IsBridge)
+            {
+                DrawBridgePreview(blueprint, origin);
+                return;
+            }
+
+            Vector3 cell = SimToWorld.Direction(new float2(0.94f, 0.94f));
+
+            for (int y = 0; y < blueprint.Size.y; y++)
+            {
+                for (int x = 0; x < blueprint.Size.x; x++)
+                {
+                    int2 taken = origin + RotationUtils.Rotate(new int2(x, y), BuildRotation);
+                    Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(taken)), cell);
+                }
+            }
+
+            DrawDoorstep(RtsConstruction.DoorstepOf(origin, BuildRotation), origin);
+        }
+
+        /// <summary>
+        /// The doorstep, and a line to it from the wall it is cut into, so which way the building faces is
+        /// readable at a glance. Amber rather than the placement colour: it is not a cell being taken.
+        /// </summary>
+        private void DrawDoorstep(int2 doorstep, int2 origin)
+        {
+            Gizmos.color = new Color(0.95f, 0.8f, 0.3f, 0.9f);
+
+            Vector3 step = SimToWorld.Position(GridCoords.CellCenter(doorstep));
+            Gizmos.DrawWireCube(step, SimToWorld.Direction(new float2(0.6f, 0.6f)));
+            Gizmos.DrawLine(SimToWorld.Position(GridCoords.CellCenter(origin)), step);
+        }
+
+        /// <summary>
+        /// A bridge preview: a box on each pier, nothing over the gap, and a line from the mouth agents get on
+        /// at to the one they are put down on. The crossing is one way, and which way is the thing that cannot
+        /// be seen at all once it is built.
+        /// </summary>
+        private void DrawBridgePreview(in BuildingBlueprint blueprint, int2 origin)
+        {
+            // Asked of the same function the validation asks, so the preview cannot draw a bridge in a place
+            // the placement would not put one.
+            RtsConstruction.MouthsOf(blueprint, origin, BuildRotation, out int2 entry, out int2 exit);
+
+            if (!Bridge.TryShape(entry, exit, out BridgeShape shape))
+            {
+                return;
+            }
+
+            Vector3 cell = SimToWorld.Direction(new float2(0.94f, 0.94f));
+            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.NearPier)), cell);
+            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.FarPier)), cell);
+
+            Vector3 from = SimToWorld.Position(GridCoords.CellCenter(entry));
+            Vector3 to = SimToWorld.Position(GridCoords.CellCenter(exit));
+
+            Gizmos.DrawLine(from, to);
+            Gizmos.DrawWireSphere(from, 0.25f);
+            Gizmos.DrawWireCube(to, SimToWorld.Direction(new float2(0.6f, 0.6f)));
         }
     }
 }

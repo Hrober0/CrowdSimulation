@@ -21,6 +21,9 @@ namespace Examples.Rts
     /// destination with no way in - usually a one-way road painted across the last step - and it is drawn red
     /// rather than green so there is nothing to interpret.
     ///
+    /// A leg over a bridge is drawn in amber, and it has to be drawn at all: the field reports a crossing as
+    /// "no direction", which without a word for it would put the red cross on the mouth of a working bridge.
+    ///
     /// A route drawn from the field rather than from a path the agent stores is not a convenience. Agents have
     /// no stored path (§4): they read a shared field per cell. Drawing anything else would be drawing a
     /// different algorithm's answer and calling it the agent's.
@@ -160,11 +163,25 @@ namespace Examples.Rts
                 return;
             }
 
-            Gizmos.color = new Color(0.3f, 1f, 0.45f, 0.9f);
             Vector3 previous = SimToWorld.Position(position);
 
             for (int i = 0; i < MAX_ROUTE_CELLS && !cell.Equals(destination); i++)
             {
+                // A crossing is a leg of the route like any other, and it has to be drawn as one. The field
+                // reports a link as "no direction" - correctly, since it is not a step anyone walks - so
+                // without asking this question first, the overlay would put its red "no way in" cross on the
+                // mouth of a working bridge. That is the exact misdiagnosis it exists to prevent.
+                if (fields.IsLinkStep(slot, cell) && map.TryGetLinkFrom(cell, out NavLink link))
+                {
+                    Gizmos.color = new Color(0.95f, 0.8f, 0.3f, 0.9f);
+                    Gizmos.DrawLine(previous, Point(link.To));
+                    Gizmos.DrawWireCube(Point(cell), SimToWorld.Direction(new float2(0.6f, 0.6f)));
+
+                    cell = link.To;
+                    previous = Point(cell);
+                    continue;
+                }
+
                 // The field runs out part way along - a dead end inside the window.
                 if (!fields.TryGetDirection(slot, cell, out Direction step))
                 {
@@ -175,6 +192,7 @@ namespace Examples.Rts
                 cell += DirectionUtils.Offset(step);
 
                 Vector3 next = Point(cell);
+                Gizmos.color = new Color(0.3f, 1f, 0.45f, 0.9f);
                 Gizmos.DrawLine(previous, next);
                 previous = next;
             }

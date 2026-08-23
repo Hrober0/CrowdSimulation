@@ -38,13 +38,19 @@ namespace GridNav
         }
 
         /// <summary>
-        /// The gates on this chunk's own two borders, plus those the west and south neighbours own on the
-        /// borders they share with it.
+        /// The gates on this chunk's own two borders and its own outgoing links, plus those the west and south
+        /// neighbours own on the borders they share with it, plus the links that *land* here.
+        ///
+        /// The last group is the one that cannot be found by looking at a fixed set of neighbours, because a
+        /// bridge may arrive from any chunk on the map, so the link table is walked instead. It has to be
+        /// collected: a chunk that only ever sees the gates on its own borders would report no way from the far
+        /// bank of a bridge to anywhere else, which is a route the coarse layer would then refuse to plan.
         /// </summary>
         private int CollectTouchingGates(int chunkIndex, int2 chunkCoord)
         {
             int count = AddGatesOf(chunkIndex, chunkIndex, GateBorder.East, 0);
             count = AddGatesOf(chunkIndex, chunkIndex, GateBorder.North, count);
+            count = AddGatesOf(chunkIndex, chunkIndex, GateBorder.Link, count);
 
             int2 west = chunkCoord + new int2(-1, 0);
             if (Graph.ChunkInBounds(west))
@@ -58,12 +64,60 @@ namespace GridNav
                 count = AddGatesOf(chunkIndex, Graph.ChunkIndex(south), GateBorder.North, count);
             }
 
+            return AddLinksLandingHere(chunkIndex, chunkCoord, count);
+        }
+
+        /// <summary>
+        /// The link gates owned elsewhere whose far bank is in this chunk. Matched on the pair of cells rather
+        /// than on a slot number, because the owner numbers its own link slots and nothing outside it can know
+        /// which one a given bridge got.
+        /// </summary>
+        private int AddLinksLandingHere(int chunkIndex, int2 chunkCoord, int count)
+        {
+            for (int i = 0; i < Map.LinkSlotCount; i++)
+            {
+                NavLink link = Map.GetLink(i);
+                if (!link.IsValid || !Map.ChunkCoordOf(link.To).Equals(chunkCoord))
+                {
+                    continue;
+                }
+
+                int2 ownerCoord = Map.ChunkCoordOf(link.From);
+                if (ownerCoord.Equals(chunkCoord))
+                {
+                    continue; // its own chunk; already collected, or priced by the chunk search
+                }
+
+                if (count >= ChunkGateGraph.MAX_GATES_TOUCHING_CHUNK)
+                {
+                    break;
+                }
+
+                int owner = Graph.ChunkIndex(ownerCoord);
+                for (int slot = 0; slot < ChunkGateGraph.MAX_LINK_GATES_PER_CHUNK; slot++)
+                {
+                    int gateIndex = Graph.GateIndex(owner, GateBorder.Link, slot);
+                    ChunkGate gate = Graph.GetGate(gateIndex);
+
+                    if (!gate.IsValid || !gate.CellA.Equals(link.From) || !gate.CellB.Equals(link.To))
+                    {
+                        continue;
+                    }
+
+                    Graph.SetTouching(chunkIndex, count, gateIndex);
+                    count++;
+                    break;
+                }
+            }
+
             return count;
         }
 
         private int AddGatesOf(int chunkIndex, int ownerChunk, GateBorder border, int count)
         {
-            for (int slot = 0; slot < ChunkGateGraph.MAX_GATES_PER_BORDER; slot++)
+            int slots = ChunkGateGraph.SlotsOf(border);
+
+            for (int slot = 0; slot < slots; slot++)
             {
                 if (count >= ChunkGateGraph.MAX_GATES_TOUCHING_CHUNK)
                 {

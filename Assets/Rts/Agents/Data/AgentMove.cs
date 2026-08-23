@@ -27,7 +27,12 @@ namespace Rts
 
         public float MaxSpeed;
 
-        /// <summary>Must stay below ~0.45 of a cell, or agents clip the corners of blocked cells (§3).</summary>
+        /// <summary>
+        /// Must stay below ~0.45 of a cell, or agents clip the corners of blocked cells (§3). 0.42 is what
+        /// everything that spawns an agent uses: a body that nearly fills its cell, so a crowd reads as
+        /// bodies rather than as points that happen to be near each other, and two of them still fit through
+        /// a one-cell doorway.
+        /// </summary>
         public float Radius;
 
         public bool Equals(AgentMove other) => Entity.Equals(other.Entity);

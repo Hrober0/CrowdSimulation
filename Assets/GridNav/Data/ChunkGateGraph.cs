@@ -27,10 +27,23 @@ namespace GridNav
         public const int MAX_GATES_PER_BORDER = 8;
 
         public const int BORDER_COUNT = 2;
-        public const int GATES_PER_CHUNK = MAX_GATES_PER_BORDER * BORDER_COUNT;
 
-        /// <summary>Own two borders plus the west and south neighbours', which the chunk also touches.</summary>
-        public const int MAX_GATES_TOUCHING_CHUNK = GATES_PER_CHUNK * 2;
+        /// <summary>
+        /// How many bridges may leave one chunk. Deliberately small: a link gate costs a Dijkstra over the
+        /// chunk in every rebuild that touches it, and a chunk with five bridges out of it is a map that wants
+        /// a road.
+        /// </summary>
+        public const int MAX_LINK_GATES_PER_CHUNK = 4;
+
+        public const int GATES_PER_CHUNK = MAX_GATES_PER_BORDER * BORDER_COUNT + MAX_LINK_GATES_PER_CHUNK;
+
+        /// <summary>
+        /// Own borders and links, plus the west and south neighbours' borders, plus the links from elsewhere
+        /// that land here - which is the one part that cannot be found by looking at a fixed set of neighbours,
+        /// since a bridge may come from any chunk on the map.
+        /// </summary>
+        public const int MAX_GATES_TOUCHING_CHUNK =
+            GATES_PER_CHUNK + MAX_GATES_PER_BORDER * 2 + MAX_LINK_GATES_PER_CHUNK;
 
         public const ushort UNREACHABLE = ushort.MaxValue;
 
@@ -84,19 +97,53 @@ namespace GridNav
         public bool ChunkInBounds(int2 chunkCoord) =>
             math.all(chunkCoord >= 0) && math.all(chunkCoord < _chunkCount);
 
+        /// <summary>
+        /// How many slots a kind of gate gets per chunk. Links get fewer than borders, so the bases below are
+        /// not a simple multiple and have to be asked for rather than computed inline.
+        /// </summary>
+        public static int SlotsOf(GateBorder border) =>
+            border == GateBorder.Link ? MAX_LINK_GATES_PER_CHUNK : MAX_GATES_PER_BORDER;
+
+        private static int BaseOf(GateBorder border) => border switch
+        {
+            GateBorder.East => 0,
+            GateBorder.North => MAX_GATES_PER_BORDER,
+            _ => MAX_GATES_PER_BORDER * BORDER_COUNT,
+        };
+
         public int GateIndex(int chunkIndex, GateBorder border, int slot) =>
-            chunkIndex * GATES_PER_CHUNK + (int)border * MAX_GATES_PER_BORDER + slot;
+            chunkIndex * GATES_PER_CHUNK + BaseOf(border) + slot;
 
         public ChunkGate GetGate(int gateIndex) => _gates[gateIndex];
 
         public int GateOwnerChunk(int gateIndex) => gateIndex / GATES_PER_CHUNK;
 
-        public GateBorder GateBorderOf(int gateIndex) =>
-            (GateBorder)(gateIndex % GATES_PER_CHUNK / MAX_GATES_PER_BORDER);
+        public GateBorder GateBorderOf(int gateIndex)
+        {
+            int within = gateIndex % GATES_PER_CHUNK;
+
+            if (within >= BaseOf(GateBorder.Link))
+            {
+                return GateBorder.Link;
+            }
+
+            return within >= MAX_GATES_PER_BORDER ? GateBorder.North : GateBorder.East;
+        }
+
+        /// <summary>What crossing this gate costs on top of stepping onto the far cell. Zero at a border.</summary>
+        public ushort CrossCostOf(int gateIndex) => _gates[gateIndex].CrossCost;
 
         /// <summary>The chunk on the far side of the gate from its owner.</summary>
         public int GateNeighbourChunk(int gateIndex)
         {
+            // A link's far chunk is wherever the bridge lands, so it is recorded rather than derived; a
+            // border's is the neighbour on that side, which is the whole meaning of the border.
+            if (GateBorderOf(gateIndex) == GateBorder.Link)
+            {
+                int far = _gates[gateIndex].FarChunk;
+                return far >= 0 && far < ChunkTotal ? far : -1;
+            }
+
             int2 owner = ChunkCoordOf(GateOwnerChunk(gateIndex));
             int2 neighbour = owner + (GateBorderOf(gateIndex) == GateBorder.East
                 ? new int2(1, 0)

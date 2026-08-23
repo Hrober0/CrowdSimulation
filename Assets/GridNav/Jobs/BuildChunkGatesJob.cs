@@ -7,11 +7,13 @@ using UnityEngine;
 namespace GridNav
 {
     /// <summary>
-    /// Re-scans the two borders a dirty chunk owns and rewrites its gates (design §4.1).
+    /// Re-scans the two borders a dirty chunk owns, and the links that leave it, and rewrites its gates
+    /// (design §4.1).
     ///
     /// Runs to completion for every dirty chunk before any edges are built: a chunk's edges depend on its
     /// neighbours' gates, and when a border cell changes both chunks are dirty, so the two passes cannot be
-    /// interleaved without reading half-rebuilt gates.
+    /// interleaved without reading half-rebuilt gates. A link bumps the passability of both of its mouths'
+    /// chunks for the same reason a border cell bumps both sides of the border.
     /// </summary>
     [BurstCompile]
     public struct BuildChunkGatesJob : IJobParallelFor
@@ -29,6 +31,66 @@ namespace GridNav
             Graph.ClearGates(chunkIndex);
             ScanBorder(chunkIndex, GateBorder.East);
             ScanBorder(chunkIndex, GateBorder.North);
+            ScanLinks(chunkIndex);
+        }
+
+        /// <summary>
+        /// Turns every link that leaves this chunk into a gate.
+        ///
+        /// **A link that stays inside its chunk gets no gate**, and that is not an omission. The coarse graph
+        /// only ever asks a chunk "what does it cost to walk between your gates", and
+        /// <see cref="ChunkSearch"/> already answers that with the crossing taken into account - so an
+        /// intra-chunk bridge is priced into the edges of the gates that already exist. Giving it a gate would
+        /// make a node whose two sides are the same chunk, which the A* over gate-plus-side you-came-out-on
+        /// cannot say anything useful about.
+        ///
+        /// One way, always: <see cref="GateCrossing.AToB"/> alone, so <c>CanCrossFrom</c> refuses the crossing
+        /// from the far bank without anything here having to say so.
+        /// </summary>
+        private void ScanLinks(int chunkIndex)
+        {
+            int2 chunkCoord = Graph.ChunkCoordOf(chunkIndex);
+            int slot = 0;
+
+            for (int i = 0; i < Map.LinkSlotCount; i++)
+            {
+                NavLink link = Map.GetLink(i);
+                if (!link.IsValid || !Map.ChunkCoordOf(link.From).Equals(chunkCoord))
+                {
+                    continue;
+                }
+
+                int2 farCoord = Map.ChunkCoordOf(link.To);
+                if (farCoord.Equals(chunkCoord))
+                {
+                    continue; // stays home; ChunkSearch prices it into the ordinary edges
+                }
+
+                // Both banks have to be stood on. A blocked mouth means the crossing is not available, and
+                // leaving the slot empty is how the graph says so.
+                if (!Map.IsPassable(link.From) || !Map.IsPassable(link.To))
+                {
+                    continue;
+                }
+
+                if (slot >= ChunkGateGraph.MAX_LINK_GATES_PER_CHUNK)
+                {
+                    Debug.LogWarning("[GridNav] A chunk has more links leaving it than the gate graph can hold; the extra ones are ignored.");
+                    return;
+                }
+
+                Graph.SetGate(Graph.GateIndex(chunkIndex, GateBorder.Link, slot), new ChunkGate
+                {
+                    CellA = link.From,
+                    CellB = link.To,
+                    Length = 1,
+                    Crossing = GateCrossing.AToB,
+                    FarChunk = Graph.ChunkIndex(farCoord),
+                    CrossCost = link.Cost,
+                });
+
+                slot++;
+            }
         }
 
         private void ScanBorder(int chunkIndex, GateBorder border)

@@ -15,17 +15,68 @@ namespace Examples.Rts
     /// </summary>
     public static class RtsConstruction
     {
+        /// <summary>What a bridge mouth may not already be. A road under one is fine; another door is not.</summary>
+        private const CellFlags MOUTH_CONFLICTS =
+            CellFlags.Building | CellFlags.Entrance | CellFlags.LinkEntry | CellFlags.LinkExit;
+
+
         /// <summary>
-        /// Whether a building of this shape may stand here: every cell on the map, passable, and not already
-        /// part of another building. The doorway has to be walkable too, or the building would be sealed.
+        /// The <c>OriginCell</c> to store for a building the player has put the cursor on.
+        ///
+        /// Rotation happens *about* the origin cell (`RotationUtils`), so a rotated footprint runs off in a
+        /// different direction from an unrotated one - a quarter turn sends a 3x2 building down and to the left
+        /// of the cell it was authored to occupy. Left alone, that makes the cursor mean a different corner of
+        /// the building at every rotation: the preview and the placement disagree, and turning a building walks
+        /// it away from the mouse.
+        ///
+        /// So the origin is shifted to put the *rotated* shape where the cursor is. Rotating then spins the
+        /// building inside a box anchored under the mouse, which is what every RTS does and what the preview can
+        /// honestly draw. With no rotation the shift is zero, so nothing that placed buildings before behaves
+        /// differently.
         /// </summary>
-        public static bool CanPlace(in GridMap map, in BuildingBlueprint blueprint, int2 origin)
+        public static int2 OriginFor(in BuildingBlueprint blueprint, int2 cursor,
+                                     GridRotation rotation = GridRotation.None)
         {
+            // A bridge is anchored on the mouth agents step on from rather than on a bounding box. It is a
+            // directed line, so "here is where you get on, and it runs away from you" is the one description
+            // that stays meaningful through a rotation - a corner of its box does not.
+            if (blueprint.IsBridge)
+            {
+                return cursor - RotationUtils.Rotate(new int2(-1, 0), rotation);
+            }
+
+            var low = new int2(int.MaxValue, int.MaxValue);
+
             for (int y = 0; y < blueprint.Size.y; y++)
             {
                 for (int x = 0; x < blueprint.Size.x; x++)
                 {
-                    var cell = new int2(origin.x + x, origin.y + y);
+                    low = math.min(low, RotationUtils.Rotate(new int2(x, y), rotation));
+                }
+            }
+
+            return cursor - low;
+        }
+
+        /// <summary>
+        /// Whether a building of this shape may stand under the cursor: every cell on the map, passable, and not
+        /// already part of another building. The doorway has to be walkable too, or the building would be sealed.
+        /// </summary>
+        public static bool CanPlace(in GridMap map, in BuildingBlueprint blueprint, int2 cursor,
+                                    GridRotation rotation = GridRotation.None)
+        {
+            int2 origin = OriginFor(blueprint, cursor, rotation);
+
+            if (blueprint.IsBridge)
+            {
+                return CanPlaceBridge(map, blueprint, origin, rotation);
+            }
+
+            for (int y = 0; y < blueprint.Size.y; y++)
+            {
+                for (int x = 0; x < blueprint.Size.x; x++)
+                {
+                    int2 cell = origin + RotationUtils.Rotate(new int2(x, y), rotation);
                     if (!map.IsPassable(cell) || map.GetFlags(cell) != CellFlags.None)
                     {
                         return false;
@@ -33,22 +84,35 @@ namespace Examples.Rts
                 }
             }
 
-            return map.IsPassable(DoorstepOf(blueprint, origin));
+            return map.IsPassable(DoorstepOf(origin, rotation));
         }
 
-        /// <summary>Where agents will stand to use it: below the bottom-left cell, outside the footprint.</summary>
-        public static int2 DoorstepOf(in BuildingBlueprint blueprint, int2 origin) =>
-            new(origin.x, origin.y - 1);
+        /// <summary>
+        /// Where agents will stand to use it: outside the wall the door is cut into.
+        ///
+        /// Derived from the rotation rather than assumed to be below the origin, which is the same argument
+        /// <c>BuildingEntranceOffset</c> makes - the door is authored as a wall and a side, so where an agent
+        /// stands follows from the placement instead of being a second fact that has to be kept true by hand.
+        /// It was hardcoded to "one below the origin", which was quietly wrong for every rotated building.
+        /// </summary>
+        public static int2 DoorstepOf(int2 origin, GridRotation rotation = GridRotation.None) =>
+            origin + DirectionUtils.Offset(RotationUtils.Rotate(Direction.South, rotation));
 
-        public static Entity Place(EntityManager entities, in BuildingBlueprint blueprint, int2 origin)
+        public static Entity Place(EntityManager entities, in BuildingBlueprint blueprint, int2 cursor,
+                                   GridRotation rotation = GridRotation.None)
         {
             Entity building = entities.CreateEntity();
 
             entities.AddComponentData(building, new BuildingPlacement
             {
-                OriginCell = origin,
-                Rotation = GridRotation.None,
+                OriginCell = OriginFor(blueprint, cursor, rotation),
+                Rotation = rotation,
             });
+
+            if (blueprint.IsBridge)
+            {
+                return FinishBridge(entities, building, blueprint);
+            }
 
             DynamicBuffer<BuildingFootprintOffset> footprint =
                 entities.AddBuffer<BuildingFootprintOffset>(building);
@@ -88,6 +152,103 @@ namespace Examples.Rts
 
             return building;
         }
+
+        /// <summary>
+        /// The two mouths of a bridge of this blueprint placed here: the cell before the near pier and the cell
+        /// after the far one.
+        ///
+        /// A bridge is authored as its structure, running east before rotation, and the mouths are the cells
+        /// either side of it. Deriving them rather than listing them is what keeps "the mouth is outside the
+        /// structure and therefore walkable" true after a rotation without anybody having to check.
+        /// </summary>
+        public static void MouthsOf(in BuildingBlueprint blueprint, int2 origin, GridRotation rotation,
+                                    out int2 entry, out int2 exit)
+        {
+            entry = origin + RotationUtils.Rotate(new int2(-1, 0), rotation);
+            exit = origin + RotationUtils.Rotate(new int2(blueprint.BridgeCells, 0), rotation);
+        }
+
+        /// <summary>
+        /// Whether a bridge of this blueprint may stand here.
+        ///
+        /// Three different questions, and they are different on purpose:
+        ///
+        /// **The mouths must be stood on.** A crossing that lands where nobody can stand is a crossing nobody
+        /// can use, and an agent put down inside a blocked cell cannot get out of it.
+        ///
+        /// **The piers are ordinary footprint**, so they want buildable ground like any other building.
+        ///
+        /// **What is under the deck is not asked about at all.** That is the point of the shape: the ground
+        /// below is untouched, so a bridge may pass over a road, a river, a tree or a crowd. Only another
+        /// building is refused there, and only because two views on one cell reads as a mistake.
+        /// </summary>
+        public static bool CanPlaceBridge(in GridMap map, in BuildingBlueprint blueprint, int2 origin,
+                                          GridRotation rotation)
+        {
+            MouthsOf(blueprint, origin, rotation, out int2 entry, out int2 exit);
+
+            if (!Bridge.TryShape(entry, exit, out BridgeShape shape))
+            {
+                return false;
+            }
+
+            if (!map.IsPassable(entry) || !map.IsPassable(exit))
+            {
+                return false;
+            }
+
+            // A mouth that is already the mouth of something else cannot be reused: one link per cell (§3),
+            // and a doorstep shared with a bridge would have two things deciding what happens on it.
+            if (HasAnyFlag(map, entry, MOUTH_CONFLICTS) || HasAnyFlag(map, exit, MOUTH_CONFLICTS))
+            {
+                return false;
+            }
+
+            if (!IsBuildable(map, shape.NearPier) || !IsBuildable(map, shape.FarPier))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < shape.GapCells; i++)
+            {
+                if (map.GetFlags(shape.GapCell(i)).HasFlag(CellFlags.Building))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Finishes a bridge entity: the two mouths, and nothing else. The piers, the link and the mouth flags
+        /// are all worked out by <c>BuildingFootprintSystem</c>, which is also what gives them back (§5).
+        /// </summary>
+        private static Entity FinishBridge(EntityManager entities, Entity bridge,
+                                           in BuildingBlueprint blueprint)
+        {
+            // Empty, but present: the placement query is keyed on this buffer, and a bridge's footprint is
+            // derived from its span rather than authored.
+            entities.AddBuffer<BuildingFootprintOffset>(bridge);
+
+            entities.AddComponentData(bridge, new BridgeSpan
+            {
+                EntryOffset = new int2(-1, 0),
+                ExitOffset = new int2(blueprint.BridgeCells, 0),
+            });
+
+            entities.AddComponentData(bridge, new BuildingVisual
+            {
+                Tint = new float4(blueprint.Tint.r, blueprint.Tint.g, blueprint.Tint.b, blueprint.Tint.a),
+            });
+
+            entities.AddComponentData(bridge, new BuildingLabel { Kind = blueprint.Kind });
+
+            return bridge;
+        }
+
+        private static bool IsBuildable(in GridMap map, int2 cell) =>
+            map.IsPassable(cell) && map.GetFlags(cell) == CellFlags.None;
 
         /// <summary>
         /// Takes a building away. The cells come back on the next grid phase, from the cleanup buffers - so
@@ -177,6 +338,9 @@ namespace Examples.Rts
             entities.AddBuffer<RecipeOutput>(building)
                     .Add(new RecipeOutput { Item = blueprint.Output, Amount = 1 });
         }
+
+        private static bool HasAnyFlag(in GridMap map, int2 cell, CellFlags flags) =>
+            (map.GetFlags(cell) & flags) != CellFlags.None;
     }
 
     /// <summary>Which blueprint a building was made from, so the inspector can name it.</summary>

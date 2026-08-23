@@ -199,7 +199,7 @@ MonoBehaviour:
   _agentPrefab: {fileID: 1683616565734441140, guid: 9069ebefbb211634e8241a244ca481ed, type: 3}
   _prewarm: 256
   _depth: 0
-  _turnDegreesPerSecond: 540
+  _turnDegreesPerSecond: 270
   _cullRadius: 0
   _focus: {fileID: 0}
 --- !u!114 &1540661646

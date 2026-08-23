@@ -20,12 +20,22 @@ namespace Examples.Rts
         private AgentViewPool _pool;
         private JobHandle _sync;
         private ComponentLookup<DoorUse> _doors;
+        private ComponentLookup<OnBridge> _bridges;
 
         /// <summary>Sorting offset towards the camera, in world units. Presentation only.</summary>
         public float Depth { get; set; }
 
+        /// <summary>
+        /// How much further towards the camera an agent goes while it is crossing a bridge, in world units.
+        ///
+        /// It has to clear the front face of the building quad the bridge is drawn as, which stands half its
+        /// thickness in front of its own centre - so this is a fact about the building prefab rather than a
+        /// taste, and it is a field so a different prefab can say a different number.
+        /// </summary>
+        public float BridgeLift { get; set; } = 1f;
+
         /// <summary>How fast a view may swing round to face where it is going. Presentation only.</summary>
-        public float TurnDegreesPerSecond { get; set; } = 540f;
+        public float TurnDegreesPerSecond { get; set; } = 270f;
 
         /// <summary>How far from the camera a view is still worth having. Default is "no culling".</summary>
         public ViewCulling Culling { get; set; }
@@ -52,7 +62,11 @@ namespace Examples.Rts
             _pool = null;
         }
 
-        protected override void OnCreate() => _doors = GetComponentLookup<DoorUse>(isReadOnly: true);
+        protected override void OnCreate()
+        {
+            _doors = GetComponentLookup<DoorUse>(isReadOnly: true);
+            _bridges = GetComponentLookup<OnBridge>(isReadOnly: true);
+        }
 
         protected override void OnUpdate()
         {
@@ -66,6 +80,7 @@ namespace Examples.Rts
 
             ViewCulling culling = Culling;
             _doors.Update(this);
+            _bridges.Update(this);
 
             _pool.BeginFrame();
 
@@ -84,24 +99,30 @@ namespace Examples.Rts
         }
 
         /// <summary>
-        /// Adds the door transition, if the agent is in one. Asked per agent rather than filtered on, because
-        /// <see cref="DoorUse"/> is optional data on something the view already draws - and an agent whose
-        /// archetype has no door component at all must still be shown rather than quietly disappear.
+        /// Adds the door transition and the bridge lift, if either applies. Both are asked per agent rather
+        /// than filtered on, because they are optional data on something the view already draws - and an agent
+        /// whose archetype carries neither component must still be shown rather than quietly disappear.
         /// </summary>
         private AgentViewFrame FrameOf(Entity entity, in AgentMove move)
         {
-            if (!_doors.HasComponent(entity) || !_doors.IsComponentEnabled(entity))
+            var frame = new AgentViewFrame { Move = move };
+
+            // Over the deck rather than under it. Only while it is actually being carried: an agent standing on
+            // the mouth waiting its turn is on the ground like anything else, and lifting it there would draw it
+            // in front of a bridge it has not got onto.
+            if (_bridges.HasComponent(entity) && _bridges.IsComponentEnabled(entity))
             {
-                return new AgentViewFrame { Move = move };
+                frame.Lift = BridgeLift;
             }
 
-            DoorUse door = _doors[entity];
-            return new AgentViewFrame
+            if (_doors.HasComponent(entity) && _doors.IsComponentEnabled(entity))
             {
-                Move = move,
-                DoorPoint = GridCoords.CellCenter(door.Cell),
-                DoorBlend = door.Inside,
-            };
+                DoorUse door = _doors[entity];
+                frame.DoorPoint = GridCoords.CellCenter(door.Cell);
+                frame.DoorBlend = door.Inside;
+            }
+
+            return frame;
         }
 
         protected override void OnDestroy() => CompleteSync();

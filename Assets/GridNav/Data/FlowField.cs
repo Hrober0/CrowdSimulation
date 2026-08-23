@@ -27,6 +27,16 @@ namespace GridNav
         public const byte NO_DIRECTION = 255;
 
         /// <summary>
+        /// Stored where the route carries on over a <see cref="NavLink"/> rather than to a neighbour.
+        ///
+        /// It is a direction value rather than something the rules layer works out for itself, because the
+        /// integration pass is the only thing that knows whether the link *won*. An agent standing on a bridge
+        /// mouth whose route does not use the bridge, and one whose route does, are the same agent on the same
+        /// cell; only the field can tell them apart, and it already had to decide in order to price the cell.
+        /// </summary>
+        public const byte LINK_STEP = 254;
+
+        /// <summary>
         /// Where the window sits for a destination: centred on it, then slid to stay on the map. A map
         /// smaller than the window simply starts at its own corner and the overhang reads as unreachable.
         /// </summary>

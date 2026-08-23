@@ -149,6 +149,10 @@ namespace Examples.Rts.UI
                 button.style.color = blueprint.Tint;
                 _buildButtons.Add((blueprint.Kind, button));
             }
+
+            // Worth saying out loud rather than leaving to be discovered: a one-way bridge is unusable until
+            // you know you can turn it.
+            UIStyledElements.NewLabel(_buildRow, "R rotates");
         }
 
         private void BuildRoadRow(VisualElement panel)
@@ -373,6 +377,11 @@ namespace Examples.Rts.UI
                        + $"({(door.Kind == DoorUseKind.Enter ? "going in" : "coming out")}, {door.Remaining:0.0}s left)";
             }
 
+            if (_entities.HasComponent<OnBridge>(agent) && _entities.IsComponentEnabled<OnBridge>(agent))
+            {
+                return DescribeCrossing(agent);
+            }
+
             DynamicBuffer<TaskStep> steps = _entities.GetBuffer<TaskStep>(agent);
             bool atADoor = !steps.IsEmpty
                            && (steps[0].Kind == TaskStepKind.Enter || steps[0].Kind == TaskStepKind.Exit);
@@ -385,6 +394,11 @@ namespace Examples.Rts.UI
             var path = _entities.GetComponentData<PathFollow>(agent);
             string goal = $"{path.GoalCell.x},{path.GoalCell.y}";
 
+            if (IsAtABridgeMouth(agent, path))
+            {
+                return $"Waiting to get on the bridge (heading for {goal})";
+            }
+
             if (path.Holding)
             {
                 return $"Queueing for {goal}, waiting {path.HoldDistance:0.#} cells out";
@@ -393,6 +407,76 @@ namespace Examples.Rts.UI
             return HasNoRoute(agent, path)
                 ? $"Walking to {goal} - NO ROUTE FROM HERE"
                 : $"Walking to {goal}";
+        }
+
+        /// <summary>
+        /// Where along a bridge the agent is, and whether it is moving.
+        ///
+        /// "Held up behind somebody" is the line worth having. A bridge is single file, so an agent stopped
+        /// half way across is not stuck - it is behind one that cannot get off - and without saying so the
+        /// only visible symptom is a row of agents standing on a bridge for no stated reason.
+        /// </summary>
+        private string DescribeCrossing(Entity agent)
+        {
+            var carried = _entities.GetComponentData<OnBridge>(agent);
+            string headed = $"{carried.Exit.x},{carried.Exit.y}";
+
+            if (!_entities.Exists(carried.Bridge) || !_entities.HasBuffer<BridgeOccupant>(carried.Bridge))
+            {
+                return $"On a bridge that no longer exists, heading for {headed}";
+            }
+
+            DynamicBuffer<BridgeOccupant> occupants = _entities.GetBuffer<BridgeOccupant>(carried.Bridge);
+
+            for (int i = 0; i < occupants.Length; i++)
+            {
+                if (occupants[i].Agent != agent)
+                {
+                    continue;
+                }
+
+                float span = _entities.HasComponent<Bridge>(carried.Bridge)
+                    ? _entities.GetComponentData<Bridge>(carried.Bridge).Span
+                    : 0f;
+
+                string place = i == 0 ? "at the front" : $"{i} behind the front";
+                string held = i == 0 && span > 0f && occupants[i].Distance >= span
+                    ? ", waiting for the far bank to clear"
+                    : string.Empty;
+
+                return $"Crossing a bridge to {headed} - {occupants[i].Distance:0.0}/{span:0} cells, "
+                       + $"{place}{held}";
+            }
+
+            return $"On a bridge that has lost track of it, heading for {headed}";
+        }
+
+        /// <summary>
+        /// Whether the agent is standing on a bridge mouth its route wants to use.
+        ///
+        /// The same question <c>BridgeTransitSystem</c> asks to admit an agent, asked again for the display,
+        /// because it is the difference between "queueing for a bridge" and "stopped for no reason" - and both
+        /// look like an agent standing still on a cell.
+        /// </summary>
+        private bool IsAtABridgeMouth(Entity agent, in PathFollow path)
+        {
+            if (!TryGetGrid(out GridMap map))
+            {
+                return false;
+            }
+
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<FlowFieldCache>());
+            if (!query.TryGetSingleton(out FlowFieldCache fields) || !fields.IsCreated)
+            {
+                return false;
+            }
+
+            float2 position = _entities.GetComponentData<AgentMove>(agent).Position;
+            int2 cell = GridCoords.CellOf(position);
+
+            return (map.GetFlags(cell) & CellFlags.LinkEntry) != CellFlags.None
+                   && fields.TryGetSlot(path.WaypointCell, out int slot)
+                   && fields.IsLinkStep(slot, cell);
         }
 
         /// <summary>Whether the destination's own flow field says there is no way in from where it stands.</summary>

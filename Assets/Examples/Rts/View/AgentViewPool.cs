@@ -27,6 +27,15 @@ namespace Examples.Rts
 
         /// <summary>0 out on the map, 1 gone through the door. See <see cref="DoorUse.Inside"/>.</summary>
         public float DoorBlend;
+
+        /// <summary>
+        /// Extra depth towards the camera for this agent alone, in world units.
+        ///
+        /// Per agent rather than a setting on the pool, because the whole point is that two agents in the same
+        /// frame need different answers: one crossing a bridge has to be drawn in front of the deck, and one
+        /// walking underneath has to stay behind it. A single depth cannot say both.
+        /// </summary>
+        public float Lift;
     }
 
     /// <summary>
@@ -279,7 +288,7 @@ namespace Examples.Rts
                 // nothing else is (§15), so this stays inside the one parallel job that writes them.
                 float2 position = math.lerp(move.Position, frame.DoorPoint, frame.DoorBlend);
 
-                transform.position = SimToWorld.Position(position, Depth);
+                transform.position = SimToWorld.Position(position, Depth + frame.Lift);
                 transform.localScale = BaseScale * (1f - frame.DoorBlend);
 
                 // Only while actually moving, and only while moving fast enough to mean it: a stopped agent

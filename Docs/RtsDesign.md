@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 8 of §14 are implemented, plus the sandbox scene of §14.1; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 8 of §14 are implemented, plus the sandbox scene of §14.1, the doorway work of §14.2 and the bridges of §14.3; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -33,7 +33,7 @@ No references are added to existing asmdefs. Generic mechanism goes in `GridNav`
 
 ## 3. L0 — Grid
 
-**Cell size = 1 unit. The nav grid and the building grid are the same grid.** No code ever converts between two cell spaces, which removes an entire class of bugs. Agent radius is **0.35** (inside the `0.45 x cellSize` bound of §3 with slack).
+**Cell size = 1 unit. The nav grid and the building grid are the same grid.** No code ever converts between two cell spaces, which removes an entire class of bugs. Agent radius is **0.42** (inside the `0.45 x cellSize` bound of §3, and deliberately near it: a body that nearly fills its cell is what makes a crowd read as bodies instead of as points, and two of them still pass through a one-cell doorway).
 
 | | 1 unit (chosen) | 0.5 unit |
 | --- | --- | --- |
@@ -566,6 +566,78 @@ Worth knowing for later: a cache of 32 fields is over-subscribed once more than 
 
 Regression cover, all EditMode: a queue eight deep drains (`ArrivalQueueTests`); a door on a one-way road is queued for in route order and hauls still complete round it (`TrafficTests`); the transition takes time, serialises, prefers exits and is queued for (`DoorwayTests`); and eight haulers push two hundred units through one door, which is the stall detector for all of it. For watching it rather than asserting it, `AgentDebugOverlay` draws the ring an agent has been told not to cross and a box on every door in use, shrinking as its occupant goes through.
 
+### 14.3 Bridges: the grid's first non-geometric adjacency — done
+
+A bridge is the fifth use of §6's "an agent is here rather than on the map", and the first one that is not a *destination*. A hut, a workshop and a warehouse are places an agent goes because its order says so; a bridge is a place it goes **through**, on the way to somewhere the bridge knows nothing about. That single difference is what decided the whole shape of the feature.
+
+**The structure is two piers and a gap, and the connection is stored.** One alternative was tried on paper first: make the deck a walkable one-way corridor, and routing comes free — the flow field and the gate graph see an ordinary road and nothing in `GridNav` changes at all. It was rejected because a walkable deck cannot be *closed*. The whole point of the requested behaviour is that a bridge whose far bank is jammed stops admitting, and a deck an agent can simply walk along has no admission to refuse.
+
+So the structure is footprint and the crossing is a `NavLink` — the one adjacency in the grid that does not fall out of the coordinates. But the structure is **not** the whole line. Only the cell just inside each mouth is solid; the ground between the piers is left exactly as it was found:
+
+```
+   . . [M] [P] . . . [P] [M] . .      M = mouth, walkable, flagged Entrance|NoIdle
+                ^                     P = pier, blocked footprint
+          traffic crosses here        between the piers: untouched
+```
+
+That is what makes a bridge something traffic goes *under* rather than a wall with a gate in it, and it falls out of one rule stated once: **nothing about a bridge ever clears a cell.** The piers add cost and give the same cost back, so a bridge cannot drain a river it spans; and because the gap is never cleared either, a bridge across a wall leaves the wall standing under its own deck. Both are tested, because both would be a hole in the map that nothing would report.
+
+Travelling *along* the line is therefore the link and only the link — the piers close both ends of it — while crossing the line on the ground needs no permission from anything. `Bridge.TryShape` is the single place that turns two mouths into piers, gap and span, because validation and placement have to name the same cells: two copies of that arithmetic is a bridge that passes its own check and then seals itself.
+
+**A crossing agent leaves the spatial hash.** It keeps its view and its position but it is nobody's neighbour, because it is over the map rather than on it — and leaving it in would let it shoulder the traffic passing under the deck, which is the one thing the shape exists to allow. It is asked per agent through a `ComponentLookup` rather than filtered on in the query: a query keyed on `OnBridge` would silently drop every agent whose archetype does not carry it, and a missing entry in the spatial hash is invisible until two agents walk through each other.
+
+**Fixed lengths from the menu, not a drag.** A bridge is 3 or 4 cells of structure, chosen like any other blueprint and placed with one click. A drag was built first and thrown away: it made the player state a length that only ever has two useful values, and it put a second placement gesture in a tool controller that already had one. What the drag *was* doing usefully — saying which way the crossing runs — is now `R` to rotate, which uses `BuildingPlacement.Rotation` and `RotationUtils` exactly as authoring already did. `CanPlace` and `DoorstepOf` became rotation-aware in the process, which they should always have been: the doorstep was hardcoded to "below the origin" and was quietly wrong for any rotated building.
+
+Rotation also exposed a placement bug older than bridges. Rotation happens *about* the origin cell, so a rotated footprint runs off in a different direction from an unrotated one — a quarter turn sends a 3x2 building down and to the left of the cells it was authored to occupy. That made the cursor mean a different corner of the building at every rotation: the preview and the placement disagreed, and turning a building walked it away from the mouse. `RtsConstruction.OriginFor` shifts the origin so the *rotated* shape lands under the cursor, and every caller goes through it, so validation, placement and preview cannot drift apart. A bridge is anchored on the mouth agents step on from rather than a corner of its box, because "here is where you get on, and it runs away from you" is the one description of a directed line that survives a rotation.
+
+The placement preview draws every cell it will take rather than one box, because a box is a lie about two of the three shapes: an L is not its extent, and a bridge emphatically is not — an outline over the gap would say those cells were being taken. It also draws the **doorstep**, which is the half of a placement the player otherwise cannot see: a building whose door lands against a wall is sealed, and the rule that decides it is the south wall turned by the rotation, invisible until an agent fails to reach the building.
+
+Two things about drawing a crossing that are not decoration:
+
+**Depth is per agent, not per pool.** An agent on a bridge must draw in front of the deck and an agent walking underneath must stay behind it, and those are two different answers in the same frame — so the lift lives on `AgentViewFrame` beside the door blend rather than on `ViewSyncSystem.Depth`. It has to clear the front face of the building quad, which stands half its thickness in front of its own centre, so the number is a fact about the prefab rather than a taste and is a serialized field.
+
+**Boarding starts from where the agent stands.** An agent is admitted from wherever on the mouth cell it stopped, which is almost never the centre line the deck runs along. Snapping it there was a visible jump onto the bridge — small, and the one moment in the crossing that did not look like walking. So the along-deck part of where it stood becomes distance already travelled and the rest becomes an offset walked off at the agent's own speed. Nothing about getting onto a bridge moves an agent other than its own legs, and there is a test that boarding never moves it further in one frame than a step.
+
+`NavLink { int2 From, int2 To, ushort Cost }`, directed, stored *in* `GridMap` rather than beside it. That last part is the reason the three searches needed no new argument threaded through them: they already carry the map. A two-way crossing is two links, which is the honest way to say it — the pair then has two mouths, two queues and two costs, and nothing special-cases the symmetric case.
+
+**`CellFlags` gains two bits that do affect routing**, which the old comment said none of them did. `LinkEntry` / `LinkExit` are the fast reject in front of a 256-entry table: a Dijkstra asks "does anything unusual happen here" with a byte it was going to read anyway, and only a bridge mouth pays for the scan. They are set only by the link operations, never by `AddFlags`, because a bit that changes where agents can walk has to bump `PassabilityVersion` and the flag operations deliberately bump nothing.
+
+**Three searches, three places a link had to be taught.** They divide exactly as §4 divides the tiers, and each needed a different thing:
+
+| tier | what a link is there | why that one |
+| --- | --- | --- |
+| flow field (`BuildFlowFieldJob`) | a fifth incoming edge, relaxed backwards from the cell it lands on | the field is what steers the last stretch, and both mouths are inside one 128 window for any sane bridge |
+| chunk search (`ChunkSearch`) | an edge followed when both mouths are in the same chunk | a bridge *inside* a chunk needs no gate — the intra-chunk edge costs already say the two banks are joined, which is the only thing the coarse graph asks a chunk |
+| gate graph (`GateBorder.Link`) | a gate, when the link leaves its chunk | a gate *is* a way out of a chunk at a known cost in a known direction, and a bridge is one; only the far chunk cannot be derived from a border offset, so it is recorded |
+
+The split on that last row is worth keeping: an intra-chunk link deliberately gets **no** gate, because a gate whose two sides are the same chunk is a node the "gate plus the side you came out on" A* cannot say anything useful about. One rule, stated once: *a link that leaves its chunk is a gate; one that does not is a shortcut the chunk search takes.*
+
+Costs are 16 bits of the same currency everywhere, and it matters that they agree. A crossing is priced at `NavCost.STEP` per cell of span — what a road of the same length costs, because that is what a bridge is: built ground, no slower than the best ground there is. Crucially **not free**: a crossing priced at nothing is a hole in the cost model that every route in range falls into, and half the map detours over a footbridge to save a corner. It also has to match how long the crossing actually *takes*, or the routing layer and the bridge tell the agent two different stories about the same walk — which is why the agent is moved at its own `MaxSpeed` rather than for a flat time.
+
+**`FlowField.LINK_STEP` is a direction value, not a rule the layer above works out.** An agent standing on a bridge mouth whose route uses the bridge, and one standing on the same cell on its way past, are the same agent with the same task; only the field can tell them apart, because pricing the cell is what made it decide. `TryGetDirection` reports the link as "no direction" — which is the right answer for a walker, since standing still on the mouth is exactly what it should do — and `IsLinkStep` is the separate question that says why.
+
+The direction pass writes `LINK_STEP` only when the crossing is the **exact predecessor** the integration used: `integration[To] + step + linkCost == integration[From]`. Both ways of being sloppy about that are invisible from the outside — a false yes puts an agent on a bridge its route never asked for, a false no leaves it stood on a mouth with no direction and no reason it can be told — and the exact test costs one addition. A tie with a walkable neighbour breaks towards walking, because a bridge has a queue at its mouth and open ground does not.
+
+**A crossing is a walk with the logic taken out, not an absence.** `PathFollow` goes off, which is the same three-way consequence `InteriorTransitionSystem` gets from the same flag: nothing steers the agent, nothing integrates it, and the watchdog does not watch it. `AgentMove` stays **on**, and that is the difference from going indoors: the agent is still drawn, still in the spatial hash, and still something the crowd at either mouth has to avoid. An agent that vanished for the length of the crossing would reappear in the middle of whatever had gathered on the far bank, which is the problem `DoorUse` exists to avoid at a door.
+
+Two things fell out of that which were expected to need code and did not. **No task step.** `BridgeTransitSystem` runs between `TaskStepSystem` and the routing systems, so it can take an agent out of the walking set in the same frame that the task machine put it back in — and the agent's `GoTo` stays at the head of its buffer naming the destination it always had. When it is put down on the far bank, `TaskStepSystem` simply starts the walk again and routes from where the agent now is. Nothing had to be taught what a bridge is, and there is no state to unwind if the task dies mid-crossing. **No view code.** The view reads `AgentMove.Position`, and the bridge writes it, so an agent visibly walks the deck for free.
+
+**Single file is the whole of the blocking rule.** Occupants are kept front first and none may advance past the one ahead. So an agent that cannot step off the far bank stops, the one behind stops behind it, the deck fills back to the mouth, and admission ceases because there is no room at the near end. Nothing counts blocked agents or decides when a bridge is "full" — being full is what a queue that cannot drain *is*. `Capacity` is the span for the same reason: occupants are spaced a cell apart because a cell is what an agent takes up everywhere else on the map, so the number is not a tuning knob.
+
+**The head of the deck is the one agent in the game with no watchdog behind it**, and that took noticing. It is not walking, so `WatchdogSystem` cannot see it; it is waiting on a cell rather than on a queue that promotes, so nothing else does either. A far bank that somebody never leaves would be a bridge that stops for good with nothing anywhere reporting it — the exact shape of failure §14.2 spent five faults learning to refuse. So the wait is counted and bounded: past three seconds the agent steps off anyway. A moment of overlap that avoidance sorts out in a few frames beats a deadlock that nothing sorts out at all.
+
+**Two records of one crossing, and the second one earns its keep.** The bridge's `BridgeOccupant` buffer is the authority on *where along the deck*; `OnBridge` on the agent is the authority on *whether at all*. It looks like the same fact written twice, and it is the same shape as `InsideBuilding` beside `Interior.Occupied` for the same reason: a crossing agent has had its steering turned off by something outside itself, so if that something ceases to exist there must be something *on the agent* that says so. Otherwise a bridge destroyed with agents on it leaves them stood on a blocked deck with no steering and nothing that knows to give it back — the stranded-claim bug of step 8, one layer down. Releasing them is one rule in one place, so it cannot be forgotten in one of the several ways a bridge can stop existing.
+
+**Authoring is two cells and the rest is derived**, which is the third instance of the argument entrances won in step 5. `BridgeSpan` names the two mouths; the piers, the link, the `Entrance | NoIdle` mouth flags and the span all come out of `Bridge.TryShape` and are applied by `BuildingFootprintSystem` — the same system that gives every one of them back, so a demolition cannot leak half a bridge. An author asked to keep a structure list in step with a pair of mouths will eventually not, and the failure is a bridge with a hole in it that nothing downstream could tell from a map.
+
+A pier standing in water is not only allowed but the normal case, and the cost sum being exact (§3) is what makes it safe. Under the deck, only *another building* is refused — two views on one cell reads as a mistake — and everything else is left to be walked over, walked under, or blocked on its own account.
+
+Costs of the whole thing, stated rather than discovered later: the gate graph grew from 32 to 40 touching-gate slots per chunk, so its edge-cost table went from about 0.5 MB to 0.8 MB on a 512² map. The *work* is unchanged when no bridges exist, because `BuildEdges` loops over the real gate count and not the slot count. `MAX_LINK_GATES_PER_CHUNK` is 4, deliberately small: each link gate costs a Dijkstra over its chunk on every rebuild that touches it, and a chunk with five bridges out of it is a map that wants a road.
+
+**What is deliberately not built.** A bridge mouth is a contended cell that `ArrivalQueueSystem` does not cover, because the queue ranks agents by the remaining cost to *their own destination* and a mouth is nobody's destination. So agents pile up at a busy mouth and are sorted out by RVO, and one that waits out its stall window has its task dropped and re-planned — which is the designed recovery for every other congested cell on the map, and the deck length bounds how long the wait can be. Revisit only if a bridge mouth in play turns out to be worse than a corridor.
+
+Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and both mouths stay walkable; an agent walks *under* a bridge without using it; a bridge cannot open a wall it crosses; a pier in water gives the water back exactly; a span too short or not in line is refused and takes nothing; rotating a bridge turns the whole thing; the field prices the crossing to the unit and reports `LINK_STEP`; the far bank is unreachable without a bridge and unreachable *backwards* with one; an agent crosses a walled map and carries on to its goal; a carried agent is on the map but not walking, and moves at walking pace; a taken far bank backs the deck up in order and closes the mouth; clearing it drains the queue; a bank that never clears does not stop the bridge for good; demolishing a bridge under an agent puts it back somewhere it can walk; and a bridge across a chunk border appears in the coarse route as a link gate while one inside a chunk correctly does not.
+
 ## 15. Open items
 
 - Whether `DeliverInUpTo` / `DeliverOutDownTo` are authored in absolute units or percent of capacity (CoI offers both).
@@ -573,5 +645,8 @@ Regression cover, all EditMode: a queue eight deep drains (`ArrivalQueueTests`);
 - Flow-field window size (128² assumed) wants measuring against real building density.
 - `MaxConcurrentHaulers` / `MaxConcurrentVisitors` values are tuning, not design — 8 and 8 today, and both want measuring on a real map. So does the 0.4 s door, which is now a throughput number as much as an animation one.
 - **A doorstep interaction does not hold the doorway.** A hauler standing on a step through a `Pickup` is counted by the queue, but it does not hold the `DoorUse` resource, so an agent inside can still start walking out into it. Harmless today — both last well under a second and avoidance sorts out the overlap — and the fix, if it ever matters, is to give the interaction the same hold rather than to invent a second mechanism.
+- **A bridge mouth is not queued for** (§14.3). It is a contended cell that `ArrivalQueueSystem` cannot rank, because it ranks by cost to the agent's own destination and a mouth is nobody's destination. RVO and the stall watchdog cover it as they cover any congested cell; whether that is good enough wants watching on a map with a busy bridge on it.
+- **`MAX_WAIT_AT_FAR_END` (3 s) and `MAX_LINK_GATES_PER_CHUNK` (4) are tuning, not design.** Both want measuring against a real map, like `MaxConcurrentHaulers` and the 0.4 s door.
+- **The avoidance numbers are tuning, not design** (`AgentVelocityJob`): 12 neighbours, a 1.5 s agent horizon, a body half the collision radius, and a 0.25 s speed ramp. They move together — the horizon sets the sight distance, and sight is only worth widening while the neighbour budget can hold what it finds — so a change to one wants the others looked at. The horizon is the one with a ceiling in both directions: too short and a constraint arrives too late to act on, too long and an agent brakes for a crowd it would never have met.
 
-Settled (previously open): cell size is 1 unit, shared by the nav and building grids, agent radius 0.35 (§3). Door transitions have a duration, and with it the doorway is a resource held for a known time (§14.2).
+Settled (previously open): cell size is 1 unit, shared by the nav and building grids, agent radius 0.42 (§3). Door transitions have a duration, and with it the doorway is a resource held for a known time (§14.2).

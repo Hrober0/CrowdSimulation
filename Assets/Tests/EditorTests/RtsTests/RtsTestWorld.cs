@@ -29,6 +29,7 @@ namespace Tests.EditorTests.RtsTests
 
         private readonly SystemHandle _agentSpatialHashSystem;
         private readonly SystemHandle _taskStepSystem;
+        private readonly SystemHandle _bridgeTransitSystem;
         private readonly SystemHandle _pathRouteSystem;
         private readonly SystemHandle _pathRequestSystem;
         private readonly SystemHandle _arrivalQueueSystem;
@@ -62,6 +63,7 @@ namespace Tests.EditorTests.RtsTests
 
             _agentSpatialHashSystem = World.CreateSystem<AgentSpatialHashSystem>();
             _taskStepSystem = World.CreateSystem<TaskStepSystem>();
+            _bridgeTransitSystem = World.CreateSystem<BridgeTransitSystem>();
             _pathRouteSystem = World.CreateSystem<PathRouteSystem>();
             _pathRequestSystem = World.CreateSystem<PathRequestSystem>();
             _arrivalQueueSystem = World.CreateSystem<ArrivalQueueSystem>();
@@ -121,6 +123,7 @@ namespace Tests.EditorTests.RtsTests
 
             _agentSpatialHashSystem.Update(World.Unmanaged);
             _taskStepSystem.Update(World.Unmanaged);
+            _bridgeTransitSystem.Update(World.Unmanaged);
             _pathRouteSystem.Update(World.Unmanaged);
             _pathRequestSystem.Update(World.Unmanaged);
             _arrivalQueueSystem.Update(World.Unmanaged);
@@ -174,6 +177,65 @@ namespace Tests.EditorTests.RtsTests
             entrances.Add(new BuildingEntranceOffset { Offset = wallOffset, Side = side });
         }
 
+        /// <summary>
+        /// A one-way bridge between two banks. Only the ends are given, exactly as the player gives them - the
+        /// deck, the link and the mouth flags are all <c>BuildingFootprintSystem</c>'s to work out, so a test
+        /// that hand-built them would be testing itself.
+        /// </summary>
+        public Entity CreateBridge(int2 from, int2 to)
+        {
+            Entity entity = Entities.CreateEntity(typeof(BuildingPlacement));
+            Entities.SetComponentData(entity, new BuildingPlacement
+            {
+                OriginCell = from,
+                Rotation = GridRotation.None,
+            });
+
+            // Present but empty: the placement query is keyed on this buffer.
+            Entities.AddBuffer<BuildingFootprintOffset>(entity);
+
+            Entities.AddComponentData(entity, new BridgeSpan
+            {
+                EntryOffset = int2.zero,
+                ExitOffset = to - from,
+            });
+
+            return entity;
+        }
+
+        /// <summary>
+        /// A bridge authored the way a blueprint authors one: a run of structure cells starting at
+        /// <paramref name="origin"/> and running east before rotation, with a mouth just outside each end.
+        /// </summary>
+        public Entity CreateBridgeBlueprint(int2 origin, int structureCells, GridRotation rotation)
+        {
+            Entity entity = Entities.CreateEntity(typeof(BuildingPlacement));
+            Entities.SetComponentData(entity, new BuildingPlacement
+            {
+                OriginCell = origin,
+                Rotation = rotation,
+            });
+
+            Entities.AddBuffer<BuildingFootprintOffset>(entity);
+
+            Entities.AddComponentData(entity, new BridgeSpan
+            {
+                EntryOffset = new int2(-1, 0),
+                ExitOffset = new int2(structureCells, 0),
+            });
+
+            return entity;
+        }
+
+        /// <summary>A run of impassable cells, for splitting a map into two banks.</summary>
+        public void BlockCells(int2 from, int2 step, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Enqueue(GridEdit.CostDelta(from + step * i, CellData.BLOCKED));
+            }
+        }
+
         /// <summary>A building agents can rest in: one cell, one door on its south wall, and room inside.</summary>
         public Entity CreateShelter(int2 cell, int capacity)
         {
@@ -188,7 +250,7 @@ namespace Tests.EditorTests.RtsTests
         /// An agent walking straight at a goal, with no task behind it. The archetype is the production one
         /// (§9), so the step machine and idle claiming see exactly what they would in the game.
         /// </summary>
-        public Entity CreateAgent(float2 position, int2 goalCell, float maxSpeed = 4f, float radius = 0.35f)
+        public Entity CreateAgent(float2 position, int2 goalCell, float maxSpeed = 4f, float radius = 0.42f)
         {
             Entity entity = CreateIdleAgent(position, maxSpeed, radius);
 
@@ -206,11 +268,11 @@ namespace Tests.EditorTests.RtsTests
         }
 
         /// <summary>An agent with nowhere to be, which is what <see cref="IdleAssignSystem"/> is looking for.</summary>
-        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.35f, int carryCapacity = 10)
+        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.42f, int carryCapacity = 10)
         {
             Entity entity = Entities.CreateEntity(
                 typeof(AgentMove), typeof(PathFollow), typeof(ArrivedTag),
-                typeof(InsideBuilding), typeof(InteriorClaim), typeof(DoorUse),
+                typeof(InsideBuilding), typeof(InteriorClaim), typeof(DoorUse), typeof(OnBridge),
                 typeof(Carry), typeof(AssignedOrder), typeof(MovementWatchdog), typeof(ViewVisible)
             );
 
@@ -234,6 +296,7 @@ namespace Tests.EditorTests.RtsTests
             Entities.SetComponentEnabled<InsideBuilding>(entity, false);
             Entities.SetComponentEnabled<InteriorClaim>(entity, false);
             Entities.SetComponentEnabled<DoorUse>(entity, false);
+            Entities.SetComponentEnabled<OnBridge>(entity, false);
             Entities.SetComponentEnabled<AssignedOrder>(entity, false);
             return entity;
         }

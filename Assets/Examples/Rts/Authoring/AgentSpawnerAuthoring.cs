@@ -23,7 +23,7 @@ namespace Examples.Rts
 
         [SerializeField, Range(0.05f, 0.45f)]
         [Tooltip("Must stay below 0.45 of a cell, or agents clip the corners of blocked cells.")]
-        private float _radius = 0.35f;
+        private float _radius = 0.42f;
 
         [SerializeField, Min(0), Tooltip("Units carried per haul trip. 0 makes them incapable of hauling.")]
         private int _carryCapacity = 10;

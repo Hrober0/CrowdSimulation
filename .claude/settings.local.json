@@ -7,7 +7,16 @@
       "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -quit -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/compile.log\")",
       "Bash(echo \"exit=$?\")",
       "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -runTests -testPlatform EditMode -testFilter \"Tests.EditorTests.RtsTests\" -testResults \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/results.xml\" -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/tests.log\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(xargs grep -l \"PanelSettings\")",
+      "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -quit -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -executeMethod Examples.Rts.EditorTools.RtsSceneBuilder.Build -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/scene2.log\")",
+      "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -quit -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -executeMethod Examples.Rts.EditorTools.RtsSceneBuilder.Build -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/scene3.log\")",
+      "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -quit -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -executeMethod Examples.Rts.EditorTools.RtsSceneBuilder.Build -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/scene5.log\")",
+      "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -quit -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -runTests -testPlatform EditMode -testResults \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/results3.xml\" -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/tests3.log\")",
+      "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -runTests -testPlatform EditMode -testResults \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/results4.xml\" -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/tests4.log\")",
+      "Bash([ -f \"$S/results.xml\" ])",
+      "Bash(break)",
+      "Bash(python3 -)"
     ]
   }
 }

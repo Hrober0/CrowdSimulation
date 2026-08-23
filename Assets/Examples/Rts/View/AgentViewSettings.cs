@@ -21,9 +21,14 @@ namespace Examples.Rts
         [SerializeField, Tooltip("Sorting offset towards the camera, in world units. Presentation only.")]
         private float _depth;
 
+        [SerializeField, Min(0f)]
+        [Tooltip("Extra depth while crossing a bridge, so the agent draws over the deck rather than under it. "
+                 + "Must clear half the building prefab's thickness.")]
+        private float _bridgeLift = 1f;
+
         [SerializeField, Min(1f)]
         [Tooltip("Degrees a second an agent may swing round. Lower reads heavier; high enough and it spins.")]
-        private float _turnDegreesPerSecond = 540f;
+        private float _turnDegreesPerSecond = 270f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Agents further than this from the focus get no view. 0 shows every agent.")]
@@ -73,6 +78,7 @@ namespace Examples.Rts
             }
 
             _system.Depth = _depth;
+            _system.BridgeLift = _bridgeLift;
             _system.TurnDegreesPerSecond = _turnDegreesPerSecond;
             _system.Culling = _resolvedFocus != null
                 ? new ViewCulling(SimToWorld.ToSim(_resolvedFocus.position), _cullRadius)

@@ -67,10 +67,24 @@ namespace Rts
     [BurstCompile]
     public struct AgentVelocityJob : IJobFor
     {
-        private const int MAX_NEIGHBOURS = 8;
+        /// <summary>
+        /// How many neighbours one agent solves against. A body that fills most of its cell has more
+        /// neighbours touching it at once, and a constraint that is dropped for lack of a slot is a neighbour
+        /// the agent walks straight through: at eight, an agent in the middle of a pack spends its whole
+        /// budget on the ring in front and ignores the one shouldering it from the side.
+        /// </summary>
+        private const int MAX_NEIGHBOURS = 12;
 
-        /// <summary>Seconds ahead ORCA plans around another agent.</summary>
-        private const float TIME_HORIZON_AGENT = 1f;
+        /// <summary>
+        /// Seconds ahead ORCA plans around another agent. Longer means the two start easing apart while there
+        /// is still room to do it gently, instead of both arriving at the same point and swapping a
+        /// last-moment sidestep - which is the jostling that reads as bad avoidance.
+        ///
+        /// It cannot grow without limit: everything inside the horizon is a constraint, so far enough ahead
+        /// and an agent brakes for a crowd it would never have met. <see cref="SightDistance"/> is derived
+        /// from this, so raising it also widens the neighbour query.
+        /// </summary>
+        private const float TIME_HORIZON_AGENT = 1.5f;
 
         /// <summary>Unused until building outlines are fed in as obstacles (§5).</summary>
         private const float TIME_HORIZON_OBSTACLE = 1f;
@@ -114,7 +128,9 @@ namespace Rts
 
             SpatialHash.ForEachInAABB(move.Position - range, move.Position + range, ref insertion);
 
-            var orcaLines = new NativeList<Line>(Allocator.Temp);
+            // One line per neighbour, so the capacity is known up front - a list left to grow reallocates
+            // several times per agent per frame.
+            var orcaLines = new NativeList<Line>(MAX_NEIGHBOURS, Allocator.Temp);
             Linear.AddAgentLine(agent, orcaLines, neighbours, InverseTimeStep);
 
             float2 velocity = agent.Velocity;

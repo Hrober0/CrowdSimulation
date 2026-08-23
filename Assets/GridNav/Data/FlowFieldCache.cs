@@ -77,7 +77,13 @@ namespace GridNav
 
         /// <summary>
         /// The step to take from <paramref name="cell"/> towards the field's destination. False when the
-        /// cell is outside the window, has no route, or is the destination itself.
+        /// cell is outside the window, has no route, is the destination itself, or leads over a
+        /// <see cref="NavLink"/> - which is not a step anyone can walk.
+        ///
+        /// A link reading as "no direction" is the right answer for a walker and not a fudge: the agent should
+        /// stand still on the mouth, which is exactly what it does with nothing to follow, and being stood on a
+        /// mouth is how the rules layer notices it wants to cross. Ask <see cref="IsLinkStep"/> to tell that
+        /// apart from a dead end.
         /// </summary>
         public bool TryGetDirection(int slot, int2 cell, out Direction direction)
         {
@@ -90,13 +96,29 @@ namespace GridNav
             }
 
             byte stored = _storage.ReadDirection(slot, FlowField.LocalIndexOf(windowMin, cell));
-            if (stored == FlowField.NO_DIRECTION)
+            if (stored == FlowField.NO_DIRECTION || stored == FlowField.LINK_STEP)
             {
                 return false;
             }
 
             direction = (Direction)stored;
             return true;
+        }
+
+        /// <summary>
+        /// Whether the route to this field's destination carries on from <paramref name="cell"/> over a
+        /// <see cref="NavLink"/>.
+        ///
+        /// The one question that separates an agent standing on a bridge mouth because it means to cross from
+        /// one standing there on its way past. Both are on the same cell with the same task; the field is the
+        /// only thing that knows, because pricing the cell is what made it decide.
+        /// </summary>
+        public bool IsLinkStep(int slot, int2 cell)
+        {
+            int2 windowMin = _storage.GetSlot(slot).WindowMin;
+            return FlowField.Contains(windowMin, cell)
+                   && _storage.ReadDirection(slot, FlowField.LocalIndexOf(windowMin, cell))
+                   == FlowField.LINK_STEP;
         }
 
         /// <summary>

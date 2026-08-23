@@ -269,7 +269,7 @@ namespace Examples.Rts
                 Center = new float2(0f, -4f),
                 Size = new float2(12f, 6f),
                 MaxSpeed = 3f,
-                Radius = 0.35f,
+                Radius = 0.42f,
                 CarryCapacity = 10,
                 Idle = true,
                 Seed = 7,

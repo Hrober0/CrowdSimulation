@@ -22,6 +22,15 @@ namespace GridNav
         public const int CHUNK_SIZE = 32;
         public const int CELLS_PER_CHUNK = CHUNK_SIZE * CHUNK_SIZE;
 
+        /// <summary>
+        /// How many <see cref="NavLink"/>s the map can hold at once.
+        ///
+        /// Fixed and indexed, like the gate graph, so a slot can be overwritten in place and nothing that
+        /// holds an index goes stale. Five kilobytes for the lot, and a map with more than this many bridges
+        /// on it has a design problem rather than a capacity one.
+        /// </summary>
+        public const int MAX_LINKS = 256;
+
         private const int CHUNK_SHIFT = 5; // log2(CHUNK_SIZE)
         private const int CHUNK_MASK = CHUNK_SIZE - 1;
 
@@ -32,6 +41,7 @@ namespace GridNav
         [NativeDisableParallelForRestriction] private NativeArray<byte> _flags;
         [NativeDisableParallelForRestriction] private NativeArray<byte> _exits;
         [NativeDisableParallelForRestriction] private NativeArray<ChunkVersions> _versions;
+        [NativeDisableParallelForRestriction] private NativeArray<NavLink> _links;
 
         private readonly int2 _minCell;
         private readonly int2 _chunkCount;
@@ -50,6 +60,7 @@ namespace GridNav
             _flags = new NativeArray<byte>(cells, allocator);
             _exits = new NativeArray<byte>(cells, allocator);
             _versions = new NativeArray<ChunkVersions>(chunks, allocator);
+            _links = new NativeArray<NavLink>(MAX_LINKS, allocator);
 
             for (int i = 0; i < cells; i++)
             {
@@ -154,8 +165,77 @@ namespace GridNav
 
         public ChunkVersions GetChunkVersionsAtCell(int2 cell) => GetChunkVersions(ChunkCoordOf(cell));
 
+        /// <summary>Number of link slots, valid or not. Iterate this to find every link on the map.</summary>
+        public int LinkSlotCount => MAX_LINKS;
+
+        public NavLink GetLink(int slot) => _links[slot];
+
+        /// <summary>
+        /// The link that starts on this cell, if any.
+        ///
+        /// The flag test in front of the scan is the whole reason this is cheap enough to call from inside a
+        /// Dijkstra: almost every cell answers no on one byte it was going to read anyway, and only the mouth
+        /// of a bridge pays for the walk over the table.
+        /// </summary>
+        public bool TryGetLinkFrom(int2 cell, out NavLink link)
+        {
+            link = default;
+
+            if ((GetFlags(cell) & CellFlags.LinkEntry) == 0)
+            {
+                return false;
+            }
+
+            for (int slot = 0; slot < MAX_LINKS; slot++)
+            {
+                NavLink candidate = _links[slot];
+                if (candidate.IsValid && candidate.From.Equals(cell))
+                {
+                    link = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>The link that ends on this cell, if any. What a backwards search needs.</summary>
+        public bool TryGetLinkTo(int2 cell, out NavLink link)
+        {
+            link = default;
+
+            if ((GetFlags(cell) & CellFlags.LinkExit) == 0)
+            {
+                return false;
+            }
+
+            for (int slot = 0; slot < MAX_LINKS; slot++)
+            {
+                NavLink candidate = _links[slot];
+                if (candidate.IsValid && candidate.To.Equals(cell))
+                {
+                    link = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal void Apply(in GridEdit edit)
         {
+            // Two-cell operations before the single-cell index, because neither end is "the" cell.
+            switch (edit.Op)
+            {
+                case GridEdit.OpType.AddLink:
+                    ApplyAddLink(edit.Cell, edit.Other, (ushort)math.clamp(edit.Value, 1, ushort.MaxValue));
+                    return;
+
+                case GridEdit.OpType.RemoveLink:
+                    ApplyRemoveLink(edit.Cell, edit.Other);
+                    return;
+            }
+
             if (!InBounds(edit.Cell))
             {
                 Debug.LogWarning("[GridNav] Dropped a grid edit outside the map bounds.");
@@ -223,6 +303,93 @@ namespace GridNav
             // An exit mask decides whether a border pair is open, so gates depend on it exactly as they
             // depend on passability (§4.1).
             BumpVersions(cell, true);
+        }
+
+        /// <summary>
+        /// Records a one-way crossing and marks both its mouths.
+        ///
+        /// **A cell may be the mouth of one link only**, and the refusal is loud rather than silent. Allowing
+        /// two would mean every lookup returns a set, every search has to try each of them, and "which bridge
+        /// is this agent standing on" stops having an answer - all to support two bridges sharing a doorstep,
+        /// which is an authoring mistake in every case anyone has thought of.
+        ///
+        /// Both ends bump <c>PassabilityVersion</c>, which is what re-scans the gates of the two chunks a
+        /// bridge joins. A link is passability in every sense that matters: it changes where an agent standing
+        /// on one cell can get to.
+        /// </summary>
+        private void ApplyAddLink(int2 from, int2 to, ushort cost)
+        {
+            if (!InBounds(from) || !InBounds(to) || from.Equals(to))
+            {
+                Debug.LogWarning("[GridNav] Dropped a link whose ends are off the map or the same cell.");
+                return;
+            }
+
+            if ((GetFlags(from) & CellFlags.LinkEntry) != 0 || (GetFlags(to) & CellFlags.LinkExit) != 0)
+            {
+                Debug.LogWarning("[GridNav] Dropped a link: a cell may be the mouth of one link only.");
+                return;
+            }
+
+            int slot = FreeLinkSlot();
+            if (slot < 0)
+            {
+                Debug.LogWarning("[GridNav] Dropped a link: the map already holds as many as it can.");
+                return;
+            }
+
+            _links[slot] = new NavLink { From = from, To = to, Cost = cost };
+
+            _flags[CellIndex(from)] |= (byte)CellFlags.LinkEntry;
+            _flags[CellIndex(to)] |= (byte)CellFlags.LinkExit;
+
+            BumpVersions(from, true);
+            BumpVersions(to, true);
+        }
+
+        private void ApplyRemoveLink(int2 from, int2 to)
+        {
+            for (int slot = 0; slot < MAX_LINKS; slot++)
+            {
+                NavLink link = _links[slot];
+                if (!link.IsValid || !link.From.Equals(from) || !link.To.Equals(to))
+                {
+                    continue;
+                }
+
+                _links[slot] = default;
+
+                if (InBounds(from))
+                {
+                    int index = CellIndex(from);
+                    _flags[index] = Without(_flags[index], CellFlags.LinkEntry);
+                    BumpVersions(from, true);
+                }
+
+                if (InBounds(to))
+                {
+                    int index = CellIndex(to);
+                    _flags[index] = Without(_flags[index], CellFlags.LinkExit);
+                    BumpVersions(to, true);
+                }
+
+                return;
+            }
+        }
+
+        private static byte Without(byte flags, CellFlags remove) => (byte)(flags & ~(byte)remove);
+
+        private int FreeLinkSlot()
+        {
+            for (int slot = 0; slot < MAX_LINKS; slot++)
+            {
+                if (!_links[slot].IsValid)
+                {
+                    return slot;
+                }
+            }
+
+            return -1;
         }
 
         private void BumpVersions(int2 cell, bool passabilityChanged)
@@ -295,6 +462,11 @@ namespace GridNav
             if (_versions.IsCreated)
             {
                 _versions.Dispose();
+            }
+
+            if (_links.IsCreated)
+            {
+                _links.Dispose();
             }
         }
     }

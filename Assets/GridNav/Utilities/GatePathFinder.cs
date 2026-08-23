@@ -129,7 +129,7 @@ namespace GridNav
                         continue;
                     }
 
-                    Relax(StateOf(gate, other), toGate + CostOfEntering(gate, other), -1);
+                    Relax(StateOf(gate, other), toGate + CostOfCrossing(gate, other), -1);
                 }
             }
 
@@ -211,7 +211,7 @@ namespace GridNav
                         continue;
                     }
 
-                    Relax(StateOf(next, other), g + edge + CostOfEntering(next, other), state);
+                    Relax(StateOf(next, other), g + edge + CostOfCrossing(next, other), state);
                 }
             }
 
@@ -255,8 +255,17 @@ namespace GridNav
                 return (int)(math.distance(point, _goalPoint) * NavCost.STEP);
             }
 
-            private int CostOfEntering(int gate, int chunk) =>
-                NavCost.OfCell(_map.GetCost(_graph.CellInChunk(gate, chunk)));
+            /// <summary>
+            /// What it costs to come out of a gate on <paramref name="chunk"/>'s side: stepping onto the cell,
+            /// plus the crossing itself where there is one.
+            ///
+            /// At a border there is nothing but the step, which is why this was the step alone for as long as
+            /// every gate was a border. A link gate is a gate whose crossing costs something, and charging it
+            /// here is what stops the coarse layer treating a bridge as a free way across the map and routing
+            /// everything over it.
+            /// </summary>
+            private int CostOfCrossing(int gate, int chunk) =>
+                NavCost.OfCell(_map.GetCost(_graph.CellInChunk(gate, chunk))) + _graph.CrossCostOf(gate);
 
             private int StateOf(int gate, int chunk) =>
                 gate * 2 + (chunk == _graph.GateOwnerChunk(gate) ? 0 : 1);
