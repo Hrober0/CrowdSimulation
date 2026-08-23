@@ -84,15 +84,30 @@ namespace Tests.EditorTests.RtsTests
         }
 
         /// <summary>
-        /// The tail of a long queue is where the places stop being handed out by hand: rank four and beyond are
-        /// further from the destination than the radius the queue *forms* in, so a ranking that only looked at
-        /// agents inside that radius stopped maintaining them - and an agent still holding a place nobody is
-        /// maintaining waits for a turn that can never come, exempt from the watchdog because it thinks it is
-        /// queueing. That is what "agents stood around far from the door and never delivered" was.
+        /// The tail of a long queue is where the places stop being handed out by hand: rank four and beyond get
+        /// hold places further from the destination than the radius the queue *forms* in, so a ranking that only
+        /// looked at agents inside that radius would stop maintaining them - and an agent still holding a place
+        /// nobody is maintaining waits for a turn that can never come, exempt from the watchdog because it
+        /// thinks it is queueing. That is what "agents stood around far from the door and never delivered" was.
+        ///
+        /// **What is asserted is that property, not a distance.** Eight agents sent to one bare cell all *stay*
+        /// on it once they stop - nothing here goes inside a building to make room - so they settle into a blob
+        /// whose outer edge sits wherever eight bodies of the current radius pack. "Did the last one get within
+        /// 1.2 cells" measures that packing and not the queue: it held at radius 0.35 and broke at 0.42 with
+        /// nothing about queueing having changed. The queue is observed through the thing it actually writes -
+        /// who is holding a place, and how far out - which is what the paragraph above is about.
         /// </summary>
         [Test]
         public void ALongQueueDrainsInsteadOfStrandingItsTail()
         {
+            // ArrivalQueueSystem.ENGAGE_DISTANCE: the radius the queue forms in. A place handed out beyond this
+            // is one the ranking has to keep maintaining from outside the range it recruits in.
+            const float engageDistance = 5f;
+
+            // ArrivalQueueSystem.FIRST_HOLD_DISTANCE: where the second agent waits. Anything nearer than this
+            // was let in past the line rather than parked in it.
+            const float firstHoldDistance = 2f;
+
             var destination = new int2(0, 0);
 
             var agents = new Entity[8];
@@ -101,7 +116,13 @@ namespace Tests.EditorTests.RtsTests
                 agents[i] = _world.CreateAgent(CentreOf(new int2(2 + i, 0)), destination);
             }
 
-            var reached = new bool[agents.Length];
+            var closest = new float[agents.Length];
+            for (int i = 0; i < agents.Length; i++)
+            {
+                closest[i] = float.MaxValue;
+            }
+
+            float deepestHold = 0f;
 
             for (int frame = 0; frame < 1200; frame++)
             {
@@ -109,12 +130,35 @@ namespace Tests.EditorTests.RtsTests
 
                 for (int i = 0; i < agents.Length; i++)
                 {
-                    float distance = math.distance(_world.AgentOf(agents[i]).Position, CentreOf(destination));
-                    reached[i] |= distance <= 1.2f;
+                    PathFollow follow = _world.FollowOf(agents[i]);
+                    if (follow.Holding)
+                    {
+                        deepestHold = math.max(deepestHold, follow.HoldDistance);
+                    }
+
+                    closest[i] = math.min(
+                        closest[i],
+                        math.distance(_world.AgentOf(agents[i]).Position, CentreOf(destination)));
                 }
             }
 
-            reached.Should().AllBeEquivalentTo(true, "a queue eight deep still has to be a queue");
+            // Without this the rest would pass on a world with no queue in it at all.
+            deepestHold.Should().BeGreaterThan(
+                engageDistance,
+                "a queue eight deep has to hand out places past the radius it forms in, "
+                + "or the tail this test is about never exists");
+
+            for (int i = 0; i < agents.Length; i++)
+            {
+                _world.FollowOf(agents[i]).Holding.Should()
+                      .BeFalse($"agent {i} is still holding a place, so it waited for a turn that never came");
+
+                _world.IsWalking(agents[i]).Should()
+                      .BeFalse($"agent {i} never finished its walk - it neither arrived nor was given up on");
+
+                closest[i].Should()
+                          .BeLessThan(firstHoldDistance, $"agent {i} was never let past the front of the queue");
+            }
         }
 
         /// <summary>
