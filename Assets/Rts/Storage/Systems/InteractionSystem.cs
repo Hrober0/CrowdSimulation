@@ -1,4 +1,5 @@
 using GridNav;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -14,6 +15,7 @@ namespace Rts
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(InteriorTransitionSystem))]
+    [BurstCompile]
     public partial struct InteractionSystem : ISystem
     {
         public void OnCreate(ref SystemState state)
@@ -29,6 +31,7 @@ namespace Rts
             }
         }
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             InteractionQueue queue = SystemAPI.GetSingleton<InteractionQueue>();

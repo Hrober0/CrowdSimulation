@@ -16,7 +16,9 @@
       "Bash(\"C:/Unity/Editors/6000.3.18f1/Editor/Unity.exe\" -batchmode -nographics -projectPath \"c:\\\\Unity\\\\Projects\\\\CrowdSimulation\" -runTests -testPlatform EditMode -testResults \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/results4.xml\" -logFile \"C:/Users/AStan/AppData/Local/Temp/claude/c--Unity-Projects-CrowdSimulation/c465ad62-0bb6-406d-9f40-cbdd29d3b34b/scratchpad/tests4.log\")",
       "Bash([ -f \"$S/results.xml\" ])",
       "Bash(break)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Read(//c/Unity/Editors//**)",
+      "Read(//c/Unity/Editors/**)"
     ]
   }
 }

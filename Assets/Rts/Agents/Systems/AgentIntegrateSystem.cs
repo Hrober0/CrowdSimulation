@@ -1,4 +1,5 @@
 using GridNav;
+using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -15,6 +16,7 @@ namespace Rts
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(AgentAvoidanceSystem))]
+    [BurstCompile]
     public partial struct AgentIntegrateSystem : ISystem
     {
         public void OnCreate(ref SystemState state)
@@ -22,6 +24,7 @@ namespace Rts
             state.RequireForUpdate<GridWorld>();
         }
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;

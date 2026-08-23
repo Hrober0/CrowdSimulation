@@ -1,3 +1,4 @@
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -17,8 +18,10 @@ namespace Rts
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(InteractionSystem))]
+    [BurstCompile]
     public partial struct OrderCompletionSystem : ISystem
     {
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             // Collected first: disabling AssignedOrder is what the query filters on, and changing that under

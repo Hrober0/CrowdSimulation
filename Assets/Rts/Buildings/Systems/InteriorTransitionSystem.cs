@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GridNav;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -34,6 +35,7 @@ namespace Rts
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(AgentIntegrateSystem))]
+    [BurstCompile]
     public partial struct InteriorTransitionSystem : ISystem
     {
         /// <summary>
@@ -42,6 +44,7 @@ namespace Rts
         /// </summary>
         public const float DOOR_SECONDS = 0.4f;
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             var busy = new NativeHashSet<int2>(8, Allocator.Temp);

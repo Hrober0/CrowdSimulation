@@ -1,4 +1,5 @@
 using CustomNativeCollections;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -14,6 +15,7 @@ namespace Rts
     }
 
     [UpdateInGroup(typeof(RtsAgentGroup), OrderFirst = true)]
+    [BurstCompile]
     public partial struct AgentSpatialHashSystem : ISystem
     {
         private const int INITIAL_CAPACITY = 4096;
@@ -42,6 +44,7 @@ namespace Rts
             }
         }
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             NativeSpatialHash<AgentMove> hash = SystemAPI.GetSingletonRW<AgentSpatialHash>().ValueRW.Hash;
