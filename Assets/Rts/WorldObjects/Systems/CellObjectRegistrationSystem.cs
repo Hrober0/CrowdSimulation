@@ -13,6 +13,11 @@ namespace Rts
     /// <see cref="CellObjectRegistered"/> cleanup component that outlives the destroyed entity. Because the
     /// refund uses the recorded cost rather than the current one, chopping one of three trees on a cell
     /// leaves the other two blocking it, exactly (§3).
+    ///
+    /// It also keeps <see cref="CellFlags.Object"/> in step, which is the same bookkeeping done as a count
+    /// rather than as a sum: raised by the first object to arrive on a cell and lowered by the last to leave.
+    /// The add pass runs before the remove pass, so a cell that gains and loses an object in one frame is
+    /// never seen empty in between.
     /// </summary>
     [UpdateInGroup(typeof(GridUpdateGroup))]
     public partial struct CellObjectRegistrationSystem : ISystem
@@ -64,6 +69,14 @@ namespace Rts
                 map.Add(added.Cell, entity);
                 edits.Enqueue(GridEdit.CostDelta(added.Cell, added.Cost));
 
+                // Only the first thing on a cell raises the flag, and only the last one to leave lowers it -
+                // counted off the map, which is authoritative and already up to date, rather than off the
+                // cost sum, which cannot tell one blocker from four cheap ones.
+                if (map.CountAt(added.Cell) == 1)
+                {
+                    edits.Enqueue(GridEdit.AddFlags(added.Cell, CellFlags.Object));
+                }
+
                 commands.AddComponent(entity, new CellObjectRegistered
                 {
                     Cell = added.Cell,
@@ -78,6 +91,11 @@ namespace Rts
 
                 map.Remove(removed.Cell, entity);
                 edits.Enqueue(GridEdit.CostDelta(removed.Cell, -removed.Cost));
+
+                if (map.CountAt(removed.Cell) == 0)
+                {
+                    edits.Enqueue(GridEdit.RemoveFlags(removed.Cell, CellFlags.Object));
+                }
 
                 commands.RemoveComponent<CellObjectRegistered>(entity);
             }

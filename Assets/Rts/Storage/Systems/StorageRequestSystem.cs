@@ -38,8 +38,14 @@ namespace Rts
 
             var live = new NativeHashSet<int>(64, Allocator.Temp);
 
+            // Nodes are excluded rather than filtered out inside the loop, and the difference is the whole
+            // reason ResourceNode exists. A seam is a pure source that can never satisfy `slot.Requests`, so
+            // walking twenty thousand of them to establish that every tick is the economy budget spent on a
+            // foregone conclusion. Left to the query, they are not visited at all.
             foreach ((DynamicBuffer<StorageSlot> slots, Entity building)
-                     in SystemAPI.Query<DynamicBuffer<StorageSlot>>().WithEntityAccess())
+                     in SystemAPI.Query<DynamicBuffer<StorageSlot>>()
+                                 .WithNone<ResourceNode>()
+                                 .WithEntityAccess())
             {
                 foreach (StorageSlot slot in slots)
                 {

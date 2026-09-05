@@ -26,6 +26,7 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _orderAgingSystem;
         private readonly SystemHandle _orderAssignSystem;
         private readonly SystemHandle _idleAssignSystem;
+        private readonly SystemHandle _nodeDepletionSystem;
 
         private readonly SystemHandle _agentSpatialHashSystem;
         private readonly SystemHandle _taskStepSystem;
@@ -60,6 +61,7 @@ namespace Tests.EditorTests.RtsTests
             _orderAgingSystem = World.CreateSystem<OrderAgingSystem>();
             _orderAssignSystem = World.CreateSystem<OrderAssignSystem>();
             _idleAssignSystem = World.CreateSystem<IdleAssignSystem>();
+            _nodeDepletionSystem = World.CreateSystem<ResourceNodeDepletionSystem>();
 
             _agentSpatialHashSystem = World.CreateSystem<AgentSpatialHashSystem>();
             _taskStepSystem = World.CreateSystem<TaskStepSystem>();
@@ -120,6 +122,7 @@ namespace Tests.EditorTests.RtsTests
             _orderAgingSystem.Update(World.Unmanaged);
             _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
+            _nodeDepletionSystem.Update(World.Unmanaged);
 
             _agentSpatialHashSystem.Update(World.Unmanaged);
             _taskStepSystem.Update(World.Unmanaged);
@@ -151,6 +154,27 @@ namespace Tests.EditorTests.RtsTests
             Entity entity = Entities.CreateEntity(typeof(CellObject));
             Entities.SetComponentData(entity, new CellObject { Cell = cell, Cost = cost, Kind = kind });
             return entity;
+        }
+
+        /// <summary>
+        /// A harvestable object: a cell object that happens to hold stock, which is all a node is. The slot
+        /// is a pure source, so it asks for nothing and gives everything away.
+        /// </summary>
+        public Entity CreateResourceNode(int2 cell, ObjectKind kind, ItemId item, int amount, ushort cost = 0)
+        {
+            Entity node = CreateCellObject(cell, cost, kind);
+            Entities.AddComponent<ResourceNode>(node);
+            Entities.AddBuffer<StorageSlot>(node).Add(new StorageSlot
+            {
+                Item = item,
+                Amount = amount,
+                Capacity = math.max(amount, 1),
+                DeliverInUpTo = 0,
+                DeliverOutDownTo = 0,
+                Priority = 0,
+            });
+
+            return node;
         }
 
         public Entity CreateBuilding(int2 origin, GridRotation rotation, params int2[] footprintOffsets)

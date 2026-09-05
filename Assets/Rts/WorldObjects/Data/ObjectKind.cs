@@ -10,5 +10,6 @@ namespace Rts
         None = 0,
         Tree = 1,
         Rock = 2,
+        Ore = 3,
     }
 }

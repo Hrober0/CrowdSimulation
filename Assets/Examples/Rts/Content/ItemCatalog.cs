@@ -23,8 +23,10 @@ namespace Examples.Rts
 
         public static ItemId Stone => new(5);
 
+        public static ItemId Ore => new(6);
+
         /// <summary>Every item the example knows about, in display order.</summary>
-        public static ItemId[] All => new[] { Grain, Flour, Bread, Wood, Stone };
+        public static ItemId[] All => new[] { Grain, Flour, Bread, Wood, Stone, Ore };
 
         public static string Name(ItemId item) => item.Value switch
         {
@@ -33,6 +35,7 @@ namespace Examples.Rts
             3 => "Bread",
             4 => "Wood",
             5 => "Stone",
+            6 => "Ore",
             _ => "-",
         };
 
@@ -43,6 +46,7 @@ namespace Examples.Rts
             3 => new Color(0.80f, 0.55f, 0.25f),
             4 => new Color(0.55f, 0.40f, 0.22f),
             5 => new Color(0.60f, 0.60f, 0.62f),
+            6 => new Color(0.72f, 0.45f, 0.30f),
             _ => Color.grey,
         };
     }

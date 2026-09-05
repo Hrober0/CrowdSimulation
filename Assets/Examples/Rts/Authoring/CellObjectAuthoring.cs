@@ -14,16 +14,18 @@ namespace Examples.Rts
     {
         [SerializeField] private ObjectKind _kind = ObjectKind.Tree;
 
-        [SerializeField, Range(0, CellData.BLOCKED)]
-        [Tooltip("Added to the cell's cost. 255 blocks the cell on its own; ~120 makes two of them block it. " +
-                 "Above 255 would be indistinguishable from 255 for one object, so that is the top of the range.")]
-        private int _cost = CellData.BLOCKED;
-
         public int2 Cell => GridCoords.CellOf(SimToWorld.ToSim(transform.position));
+
+        /// <summary>
+        /// What this thing costs to walk through comes from its kind, not from a number set per instance.
+        /// Two trees that price differently are two trees the player cannot tell apart, and the cost is
+        /// load-bearing enough - it decides whether a cell can be sealed at all - to want one answer.
+        /// </summary>
+        private ushort Cost => WorldObjectCatalog.Cost(_kind);
 
         private void OnDrawGizmos()
         {
-            Gizmos.color = _cost >= CellData.BLOCKED ? new Color(0.8f, 0.3f, 0.1f) : new Color(0.8f, 0.7f, 0.2f);
+            Gizmos.color = Cost >= CellData.BLOCKED ? new Color(0.8f, 0.3f, 0.1f) : new Color(0.8f, 0.7f, 0.2f);
             Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(Cell)), SimToWorld.Direction(new float2(1f, 1f)));
         }
 
@@ -35,7 +37,7 @@ namespace Examples.Rts
                 AddComponent(entity, new CellObject
                 {
                     Cell = authoring.Cell,
-                    Cost = (ushort)math.clamp(authoring._cost, 0, ushort.MaxValue),
+                    Cost = authoring.Cost,
                     Kind = authoring._kind,
                 });
             }

@@ -291,7 +291,13 @@ namespace Rts
             int2 cell)
         {
             CellData data = map.GetCell(cell);
-            if (!data.IsPassable || data.Has(CellFlags.NoIdle) || promised.Contains(cell))
+            // Not on top of anything, either. A tree is walkable now rather than solid (§14 step 9), and
+            // without this the first thing idle agents do is wander into the wood and stand in it - which
+            // reads as a bug however correct the pathfinding underneath it is.
+            if (!data.IsPassable
+                || data.Has(CellFlags.NoIdle)
+                || data.Has(CellFlags.Object)
+                || promised.Contains(cell))
             {
                 return false;
             }

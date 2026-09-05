@@ -34,5 +34,16 @@ namespace GridNav
 
         /// <summary>A <see cref="NavLink"/> ends here.</summary>
         LinkExit = 1 << 5,
+
+        /// <summary>
+        /// Something is standing on this cell - a tree, a rock, a seam of ore.
+        ///
+        /// Routing does not read it and must not: what a cell costs to cross is its cost sum, whatever is
+        /// making it expensive. The flag answers a different question, "is this ground clear", which used to
+        /// be answerable from passability alone and stopped being so the moment an obstacle could be walked
+        /// through (§14 step 9). Land has to be cleared before it is built on, and without this the check
+        /// that says so cannot see a tree at all.
+        /// </summary>
+        Object = 1 << 6,
     }
 }
