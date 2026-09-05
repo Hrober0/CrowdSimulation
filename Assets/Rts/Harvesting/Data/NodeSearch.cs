@@ -40,66 +40,14 @@ namespace Rts
         {
             for (int ring = 0; ring <= reaps.Range; ring++)
             {
-                if (TryFindInRing(objects, cellObjects, slots, reach, from, reaps, ring, out node, out cell))
+                int cells = CellRing.Count(ring);
+                for (int i = 0; i < cells; i++)
                 {
-                    return true;
-                }
-            }
-
-            node = Entity.Null;
-            cell = default;
-            return false;
-        }
-
-        /// <summary>
-        /// One square ring of cells at Chebyshev distance <paramref name="ring"/>. Walking the ring rather
-        /// than the whole square is what makes the search cost what it finds: the first ring holding
-        /// anything ends it, and the rings beyond are never visited.
-        /// </summary>
-        private static bool TryFindInRing(
-            in CellObjectMap objects,
-            in ComponentLookup<CellObject> cellObjects,
-            in BufferLookup<StorageSlot> slots,
-            in Reachability reach,
-            int2 centre,
-            in Reaps reaps,
-            int ring,
-            out Entity node,
-            out int2 cell)
-        {
-            if (ring == 0)
-            {
-                return TryFindOn(objects, cellObjects, slots, reach, centre, reaps, centre, out node, out cell);
-            }
-
-            for (int x = -ring; x <= ring; x++)
-            {
-                int2 top = centre + new int2(x, ring);
-                if (TryFindOn(objects, cellObjects, slots, reach, top, reaps, centre, out node, out cell))
-                {
-                    return true;
-                }
-
-                int2 bottom = centre + new int2(x, -ring);
-                if (TryFindOn(objects, cellObjects, slots, reach, bottom, reaps, centre, out node, out cell))
-                {
-                    return true;
-                }
-            }
-
-            // The corners belong to the rows above and are skipped here, or they would be visited twice.
-            for (int y = -ring + 1; y <= ring - 1; y++)
-            {
-                int2 left = centre + new int2(-ring, y);
-                if (TryFindOn(objects, cellObjects, slots, reach, left, reaps, centre, out node, out cell))
-                {
-                    return true;
-                }
-
-                int2 right = centre + new int2(ring, y);
-                if (TryFindOn(objects, cellObjects, slots, reach, right, reaps, centre, out node, out cell))
-                {
-                    return true;
+                    int2 at = CellRing.At(from, ring, i);
+                    if (TryFindOn(objects, cellObjects, slots, reach, at, reaps, from, out node, out cell))
+                    {
+                        return true;
+                    }
                 }
             }
 

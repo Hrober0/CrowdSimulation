@@ -105,6 +105,7 @@ namespace Rts
                             {
                                 Agent = entity,
                                 Target = step.Target,
+                                Cell = step.Cell,
                                 Kind = step.Interaction,
                             });
                         }

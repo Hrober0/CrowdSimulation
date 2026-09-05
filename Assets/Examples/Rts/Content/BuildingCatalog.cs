@@ -18,6 +18,9 @@ namespace Examples.Rts
         /// <summary>The same building, felling trees.</summary>
         LumberCamp,
 
+        /// <summary>The other way round: plants them, and grows a wood that was not there.</summary>
+        Planter,
+
         /// <summary>Somewhere for the wood and ore to end up.</summary>
         WoodYard,
         OreYard,
@@ -76,6 +79,13 @@ namespace Examples.Rts
         /// <summary>How far out, in cells. See <see cref="Reaps.Range"/>.</summary>
         public readonly int HarvestRange;
 
+        /// <summary>
+        /// What this building plants, or <see cref="ObjectKind.None"/> for one that only takes. What it costs
+        /// and what felling it gives are read from <see cref="WorldObjectCatalog"/> and
+        /// <see cref="RtsResources"/>, so a planted tree and a tree the map started with are the same thing.
+        /// </summary>
+        public readonly ObjectKind Plants;
+
         public BuildingBlueprint(
             BuildingKind kind,
             string name,
@@ -88,7 +98,8 @@ namespace Examples.Rts
             bool isShelter = false,
             int bridgeCells = 0,
             ObjectKind harvests = ObjectKind.None,
-            int harvestRange = 0)
+            int harvestRange = 0,
+            ObjectKind plants = ObjectKind.None)
         {
             Kind = kind;
             Name = name;
@@ -102,12 +113,15 @@ namespace Examples.Rts
             BridgeCells = bridgeCells;
             Harvests = harvests;
             HarvestRange = harvestRange;
+            Plants = plants;
         }
 
         public bool IsBridge => BridgeCells > 0;
 
         /// <summary>Sends workers out to the map rather than keeping them at a bench.</summary>
         public bool IsGatherer => Harvests != ObjectKind.None;
+
+        public bool IsPlanter => Plants != ObjectKind.None;
 
         public bool Crafts => CraftSeconds > 0f && !Output.IsNone;
 
@@ -160,6 +174,10 @@ namespace Examples.Rts
                 BuildingKind.LumberCamp, "Lumber Camp", new int2(2, 2), new Color(0.42f, 0.52f, 0.32f),
                 interior: 3, output: ItemCatalog.Wood,
                 harvests: ObjectKind.Tree, harvestRange: 16),
+
+            new BuildingBlueprint(
+                BuildingKind.Planter, "Planter", new int2(2, 2), new Color(0.34f, 0.58f, 0.38f),
+                interior: 2, harvestRange: 12, plants: ObjectKind.Tree),
 
             new BuildingBlueprint(
                 BuildingKind.WoodYard, "Wood Yard", new int2(3, 2), new Color(0.48f, 0.40f, 0.28f),

@@ -26,10 +26,29 @@ namespace Examples.Rts
         /// simply a wood nobody is cutting.
         /// </summary>
         public static Entity PlaceTree(EntityManager entities, int2 cell) =>
-            PlaceNode(entities, cell, ObjectKind.Tree, ItemCatalog.Wood, WOOD_PER_TREE);
+            PlaceNode(entities, cell, ObjectKind.Tree, YieldOf(ObjectKind.Tree), YieldAmountOf(ObjectKind.Tree));
 
         public static Entity PlaceOre(EntityManager entities, int2 cell) =>
-            PlaceNode(entities, cell, ObjectKind.Ore, ItemCatalog.Ore, ORE_PER_SEAM);
+            PlaceNode(entities, cell, ObjectKind.Ore, YieldOf(ObjectKind.Ore), YieldAmountOf(ObjectKind.Ore));
+
+        /// <summary>
+        /// What harvesting one of these gives. Asked by the planter too, so that a tree somebody grew and a
+        /// tree the map started with are worth the same - which is what makes a grove indistinguishable from
+        /// a wood as far as the rest of the game is concerned.
+        /// </summary>
+        public static ItemId YieldOf(ObjectKind kind) => kind switch
+        {
+            ObjectKind.Tree => ItemCatalog.Wood,
+            ObjectKind.Ore => ItemCatalog.Ore,
+            _ => ItemId.None,
+        };
+
+        public static int YieldAmountOf(ObjectKind kind) => kind switch
+        {
+            ObjectKind.Tree => WOOD_PER_TREE,
+            ObjectKind.Ore => ORE_PER_SEAM,
+            _ => 0,
+        };
 
         /// <summary>
         /// A world object holding a deposit. The slot is a **pure source** in the terms of §7 - priority 0,

@@ -36,6 +36,11 @@ namespace Rts
         {
             InteractionQueue queue = SystemAPI.GetSingleton<InteractionQueue>();
 
+            // Fetched here rather than where it is used: SystemAPI only resolves inside the system's own
+            // update, and the settling methods are static so that each one is obviously a function of the
+            // event it is handed.
+            SystemAPI.TryGetSingleton(out PlantQueue plantings);
+
             while (queue.TryDequeue(out InteractionEvent interaction))
             {
                 switch (interaction.Kind)
@@ -50,6 +55,10 @@ namespace Rts
 
                     case InteractionKind.Work:
                         Work(ref state, interaction);
+                        break;
+
+                    case InteractionKind.Plant:
+                        Plant(ref state, plantings, interaction);
                         break;
                 }
             }
@@ -89,6 +98,33 @@ namespace Rts
             {
                 entities.GetBuffer<TaskStep>(interaction.Agent).Clear();
             }
+        }
+
+        /// <summary>
+        /// A sapling is in the ground. What actually appears is <see cref="PlantingSystem"/>'s business, and
+        /// the split is not tidiness: creating an entity is a structural change, and this loop is holding
+        /// buffers it would invalidate underneath itself.
+        ///
+        /// What is being planted comes off the building that ordered the work, which is the only thing that
+        /// knows - the agent carries nothing, and the cell knows nothing about what is meant to stand on it.
+        /// </summary>
+        private static void Plant(ref SystemState state, in PlantQueue plantings,
+                                  in InteractionEvent interaction)
+        {
+            EntityManager entities = state.EntityManager;
+
+            if (!plantings.IsCreated
+                || !entities.Exists(interaction.Target)
+                || !entities.HasComponent<Sows>(interaction.Target))
+            {
+                return;
+            }
+
+            plantings.Enqueue(new PlantRequest
+            {
+                Cell = interaction.Cell,
+                What = entities.GetComponentData<Sows>(interaction.Target),
+            });
         }
 
         private static void Deposit(ref SystemState state, in InteractionEvent interaction)

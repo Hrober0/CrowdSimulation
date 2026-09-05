@@ -60,6 +60,10 @@ namespace Examples.Rts
             (BuildingKind.WoodYard, new int2(0, 14)),
             (BuildingKind.Mine, new int2(6, -16)),
             (BuildingKind.OreYard, new int2(0, -16)),
+
+            // Put on bare ground rather than against the wood, because what it does is only visible where
+            // there is nothing: a grove appears beside it while you watch.
+            (BuildingKind.Planter, new int2(-16, 16)),
         };
 
         /// <summary>Where the wood stands, and where the seams are. Both near the building that works them.</summary>

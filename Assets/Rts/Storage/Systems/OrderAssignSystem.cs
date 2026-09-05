@@ -43,6 +43,10 @@ namespace Rts
         private const int DEFAULT_MAX_CONCURRENT_HAULERS = 8;
 
         private const float PICKUP_SECONDS = 0.5f;
+
+        /// <summary>Long enough to read as work being done, short enough that a grove appears while watching.</summary>
+        private const float PLANT_SECONDS = 1f;
+
         private const float DEPOSIT_SECONDS = 0.5f;
 
         private BufferLookup<StorageSlot> _slots;
@@ -54,6 +58,7 @@ namespace Rts
         private ComponentLookup<InteriorClaim> _claims;
         private ComponentLookup<Recipe> _recipes;
         private ComponentLookup<Reaps> _reaps;
+        private ComponentLookup<Sows> _sows;
         private ComponentLookup<CellObject> _cellObjects;
 
         public void OnCreate(ref SystemState state)
@@ -72,6 +77,7 @@ namespace Rts
             _claims = state.GetComponentLookup<InteriorClaim>();
             _recipes = state.GetComponentLookup<Recipe>(isReadOnly: true);
             _reaps = state.GetComponentLookup<Reaps>(isReadOnly: true);
+            _sows = state.GetComponentLookup<Sows>(isReadOnly: true);
             _cellObjects = state.GetComponentLookup<CellObject>(isReadOnly: true);
         }
 
@@ -92,6 +98,7 @@ namespace Rts
             _claims.Update(ref state);
             _recipes.Update(ref state);
             _reaps.Update(ref state);
+            _sows.Update(ref state);
             _cellObjects.Update(ref state);
 
             NativeList<FreeAgent> agents = CollectFreeAgents(ref state);
@@ -111,13 +118,14 @@ namespace Rts
             );
 
             CellObjectMap objects = SystemAPI.GetSingleton<CellObjectMap>();
+            GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
 
             double now = SystemAPI.Time.ElapsedTime;
 
             int claims = 0;
             for (int i = 0; i < ranked.Length && claims < MAX_CLAIMS_PER_TICK && agents.Length > 0; i++)
             {
-                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, objects, now))
+                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, objects, map, now))
                 {
                     claims++;
                 }
@@ -139,22 +147,42 @@ namespace Rts
             NativeHashMap<Entity, int> busy,
             in Reachability reach,
             in CellObjectMap objects,
+            in GridMap map,
             double now)
         {
             Order order = book[orderIndex];
 
-            return order.Kind switch
+            if (order.Kind == OrderKind.Haul)
             {
-                OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy, reach, now),
+                return TryAssignHaul(book, orderIndex, sites, agents, busy, reach, now);
+            }
 
-                // A gatherer's work order looks like a crafter's and is told apart by what the building is:
-                // one that harvests wants somebody sent *out*, so the two part company here rather than in
-                // the request systems, which post the identical order for the identical reason.
-                OrderKind.Work => _reaps.HasComponent(order.Target)
-                    ? TryAssignGather(book, orderIndex, agents, reach, objects, now)
-                    : TryAssignWork(book, orderIndex, agents, reach, now),
-                _ => false,
-            };
+            if (order.Kind != OrderKind.Work)
+            {
+                return false;
+            }
+
+            // A field worker's order looks exactly like a crafter's, and is told apart by what the building
+            // is: one that works the land wants somebody sent *out*. The two part company here rather than in
+            // the request systems, which post the identical order for the identical reason.
+            //
+            // **Reaping is tried before sowing**, so a building that does both clears the ground before
+            // filling it again. Nothing today does both - a farm will, and it will want a rule about how
+            // grown a thing has to be before it is worth cutting, which is why it is not here yet.
+            bool reaps = _reaps.HasComponent(order.Target);
+            bool sows = _sows.HasComponent(order.Target);
+
+            if (!reaps && !sows)
+            {
+                return TryAssignWork(book, orderIndex, agents, reach, now);
+            }
+
+            if (reaps && TryAssignGather(book, orderIndex, agents, reach, objects, now))
+            {
+                return true;
+            }
+
+            return sows && TryAssignSow(book, orderIndex, agents, reach, map, now);
         }
 
         /// <summary>
@@ -327,6 +355,90 @@ namespace Rts
                 Target = order.Target,
                 Item = reaps.Yields,
                 Amount = amount,
+            };
+            _orders.SetComponentEnabled(agent.Entity, true);
+
+            order.Amount = 0;
+            order.LastClaimedTime = now;
+            book[orderIndex] = order;
+
+            agents.RemoveAtSwapBack(agentIndex);
+            return true;
+        }
+
+        /// <summary>
+        /// Sends a worker out to put something in the ground (design §14 step 11).
+        ///
+        /// The first task in the game whose subject is a **place**. Everything before it is about a thing -
+        /// this shelf, that seam, the agent itself - and the order market is built on that: a haul reserves
+        /// both ends, and reserving is something only an entity can do. A cell cannot be reserved, so nothing
+        /// stops two planters being sent to the same square.
+        ///
+        /// Nothing needs to. The planting is checked again at the moment it would appear
+        /// (<see cref="PlantingSystem"/>), and the second worker finds the ground taken and plants nothing -
+        /// which is the same answer a reservation would have given, arrived at a step later and without a
+        /// release path for every way a walk can end. It costs a wasted walk, occasionally. A construction
+        /// site will want the stronger version; a sapling does not.
+        ///
+        /// The worker walks home afterwards, so it finishes where it started and is the nearest free pair of
+        /// hands when the planter asks again - the same way a miner keeps its job (see TryAssignGather).
+        /// </summary>
+        private bool TryAssignSow(
+            OrderBook book,
+            int orderIndex,
+            NativeList<FreeAgent> agents,
+            in Reachability reach,
+            in GridMap map,
+            double now)
+        {
+            Order order = book[orderIndex];
+            if (order.Amount <= 0 || !TryEntranceOf(order.Target, out int2 door))
+            {
+                return false;
+            }
+
+            if (!_interiors.TryGetComponent(order.Target, out Interior interior) || !interior.HasRoom)
+            {
+                return false;
+            }
+
+            Sows sows = _sows[order.Target];
+
+            if (!BareCellSearch.TryFindNearest(map, reach, door, sows.Range, out int2 ground))
+            {
+                return false;
+            }
+
+            // No hands needed: a planter's worker carries nothing there and nothing back.
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex))
+            {
+                return false;
+            }
+
+            FreeAgent agent = agents[agentIndex];
+
+            interior.Claimed++;
+            _interiors[order.Target] = interior;
+
+            _claims[agent.Entity] = new InteriorClaim { Building = order.Target };
+            _claims.SetComponentEnabled(agent.Entity, true);
+
+            DynamicBuffer<TaskStep> steps = _steps[agent.Entity];
+            steps.Clear();
+
+            if (agent.Inside != Entity.Null && TryEntranceOf(agent.Inside, out int2 homeDoor))
+            {
+                steps.Add(TaskStep.Exit(agent.Inside, homeDoor));
+            }
+
+            steps.Add(TaskStep.GoToDoor(ground));
+            steps.Add(TaskStep.Plant(order.Target, ground, PLANT_SECONDS));
+            steps.Add(TaskStep.GoToDoor(door));
+
+            _orders[agent.Entity] = new AssignedOrder
+            {
+                Kind = OrderKind.Work,
+                Target = order.Target,
             };
             _orders.SetComponentEnabled(agent.Entity, true);
 

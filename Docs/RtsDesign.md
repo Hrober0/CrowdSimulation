@@ -677,7 +677,7 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
     of `OrderAssignSystem` into a type of its own on the way, because picking which tree to fell asks exactly
     the question picking which warehouse to raid does — and so will picking what to walk at in step 13.
 
-11. **Sowing: the first order whose target is a cell.**
+11. **Done.** Sowing: the first order whose target is a cell.
 
     Everything until now is pull-only demand from an entity that wants something. "Plant a tree at 12,40" is
     the first order about a *place*, and it is built as that rather than as a planting feature on purpose: a
@@ -686,6 +686,45 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
     One `TaskStepKind.Work` variant whose target is a cell, and one interaction that spawns the object. The
     spawn goes through a queue and lands as an ordinary `CellObject`, so the grid learns about it on the next
     grid phase through the single writer, exactly as a placed building does.
+
+    Four things settled while building it.
+
+    **A cell cannot be reserved, and it turned out not to need to be.** Every task before this one holds both
+    ends before anybody sets off, and that is only possible because both ends are entities: reserving is
+    something a shelf can do and a square of ground cannot. So nothing stops two planters being sent to the
+    same cell. Nothing needs to - the ground is checked again at the moment the sapling would appear, and the
+    second worker finds it taken and plants nothing, which is the answer a reservation would have given, one
+    step later and with no release path for every way a walk can end. It costs an occasional wasted walk. A
+    construction site will want the stronger version; a sapling does not.
+
+    **Farthest-first was wrong, and step 9 is why.** The plan called for sowing to work back towards the
+    building, so that nothing is ever planted across the route to what has not been planted yet. That
+    reasoning belonged to a world where a tree was a wall. Since trees are priced rather than blocking,
+    nothing can be sown across anything, and what is left is nearest-first: cheaper, because it rings out and
+    stops at the first answer, and it keeps the walk short.
+
+    **Plantings are spaced, and the spacing is a mechanism rather than a look.** Without it a planter fills
+    every cell it can reach and leaves a solid block - slow to cross, and awkward for a lumber camp working it
+    from the middle. Refusing a cell with something already standing beside it leaves lanes through the grove
+    by construction, and it is also what makes a planter *stop*: it runs out of places rather than running out
+    of range. Only the four orthogonal neighbours, so plantings sit diagonally and half the ground is covered.
+
+    **One system now owns every field-work order.** `GatherRequestSystem` became `FieldWorkRequestSystem` and
+    asks for both halves, because a farm will have `Reaps` and `Sows` both - and two systems posting the same
+    kind of order for the same building would each retire what the other had just posted, which is precisely
+    the trap that had to be closed when gathering was added beside crafting. One owner per order and the
+    question does not arise.
+
+    Reaping is tried before sowing, so a building that does both clears the ground before filling it again.
+    Nothing does both yet: a farm will, and it will first want a rule about how grown a thing has to be before
+    it is worth cutting, or it will reap what it planted the instant the sapling lands.
+
+    What appears is an ordinary `CellObject` with a `ResourceNode` and a yield on it - the same entity the map
+    is laid out with, and the same one a lumber camp fells. There is no such thing as a *planted* tree as far
+    as the rest of the game is concerned, which is what lets a grove be worked exactly like a wood that was
+    always there. It goes through a queue rather than being made where the interaction is settled, and that is
+    not tidiness: creating an entity is a structural change, and `InteractionSystem` is in the middle of a
+    loop holding buffers it would invalidate underneath itself.
 
 12. **A turret and a training camp, as evidence.**
 
@@ -898,6 +937,10 @@ Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and 
 
 ## 15. Open items
 
+- **A building that both sows and reaps needs a growth rule first** (§14 step 11). Reaping is tried before
+  sowing, so a farm as things stand would cut down what it planted the instant the sapling landed. Whether
+  maturity is an age, a stock that fills over time, or a second object kind is undecided - and it is the
+  whole of what a farm is, so it wants deciding rather than defaulting.
 - **Per-faction passability has no answer yet** (§14 step 13). One shared cost grid cannot express "blocked
   for its owner, expensive for its attacker", and the two candidate mechanisms are costed in step 13. Decide
   it there; nothing before step 13 may assume a destructible is impassable.

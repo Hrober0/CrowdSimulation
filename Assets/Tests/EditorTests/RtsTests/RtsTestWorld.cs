@@ -23,11 +23,12 @@ namespace Tests.EditorTests.RtsTests
 
         private readonly SystemHandle _storageRequestSystem;
         private readonly SystemHandle _workRequestSystem;
-        private readonly SystemHandle _gatherRequestSystem;
+        private readonly SystemHandle _fieldWorkRequestSystem;
         private readonly SystemHandle _orderAgingSystem;
         private readonly SystemHandle _orderAssignSystem;
         private readonly SystemHandle _idleAssignSystem;
         private readonly SystemHandle _nodeDepletionSystem;
+        private readonly SystemHandle _plantingSystem;
 
         private readonly SystemHandle _agentSpatialHashSystem;
         private readonly SystemHandle _taskStepSystem;
@@ -59,11 +60,12 @@ namespace Tests.EditorTests.RtsTests
 
             _storageRequestSystem = World.CreateSystem<StorageRequestSystem>();
             _workRequestSystem = World.CreateSystem<WorkRequestSystem>();
-            _gatherRequestSystem = World.CreateSystem<GatherRequestSystem>();
+            _fieldWorkRequestSystem = World.CreateSystem<FieldWorkRequestSystem>();
             _orderAgingSystem = World.CreateSystem<OrderAgingSystem>();
             _orderAssignSystem = World.CreateSystem<OrderAssignSystem>();
             _idleAssignSystem = World.CreateSystem<IdleAssignSystem>();
             _nodeDepletionSystem = World.CreateSystem<ResourceNodeDepletionSystem>();
+            _plantingSystem = World.CreateSystem<PlantingSystem>();
 
             _agentSpatialHashSystem = World.CreateSystem<AgentSpatialHashSystem>();
             _taskStepSystem = World.CreateSystem<TaskStepSystem>();
@@ -121,7 +123,7 @@ namespace Tests.EditorTests.RtsTests
             // count ticks to find out whether the matching pass has happened yet.
             _storageRequestSystem.Update(World.Unmanaged);
             _workRequestSystem.Update(World.Unmanaged);
-            _gatherRequestSystem.Update(World.Unmanaged);
+            _fieldWorkRequestSystem.Update(World.Unmanaged);
             _orderAgingSystem.Update(World.Unmanaged);
             _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
@@ -138,6 +140,7 @@ namespace Tests.EditorTests.RtsTests
             _integrateSystem.Update(World.Unmanaged);
             _interiorTransitionSystem.Update(World.Unmanaged);
             _interactionSystem.Update(World.Unmanaged);
+            _plantingSystem.Update(World.Unmanaged);
             _orderCompletionSystem.Update(World.Unmanaged);
             _watchdogSystem.Update(World.Unmanaged);
 
@@ -206,6 +209,32 @@ namespace Tests.EditorTests.RtsTests
             {
                 Harvests = harvests,
                 Yields = yields,
+                Range = range,
+            });
+
+            return building;
+        }
+
+        /// <summary>A building that plants: a door, benches, and nowhere to put anything.</summary>
+        public Entity CreatePlanter(
+            int2 cell,
+            ObjectKind plants,
+            ItemId yields,
+            int yieldAmount = 12,
+            ushort plantCost = 60,
+            int range = 8,
+            int workers = 1)
+        {
+            Entity building = CreateBuilding(cell, GridRotation.None, int2.zero);
+            AddEntrance(building, int2.zero, Direction.South);
+
+            Entities.AddComponentData(building, new Interior { Capacity = workers });
+            Entities.AddComponentData(building, new Sows
+            {
+                Plants = plants,
+                PlantCost = plantCost,
+                Yields = yields,
+                YieldAmount = yieldAmount,
                 Range = range,
             });
 

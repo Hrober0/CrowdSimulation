@@ -171,6 +171,20 @@ namespace Examples.Rts
                 });
             }
 
+            if (blueprint.IsPlanter)
+            {
+                // What a planted tree is worth comes from the same place a scattered one's does, so a grove
+                // and a wood the map started with are the same thing to everything downstream.
+                entities.AddComponentData(building, new Sows
+                {
+                    Plants = blueprint.Plants,
+                    PlantCost = WorldObjectCatalog.Cost(blueprint.Plants),
+                    Yields = RtsResources.YieldOf(blueprint.Plants),
+                    YieldAmount = RtsResources.YieldAmountOf(blueprint.Plants),
+                    Range = blueprint.HarvestRange,
+                });
+            }
+
             AddStorage(entities, building, blueprint);
             AddRecipe(entities, building, blueprint);
 

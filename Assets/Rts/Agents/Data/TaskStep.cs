@@ -145,5 +145,19 @@ namespace Rts
             Duration = duration,
             Interaction = InteractionKind.Work,
         };
+
+        /// <summary>
+        /// Puts something in the ground at <paramref name="cell"/>. The one step whose subject is a place -
+        /// the target is still the building that ordered it, because that is what knows *what* is being
+        /// planted.
+        /// </summary>
+        public static TaskStep Plant(Entity planter, int2 cell, float duration) => new()
+        {
+            Kind = TaskStepKind.Interact,
+            Target = planter,
+            Cell = cell,
+            Duration = duration,
+            Interaction = InteractionKind.Plant,
+        };
     }
 }
