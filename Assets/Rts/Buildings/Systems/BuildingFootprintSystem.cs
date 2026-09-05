@@ -92,7 +92,7 @@ namespace Rts
                 BuildingPlacement placed = placement.ValueRO;
                 foreach (BuildingFootprintOffset offset in footprint)
                 {
-                    int2 cell = placed.OriginCell + RotationUtils.Rotate(offset.Offset, placed.Rotation);
+                    int2 cell = BuildingGeometry.CellOf(placed.OriginCell, offset.Offset, placed.Rotation);
 
                     edits.Enqueue(GridEdit.CostDelta(cell, FOOTPRINT_COST));
                     edits.Enqueue(GridEdit.AddFlags(cell, CellFlags.Building));
@@ -105,9 +105,9 @@ namespace Rts
                     foreach (BuildingEntranceOffset entrance
                              in SystemAPI.GetBuffer<BuildingEntranceOffset>(entity))
                     {
-                        int2 wall = placed.OriginCell + RotationUtils.Rotate(entrance.Offset, placed.Rotation);
-                        Direction side = RotationUtils.Rotate(entrance.Side, placed.Rotation);
-                        int2 doorstep = wall + DirectionUtils.Offset(side);
+                        Direction side = BuildingGeometry.SideOf(entrance.Side, placed.Rotation);
+                        int2 doorstep = BuildingGeometry.DoorstepOf(
+                            placed.OriginCell, entrance.Offset, entrance.Side, placed.Rotation);
 
                         edits.Enqueue(GridEdit.AddFlags(doorstep, ENTRANCE_FLAGS));
 

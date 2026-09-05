@@ -36,6 +36,15 @@ namespace Examples.Rts
         [SerializeField, Tooltip("Falls back to the main camera.")]
         private Camera _camera;
 
+        [SerializeField, Tooltip("Turns the building under the cursor a quarter turn clockwise.")]
+        private KeyCode _rotateKey = KeyCode.R;
+
+        /// <summary>Smaller than a cell, so the doorstep marker reads as a marker and not as another wall.</summary>
+        private const float DOORSTEP_GIZMO_SCALE = 0.55f;
+
+        /// <summary>Inset a hair, so the boxes of a 3x2 read as six cells rather than as one grid.</summary>
+        private const float FOOTPRINT_GIZMO_SCALE = 0.94f;
+
         [SerializeField, Min(1), Tooltip("Agents spawned per click of the spawn tool.")]
         private int _spawnCount = 5;
 
@@ -64,11 +73,14 @@ namespace Examples.Rts
         public BuildingKind BuildKind { get; set; } = BuildingKind.Farm;
 
         /// <summary>
-        /// Which way round the next building goes. Rotated with R.
+        /// Which way round the next building goes. Turned with the rotate key, or the panel's button.
         ///
         /// It exists because of bridges and is useful to everything: a one-way crossing that could only ever
         /// run east would be a feature the map has to be built around. `BuildingPlacement.Rotation` and
         /// `RotationUtils` were already there and already tested - all that was missing was a key.
+        ///
+        /// Kept across placements, because someone laying a row of huts along a road wants them all facing
+        /// the road, and re-pressing the key for each one is the same instruction repeated.
         /// </summary>
         public GridRotation BuildRotation { get; private set; } = GridRotation.None;
 
@@ -76,6 +88,12 @@ namespace Examples.Rts
 
         /// <summary>Whether the cell under the cursor would accept the building currently selected.</summary>
         public bool CanPlaceHere { get; private set; }
+
+        /// <summary>Which way the door faces as things stand - what the panel puts on its rotate button.</summary>
+        public Direction BuildDoorSide => RtsConstruction.DoorSideOf(BuildRotation);
+
+        /// <summary>Turns the building a quarter turn clockwise. Also the panel's button.</summary>
+        public void RotateBuild() => BuildRotation = BuildingGeometry.NextClockwise(BuildRotation);
 
         private void OnEnable()
         {
@@ -101,9 +119,11 @@ namespace Examples.Rts
             _hoverCell = CellUnderCursor();
             _hovering = true;
 
-            if (Tool == RtsTool.Build && Input.GetKeyDown(KeyCode.R))
+            // Read before the UI check below, so the key still works with the cursor parked over the panel -
+            // the pointer being over the UI says nothing about where the keyboard is aimed.
+            if (Tool == RtsTool.Build && Input.GetKeyDown(_rotateKey))
             {
-                BuildRotation = (GridRotation)(((int)BuildRotation + 1) & 3);
+                RotateBuild();
             }
 
             CanPlaceHere = Tool == RtsTool.Build
@@ -450,7 +470,7 @@ namespace Examples.Rts
 
             if (Tool == RtsTool.Build)
             {
-                DrawBuildPreview();
+                DrawBuildPreview(size);
                 return;
             }
 
@@ -466,55 +486,66 @@ namespace Examples.Rts
         }
 
         /// <summary>
-        /// The building as it will actually be laid: every cell it takes, rotated, plus the doorstep.
+        /// The building as it will actually be laid: every cell it takes, rotated, plus the door.
         ///
-        /// Drawn cell by cell rather than as one box, because a box is a lie about two of the three shapes here.
-        /// An L or a ring is not its extent, and a bridge is emphatically not its extent - the cells under the
-        /// deck are *not* being taken, and an outline over them would say they were.
+        /// **Cell by cell rather than one box round the lot**, because a box is a lie about two of the three
+        /// shapes here. Rotation turns the shape around the origin cell, not around its middle, so a bounding
+        /// box drawn from <c>Size</c> would keep showing the unrotated one; and a bridge is emphatically not
+        /// its extent - the cells under the deck are *not* being taken, and an outline over them would say
+        /// they were.
         ///
-        /// **The doorstep is drawn because it is the half of a placement the player cannot otherwise see.** A
-        /// building whose door lands against a wall is sealed, and the rule that decides it - the south wall,
-        /// turned by the rotation - is invisible until an agent fails to reach it. It is the one thing rotation
-        /// is usually *for*.
+        /// **And the door, because the door is the half that decides.** A building is a blocked rectangle
+        /// wherever you put it; what makes one placement work and another useless is which way the one
+        /// doorstep faces and whether an agent can reach it. That was invisible until the building already
+        /// existed, so the only way to find out was to build it and look.
         /// </summary>
-        private void DrawBuildPreview()
+        private void DrawBuildPreview(Vector3 cellSize)
         {
             BuildingBlueprint blueprint = BuildingCatalog.Of(BuildKind);
+
+            // The origin the placement would store, not the cell under the cursor: a turned building runs off
+            // in a different direction, and the preview has to show where it is actually going.
             int2 origin = RtsConstruction.OriginFor(blueprint, _hoverCell, BuildRotation);
 
             Gizmos.color = CanPlaceHere ? new Color(0.3f, 0.9f, 0.4f) : new Color(0.9f, 0.3f, 0.3f);
 
             if (blueprint.IsBridge)
             {
-                DrawBridgePreview(blueprint, origin);
+                DrawBridgePreview(blueprint, origin, cellSize);
                 return;
             }
-
-            Vector3 cell = SimToWorld.Direction(new float2(0.94f, 0.94f));
 
             for (int y = 0; y < blueprint.Size.y; y++)
             {
                 for (int x = 0; x < blueprint.Size.x; x++)
                 {
-                    int2 taken = origin + RotationUtils.Rotate(new int2(x, y), BuildRotation);
-                    Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(taken)), cell);
+                    int2 cell = BuildingGeometry.CellOf(origin, new int2(x, y), BuildRotation);
+                    Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(cell)),
+                                        cellSize * FOOTPRINT_GIZMO_SCALE);
                 }
             }
 
-            DrawDoorstep(RtsConstruction.DoorstepOf(origin, BuildRotation), origin);
+            DrawDoorPreview(origin, cellSize);
         }
 
         /// <summary>
-        /// The doorstep, and a line to it from the wall it is cut into, so which way the building faces is
-        /// readable at a glance. Amber rather than the placement colour: it is not a cell being taken.
+        /// The doorstep, and a line from the wall it is cut into so which way it faces is readable at a
+        /// glance. Amber when it would work, red when that cell cannot be stood on - a blocked doorstep is
+        /// the one placement mistake that produces a finished building nobody can ever use.
         /// </summary>
-        private void DrawDoorstep(int2 doorstep, int2 origin)
+        private void DrawDoorPreview(int2 origin, Vector3 cellSize)
         {
-            Gizmos.color = new Color(0.95f, 0.8f, 0.3f, 0.9f);
+            int2 wall = RtsConstruction.DoorWallOf(origin, BuildRotation);
+            int2 doorstep = RtsConstruction.DoorstepOf(origin, BuildRotation);
 
-            Vector3 step = SimToWorld.Position(GridCoords.CellCenter(doorstep));
-            Gizmos.DrawWireCube(step, SimToWorld.Direction(new float2(0.6f, 0.6f)));
-            Gizmos.DrawLine(SimToWorld.Position(GridCoords.CellCenter(origin)), step);
+            bool reachable = TryGetGrid(out GridWorld grid) && grid.Map.IsPassable(doorstep);
+            Gizmos.color = reachable ? new Color(1f, 0.75f, 0.2f) : new Color(0.9f, 0.3f, 0.3f);
+
+            Vector3 wallPoint = SimToWorld.Position(GridCoords.CellCenter(wall));
+            Vector3 stepPoint = SimToWorld.Position(GridCoords.CellCenter(doorstep));
+
+            Gizmos.DrawLine(wallPoint, stepPoint);
+            Gizmos.DrawWireCube(stepPoint, cellSize * DOORSTEP_GIZMO_SCALE);
         }
 
         /// <summary>
@@ -522,7 +553,7 @@ namespace Examples.Rts
         /// at to the one they are put down on. The crossing is one way, and which way is the thing that cannot
         /// be seen at all once it is built.
         /// </summary>
-        private void DrawBridgePreview(in BuildingBlueprint blueprint, int2 origin)
+        private void DrawBridgePreview(in BuildingBlueprint blueprint, int2 origin, Vector3 cellSize)
         {
             // Asked of the same function the validation asks, so the preview cannot draw a bridge in a place
             // the placement would not put one.
@@ -533,16 +564,17 @@ namespace Examples.Rts
                 return;
             }
 
-            Vector3 cell = SimToWorld.Direction(new float2(0.94f, 0.94f));
-            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.NearPier)), cell);
-            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.FarPier)), cell);
+            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.NearPier)),
+                                cellSize * FOOTPRINT_GIZMO_SCALE);
+            Gizmos.DrawWireCube(SimToWorld.Position(GridCoords.CellCenter(shape.FarPier)),
+                                cellSize * FOOTPRINT_GIZMO_SCALE);
 
             Vector3 from = SimToWorld.Position(GridCoords.CellCenter(entry));
             Vector3 to = SimToWorld.Position(GridCoords.CellCenter(exit));
 
             Gizmos.DrawLine(from, to);
             Gizmos.DrawWireSphere(from, 0.25f);
-            Gizmos.DrawWireCube(to, SimToWorld.Direction(new float2(0.6f, 0.6f)));
+            Gizmos.DrawWireCube(to, cellSize * DOORSTEP_GIZMO_SCALE);
         }
     }
 }

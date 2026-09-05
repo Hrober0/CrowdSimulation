@@ -36,6 +36,10 @@ namespace Examples.Rts.UI
         private VisualElement _panel;
         private VisualElement _buildRow;
         private VisualElement _roadRow;
+        private Button _rotateButton;
+        private BuildingKind _shownRotateKind;
+        private GridRotation _shownRotation;
+        private bool _rotateLabelShown;
         private Label _selectionTitle;
         private Label _selectionBody;
         private Label _worldCounts;
@@ -87,6 +91,7 @@ namespace Examples.Rts.UI
 
             RefreshSelection();
             RefreshWorldCounts();
+            RefreshRotateLabel();
         }
 
         // ---- layout ------------------------------------------------------------------------------------
@@ -150,9 +155,65 @@ namespace Examples.Rts.UI
                 _buildButtons.Add((blueprint.Kind, button));
             }
 
-            // Worth saying out loud rather than leaving to be discovered: a one-way bridge is unusable until
-            // you know you can turn it.
-            UIStyledElements.NewLabel(_buildRow, "R rotates");
+            // A button rather than a label saying "R rotates", because rotation has to be discoverable: a
+            // one-way bridge is unusable until you know it can be turned. It carries the door direction
+            // rather than the turn count, because which way the door faces is the thing being chosen - the
+            // quarter turns are only how you get there.
+            _rotateButton = UIStyledElements.NewButton(_buildRow, RotateLabel(), RotateBuilding);
+        }
+
+        private void RotateBuilding()
+        {
+            if (_tools != null)
+            {
+                _tools.RotateBuild();
+            }
+
+            RefreshRotateLabel();
+        }
+
+        /// <summary>
+        /// Read from the controller rather than counted here, because the rotate key does the same job and a
+        /// second copy of the state would be a second answer to "which way is it facing".
+        ///
+        /// Only rewritten when it changes: this runs every frame, and the interpolation allocates.
+        /// </summary>
+        private void RefreshRotateLabel()
+        {
+            if (_rotateButton == null || _tools == null)
+            {
+                return;
+            }
+
+            // Keyed on what the label is derived from rather than on the label itself, so the frames where
+            // nothing turned do not build a string only to throw it away.
+            if (_rotateLabelShown
+                && _tools.BuildKind == _shownRotateKind
+                && _tools.BuildRotation == _shownRotation)
+            {
+                return;
+            }
+
+            _shownRotateKind = _tools.BuildKind;
+            _shownRotation = _tools.BuildRotation;
+            _rotateLabelShown = true;
+            _rotateButton.text = RotateLabel();
+        }
+
+        /// <summary>
+        /// Which way the door faces, except for a bridge, which has no door - a crossing is turned to choose
+        /// which way it runs, and "Door: South" on one would be a label about something that is not there.
+        /// </summary>
+        private string RotateLabel()
+        {
+            if (_tools == null)
+            {
+                return "Rotate (R)";
+            }
+
+            return BuildingCatalog.Of(_tools.BuildKind).IsBridge
+                ? "Rotate (R)"
+                : $"Door: {_tools.BuildDoorSide} (R)";
         }
 
         private void BuildRoadRow(VisualElement panel)

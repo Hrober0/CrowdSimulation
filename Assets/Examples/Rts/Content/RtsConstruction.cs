@@ -19,6 +19,14 @@ namespace Examples.Rts
         private const CellFlags MOUTH_CONFLICTS =
             CellFlags.Building | CellFlags.Entrance | CellFlags.LinkEntry | CellFlags.LinkExit;
 
+        /// <summary>
+        /// One door, in the bottom-left cell's south wall. A single entrance is enough to show the mechanism,
+        /// and it keeps the blueprint to a size rather than a shape. Named here because the placement check,
+        /// the preview and <see cref="Place"/> all have to mean the same door.
+        /// </summary>
+        private static readonly int2 DoorWallOffset = int2.zero;
+
+        private const Direction DOOR_SIDE = Direction.South;
 
         /// <summary>
         /// The <c>OriginCell</c> to store for a building the player has put the cursor on.
@@ -59,8 +67,9 @@ namespace Examples.Rts
         }
 
         /// <summary>
-        /// Whether a building of this shape may stand under the cursor: every cell on the map, passable, and not
-        /// already part of another building. The doorway has to be walkable too, or the building would be sealed.
+        /// Whether a building of this shape may stand under the cursor, turned this way: every cell on the map,
+        /// passable, and not already part of another building. The doorway has to be walkable too, or the
+        /// building would be sealed.
         /// </summary>
         public static bool CanPlace(in GridMap map, in BuildingBlueprint blueprint, int2 cursor,
                                     GridRotation rotation = GridRotation.None)
@@ -76,7 +85,7 @@ namespace Examples.Rts
             {
                 for (int x = 0; x < blueprint.Size.x; x++)
                 {
-                    int2 cell = origin + RotationUtils.Rotate(new int2(x, y), rotation);
+                    int2 cell = BuildingGeometry.CellOf(origin, new int2(x, y), rotation);
                     if (!map.IsPassable(cell) || map.GetFlags(cell) != CellFlags.None)
                     {
                         return false;
@@ -94,9 +103,21 @@ namespace Examples.Rts
         /// <c>BuildingEntranceOffset</c> makes - the door is authored as a wall and a side, so where an agent
         /// stands follows from the placement instead of being a second fact that has to be kept true by hand.
         /// It was hardcoded to "one below the origin", which was quietly wrong for every rotated building.
+        ///
+        /// Answered by <see cref="BuildingGeometry"/>, which is the same function <c>BuildingFootprintSystem</c>
+        /// asks when the building actually goes down - the check and the placement cannot drift apart while
+        /// they share it.
         /// </summary>
         public static int2 DoorstepOf(int2 origin, GridRotation rotation = GridRotation.None) =>
-            origin + DirectionUtils.Offset(RotationUtils.Rotate(Direction.South, rotation));
+            BuildingGeometry.DoorstepOf(origin, DoorWallOffset, DOOR_SIDE, rotation);
+
+        /// <summary>Which way the door faces once the building has been turned.</summary>
+        public static Direction DoorSideOf(GridRotation rotation = GridRotation.None) =>
+            BuildingGeometry.SideOf(DOOR_SIDE, rotation);
+
+        /// <summary>The wall cell the door is cut into - the inside end of the doorway, for drawing it.</summary>
+        public static int2 DoorWallOf(int2 origin, GridRotation rotation = GridRotation.None) =>
+            BuildingGeometry.CellOf(origin, DoorWallOffset, rotation);
 
         public static Entity Place(EntityManager entities, in BuildingBlueprint blueprint, int2 cursor,
                                    GridRotation rotation = GridRotation.None)
@@ -125,10 +146,10 @@ namespace Examples.Rts
                 }
             }
 
-            // One door, in the bottom-left cell's south wall. A single entrance is enough to show the
-            // mechanism, and it keeps the blueprint to a size rather than a shape.
+            // The offsets go in unrotated: BuildingFootprintSystem turns them by the placement's rotation,
+            // so writing them turned here would apply the quarter turn twice.
             entities.AddBuffer<BuildingEntranceOffset>(building)
-                    .Add(new BuildingEntranceOffset { Offset = int2.zero, Side = Direction.South });
+                    .Add(new BuildingEntranceOffset { Offset = DoorWallOffset, Side = DOOR_SIDE });
 
             if (blueprint.Interior > 0)
             {
