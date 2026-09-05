@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using GridNav;
@@ -28,11 +29,22 @@ namespace Examples.Rts.UI
         [SerializeField] private RtsToolController _tools;
 
         private readonly List<(RtsTool tool, Button button)> _toolButtons = new();
+        /// <summary>
+        /// The top of §7's priority scale - a construction site, which beats everything. Nothing above it
+        /// would mean anything, since priority is only ever compared with another priority.
+        /// </summary>
+        private const int MAX_PRIORITY = 10;
+
         private readonly List<(BuildingKind kind, Button button)> _buildButtons = new();
         private readonly List<(RoadBrushMode mode, Button button)> _roadButtons = new();
         private readonly StringBuilder _text = new();
 
         private UIElementList<RtsSlotRow> _slots;
+
+        // Held as fields so the per-frame refresh below hands the same two delegates over every time rather
+        // than building a closure a frame for a panel somebody has left open.
+        private Action<RtsSlotRow, StorageSlot> _refreshSlot;
+        private Action<ItemId, int> _adjustPriority;
         private VisualElement _panel;
         private VisualElement _buildRow;
         private VisualElement _roadRow;
@@ -119,6 +131,8 @@ namespace Examples.Rts.UI
             ScrollView slotScroll = UIStyledElements.NewScrollView(panel);
             slotScroll.style.maxHeight = 440;
             _slots = new UIElementList<RtsSlotRow>(slotScroll.contentContainer);
+            _refreshSlot = RefreshSlot;
+            _adjustPriority = AdjustPriority;
 
             UIStyledElements.NewDivider(panel);
 
@@ -371,13 +385,57 @@ namespace Examples.Rts.UI
             {
                 // AsNativeArray is a view onto the buffer, so refreshing the panel every frame allocates
                 // nothing - which matters when the panel is the thing you leave open while watching.
-                _slots.SetElements(_entities.GetBuffer<StorageSlot>(building).AsNativeArray(),
-                                   (row, slot) => row.Refresh(slot));
+                _slots.SetElements(_entities.GetBuffer<StorageSlot>(building).AsNativeArray(), _refreshSlot);
             }
             else
             {
                 _slots.Clear();
             }
+        }
+
+        private void RefreshSlot(RtsSlotRow row, StorageSlot slot) => row.Refresh(slot, _adjustPriority);
+
+        /// <summary>
+        /// The player's one lever on the economy (§7). Priority decides who wins when supply is scarce, and
+        /// the rule it feeds is a strict inequality - a slot may only be filled from one whose priority is
+        /// **lower** - so moving a number here moves goods.
+        ///
+        /// What each step means, from §7's table:
+        ///
+        /// <code>
+        /// 0        a pure source. Never asks. A mine's ore, a crafter's output, a seam in the ground
+        /// 1        a warehouse. Always wants more, and loses to everyone who wants it more
+        /// 5-9      a crafter's input. Asks hard, and is never raided by a store
+        /// 10       a construction site. Wins against everything
+        /// </code>
+        ///
+        /// Two consequences the player can reach from here on purpose. Dropping a warehouse to 0 turns it
+        /// into a source that will never ask for anything again, which is how you retire a store without
+        /// demolishing it. Raising one above another is how you make two stores that would never trade -
+        /// equal priorities fail the strict inequality - move stock in a chosen direction (§15).
+        ///
+        /// The slot is found again by item on whatever is selected *now*, not by an index remembered when the
+        /// row was drawn, so a click that lands after the selection changed cannot write to the wrong shelf.
+        /// </summary>
+        private void AdjustPriority(ItemId item, int delta)
+        {
+            if (!_worldReady
+                || _selection.Kind != SelectionKind.Building
+                || !_entities.Exists(_selection.Entity)
+                || !_entities.HasBuffer<StorageSlot>(_selection.Entity))
+            {
+                return;
+            }
+
+            DynamicBuffer<StorageSlot> slots = _entities.GetBuffer<StorageSlot>(_selection.Entity);
+            if (!StorageSlotUtils.TryGetSlotIndex(slots, item, out int index))
+            {
+                return;
+            }
+
+            StorageSlot slot = slots[index];
+            slot.Priority = (byte)math.clamp(slot.Priority + delta, 0, MAX_PRIORITY);
+            slots[index] = slot;
         }
 
         private void ShowAgent(Entity agent)
