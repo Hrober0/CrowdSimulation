@@ -147,6 +147,11 @@ namespace Examples.Rts.UI
         {
             _buildRow = UIStyledElements.NewHorizontalGroup(panel);
 
+            // Wraps, because the list of buildings grows and a row that does not wrap grows straight off the
+            // side of the panel and out of reach. Set here rather than in UIStyledElements: a horizontal
+            // group that wrapped by default would quietly change every other row in the panel too.
+            _buildRow.style.flexWrap = Wrap.Wrap;
+
             foreach (BuildingBlueprint blueprint in BuildingCatalog.All)
             {
                 BuildingKind captured = blueprint.Kind;
