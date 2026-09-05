@@ -43,14 +43,14 @@ No references are added to existing asmdefs. Generic mechanism goes in `GridNav`
 
 Consequence to design around: **a 1-cell corridor is single-file** (two agents at 0.7 diameter do not fit in 1.0 units). Two-way roads must be authored **2 cells wide**, or painted one-way.
 
-If forests later feel too chunky at one tree per cell, do **not** subdivide the grid — lower tree cost from 255 to ~120 so one tree is slow and two block. The cost-sum model provides that granularity for free.
+If forests later feel too chunky at one tree per cell, do **not** subdivide the grid — change the tree's cost. The cost-sum model provides that granularity for free, and §14 step 9 spends it: a tree is priced rather than blocked, so that a planting zone cannot wall itself in.
 
 Chunked SoA over `int2`, 32x32 chunks. Four bytes per cell:
 
 | field | size | use |
 | --- | --- | --- |
 | `CostSum` | ushort | terrain base cost + sum of the costs of all objects on the cell |
-| `Flags` | byte | Building, Road, NoIdle, Entrance |
+| `Flags` | byte | Building, Road, NoIdle, Entrance, LinkEntry, LinkExit, Object |
 | `Exits` | byte | 4-bit allowed-exit mask N/E/S/W |
 
 512x512 map = 1 MB. Updating an obstacle is a `CostSum` add/subtract plus a version bump — no retriangulation.
@@ -63,10 +63,12 @@ Chunked SoA over `int2`, 32x32 chunks. Four bytes per cell:
 | --- | --- |
 | open ground | 0–10 |
 | road | 0 (fast lane) |
-| tree, rock, any single blocker | 255 (blocks the cell alone) |
+| tree | 60 — crossed at 70 against a two-cell detour at ~20, so a lone tree is walked around and a thick wood is cut through (§14 step 9) |
+| ore | 8 — walkable, but enough that traffic steps round a seam rather than through it |
+| rock, any permanent single blocker | 255 (blocks the cell alone) |
 | building footprint cell | 255 |
 
-Because one tree blocks a whole cell, flow fields steer to **cell centres** and **agent radius must stay below ~0.45 x cellSize**, otherwise agents clip the corners of blocked cells.
+Because one *blocker* takes a whole cell, flow fields steer to **cell centres** and **agent radius must stay below ~0.45 x cellSize**, otherwise agents clip the corners of blocked cells.
 
 **RVO static obstacles: buildings yes, trees no.** Blocked cells already keep *paths* out of buildings, so obstacles are not needed for routing. They are needed because RVO does not know walls exist — in a dense crowd, agents shoved sideways by neighbours get pushed *into* the footprint. So each building registers its footprint outline as one obstacle via the existing `ObstacleLookup.AddObstacle(vertices, objectId)`; L-shapes are fine, since that code already computes per-vertex `Convex` flags and handles concave outlines.
 
@@ -396,6 +398,54 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 
 4 (gates) is parallel across dirty chunks; 5 (fields) is one job per field with a per-frame cap so a burst of new destinations cannot spike a frame.
 
+**Read that table with `RtsPerformance.md` §4 open.** Three of the five systems in the left column are
+main-thread `foreach` loops, not jobs, and §5 records four hard `.Complete()` calls a frame. The table
+describes where parallelism was *designed to go*, not what overlaps today.
+
+### 13.5 Designing for overlap
+
+Two systems run at the same time only when three things hold, and the second is the one that decides:
+
+1. both schedule jobs rather than looping on the main thread;
+2. **their write sets are disjoint** — the dependency graph serialises anything that writes what another
+   reads, whatever the group order says;
+3. no `.Complete()` sits between them.
+
+**The index phase.** Building an index is read-only over the world and writes one private container, so any
+two index builds are independent by construction. The agent spatial hash reads `AgentMove` and writes
+`NativeSpatialHash`; a resource-node index reads `CellObject` and writes its own map; a faction target index
+reads positions and factions and writes a third. None of them reads another's output, so scheduled together
+they occupy as many worker threads as there are indexes — which is the only concurrency available here, since
+`NativeSpatialHash`'s free-list makes each individual build single-writer (`RtsPerformance.md` §4).
+
+So index builds belong in one group that **only schedules and never completes**, joined by their first
+consumer. `GridApplySystem`'s barrier sits in front of the group and costs nothing; a `.Complete()` *between*
+two index systems is what would quietly serialise them again.
+
+**Search parallel, commit serial.** Invariant 4 keeps matching single-threaded because reservation-with-rollback
+across two entities has no clean parallel form. That constrains the *commit*, not the search. Finding candidate
+nodes for every gatherer, or a target for every soldier, is read-only over many entities and belongs in a
+`ScheduleParallel` job writing a `NativeList.ParallelWriter`; the serial pass then walks a short list and takes
+the reservations. The split applies unchanged to gathering, sowing and target finding, and it is how to get
+parallelism *inside* invariant 4 rather than against it.
+
+Two rules keep new systems joinable at all. **Write through a queue, not to shared state** — the existing
+idiom (`GridEditQueue`, `InteractionQueue`), and precisely what lets many producers run behind one consumer.
+**No `state.EntityManager` in a new system**: direct access pins it to the main thread however Bursted it is.
+Read-only `ComponentLookup` / `BufferLookup` and an `EntityCommandBuffer` instead.
+
+Write sets for the work of steps 9–13, so overlap is checkable rather than hoped for:
+
+| system | rate | reads | writes | runs beside |
+| --- | --- | --- | --- | --- |
+| agent spatial hash | 60 Hz | `AgentMove` | agent hash | node index, target index |
+| resource node index | 10 Hz | `CellObject`, `ResourceNode` | node map | agent hash, target index |
+| target index (step 13) | 10 Hz | `AgentMove`, `Faction` | target map | agent hash, node index |
+| gather/sow search | 10 Hz | node map, fields, `Reaps`/`Sows` | candidate list | any other search |
+| gather/sow commit | 10 Hz | candidate list | reservations, `TaskStep`, `Interior.Claimed` | nothing — invariant 4 |
+| node depletion | 10 Hz | `StorageSlot` | ECB destroy | any search |
+| damage apply (step 13) | 10 Hz | damage queue | `Health` | nothing — one applier |
+
 ## 14. Build order
 
 0. **Done.** Group scaffolding: the five groups of §13.1 with the `RateManager` on `RtsEconomyGroup`, empty but ordered, so every later system lands in a defined slot.
@@ -470,8 +520,207 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
    Progress is measured against **the last place the agent actually got to**, not against last frame. A frame-to-frame test would read RVO jitter as progress forever, and an agent shuffling on the spot in a jam is precisely the case this exists to catch.
 
    One gap this closed on the way: a claim whose task died left the building a bench or bed short permanently. Releasing it is now a rule in `IdleAssignSystem` — a claim with no task behind it is stale — rather than something each of the several ways a task can end has to remember.
-9. Soldier + threat orders.
-10. Needs / happiness.
+9. **Done.** Harvestable objects, and cost as effort rather than as a wall.
+
+   The step that pays for itself twice: it is what mining and forestry need, and it takes the *permanence* out
+   of an obstacle, which is what soldiers will need in step 13.
+
+   **A destructible obstacle is priced, not forbidden.** `IsPassable` is `CostSum < BLOCKED (255)` and nothing
+   in between — a tree at 255 is a wall at any price, and no detour is ever long enough to route through it
+   (`BuildFlowFieldJob` never expands into it, and the integrate clamp refuses to enter it). That is wrong for
+   a forest for one concrete reason: **a planting zone walls itself in.** Trees grow around an inner cell and
+   the planter can no longer reach it, to plant or to fell. Harvesting nearest-first peels a wood from the
+   outside and would usually dig its way back out, but "usually" is not a mechanism, and the case that does not
+   resolve — a stand ringed by permanent blockers — strands the cells inside it for ever with nothing to report.
+
+   So a tree contributes ordinary cost and everything may walk through it, slowly:
+
+   | contributor | cost | crossing costs | why |
+   | --- | --- | --- | --- |
+   | ore | 8 | 18 | pebbles on the ground: walkable, but enough that traffic steps round a seam when stepping round is easy. It was zero at first, which was free in the strict sense - `ApplyCostDelta` returns early on a zero delta, so nothing was bumped or invalidated at any point in a seam's life - and that bought a stream of agents trampling straight through the ore field. At 8 a seam bumps `CostVersion` twice in its whole life, when it appears and when it is worked out |
+   | tree | 60 | 70 | a detour of two cells costs ~20, so a lone tree is always walked around; a thick wood is cut through only when going round is some seven cells worse |
+   | rock, building footprint | 255 | — | permanent. Still a wall |
+
+   Three consequences, and they are the point:
+
+   - **Felling stops touching the navigation graph.** `BumpVersions` raises `PassabilityVersion` only when a
+     cell crosses the threshold, so a tree below 255 coming down bumps `CostVersion` alone: no gate re-scan,
+     and only fields whose window covers the wood rebuild — `FlowField.VersionStampOf` is window-local.
+     Clearing a forest was the churn §3 warned about, and pricing trees instead of blocking them removes most
+     of it.
+   - **Keep one tree per cell**, or keep the per-tree cost low enough that a plausible stack stays under 255.
+     Four trees at 60 is 240 and still passable; the fifth would flip the cell and put the gate graph back in
+     the loop for every swing of an axe.
+   - **A harvest target is the object's own cell**, for a tree exactly as for ore. Standing next to it, and the
+     "nearest walkable neighbour" search that would have needed, are gone before they were written.
+
+   Headroom check, because raising cell costs eats into the field: integration is `ushort` and a route priced
+   past 65534 reads as unreachable. At 70 a cell that is ~936 cells of solid forest inside a 128² window,
+   against a few hundred for the longest sane route in one. Comfortable — but it is the number to watch if
+   costs rise, and the reason to keep them small.
+
+   The objects are one archetype: `CellObject`, already there, plus `ResourceNode` and a `StorageSlot` holding
+   the yield as a pure source (`Priority 0`, `DeliverInUpTo 0`, `DeliverOutDownTo 0`). That is deliberate reuse
+   rather than a resource system: a haul source is **any** entity with a storage slot and a cell to stand on —
+   neither `OrderAssignSystem.CollectStorageSites` nor `InteractionSystem.Pickup` knows what a building is.
+   Reservations come with it, which is what stops five miners emptying the same node, and the pickup-shortfall
+   path already handles stock that went while somebody walked.
+
+   `ResourceNode` earns its keep as an **exclusion**: nodes must be kept out of `StorageRequestSystem` and
+   `CollectStorageSites` with `.WithNone<ResourceNode>()`. Both walk every storage entity every economy tick,
+   and twenty thousand trees in a scan that exists to find buildings asking for something — which a priority-0
+   node never is — is the whole economy budget spent on nothing.
+
+   Depletion is one 10 Hz rule: `Amount == 0 && ReservedOut == 0` destroys the entity, and
+   `CellObjectRegistrationSystem` gives the cost back down the path it already has.
+
+   Three things settled while building it.
+
+   **Passability had a second job, and pricing trees took it away.** `RtsConstruction.CanPlace` asks whether a
+   cell is passable and unflagged, and until now that doubled as "is this ground clear" — a tree was
+   impassable, so nothing could be built on one. A walkable tree is passable, unflagged ground, and a building
+   dropped straight on top of it: the tree survives underneath, unreachable and unfellable, and reappears when
+   the building comes down. So `CellFlags.Object` exists, raised by the first object to stand on a cell and
+   lowered by the last to leave. Routing must never read it — what a cell costs to cross is its cost sum,
+   whatever is making it expensive — and the placement rule needed no change at all, because the flag is what
+   it was already asking about.
+
+   Counted off the cell map rather than derived from the cost sum, which cannot tell one blocker from four
+   cheap ones. The add pass runs before the remove pass, so a cell that gains and loses an object in the same
+   frame is never seen empty in between.
+
+   **A spent node lives one more grid phase, and that is the mechanism rather than a delay.** Destroying an
+   entity that carries `CellObjectRegistered` does not destroy it: cleanup data survives, stripped of
+   everything else, which is exactly how the grid learns there is a cost to refund. Anything asking "has this
+   node gone" in the same frame has to ask whether it still has a `CellObject`, not whether the entity exists.
+   The first version of the depletion test asked the wrong one and failed for the right reason.
+
+   **No resource system was written, which was the point.** A node is a `CellObject` with a `StorageSlot` on
+   it, and every part of harvesting that looks like it needs code already existed for warehouses: reservations
+   stop two miners emptying one seam, the pickup-shortfall path handles stock that went while somebody walked,
+   and `InteractionSystem` never asks whether a source is a building. The only new system is
+   `ResourceNodeDepletionSystem`, whose whole body is "nothing left and nothing promised, so destroy it".
+
+   `ResourceNode` itself is not really a tag on a thing so much as a tag on a *query*: it is what lets
+   `StorageRequestSystem` and `OrderAssignSystem` say `.WithNone<ResourceNode>()` and stay proportional to the
+   number of buildings rather than to the number of trees.
+
+10. **Done.** Gatherers: one building, two optional halves.
+
+    A mine, a lumber camp, a planter and a farm are one building. Two components, either of which may be absent:
+
+    ```
+    Reaps { ObjectKind Harvests, ItemId Yields, int Range }
+    Sows  { ItemId Seed, ObjectKind Plants, int Range }
+    ```
+
+    Mine = `Reaps`. Lumber camp = `Reaps` with a different kind. Planter = `Sows`. Farm = both. **Absent, not
+    disabled** — a `bool Farming` would make every mine iterate the sowing system in order to fall out of it,
+    where a missing component means the query never sees a mine at all. That is the ECS idiom for "this one
+    does not do that", and it is why four buildings need no new systems between them.
+
+    **A gatherer is a worker, and a work slot is an interior slot** (step 7). A miner claims room in the mine
+    exactly as a baker claims a bench — `Interior.Claimed` is the field `Capacity` caps, and it means *inside
+    or on the way* — and then simply never runs `Enter`. He holds the claim for the whole shift, walks out to a
+    node, picks up, deposits on the doorstep and goes again. The mine therefore owns exactly `Capacity` miners,
+    which is what "the mine sends its workers" means, and a crafter is the same thing with an `Enter` in front.
+
+    Step 6 warns against holding a slot at one building while walking to another, and the warning does not
+    reach here: the node end claims nothing, so there is no second claim for a cycle to close on. A shift cut
+    short is already covered — `IdleAssignSystem` releases a claim with no task behind it.
+
+    **The trip loop belongs to the economy tick, not to `InteractionSystem`.** A finished trip leaves the agent
+    with an empty task and its claim intact, and a 10 Hz assign system hands out the next one. A trip lasts
+    seconds, so up to 100 ms of standing about is invisible; putting the node search on the 60 Hz interaction
+    path would spend it every frame and would put a spatial query inside the one writer of `StorageSlot.Amount`.
+
+    **Order the work off the field, which is already built.** Fell **nearest-first**, so a wood peels from the
+    outside in; sow **farthest-first**, so nothing is planted across the route to what has not been planted
+    yet. Both are one read of the destination's integration array. The market's reachability test
+    (`Reachability.CanTry`, `FlowFieldCache.IsKnownUnreachable`) skips anything temporarily sealed and comes
+    back to it, rather than sending somebody to stand at it.
+
+    Four things settled while building it.
+
+    **A gatherer's order is a crafter's order, and they part company at assignment.** `GatherRequestSystem` is
+    very nearly a copy of `WorkRequestSystem` — free bench, room on the shelf, post — because the *asking* is
+    identical; what differs is only what the worker is then told to do. So `OrderAssignSystem` branches on
+    whether the target has `Reaps`, and writes a round trip instead of a shift indoors. Nothing else in the
+    game learned that mining exists.
+
+    That did cost one thing. Two systems now post `OrderKind.Work`, and each retired every work order it did
+    not recognise — so they deleted each other's orders on the tick they were posted, for ever, with nothing
+    ever getting as far as being claimed. Both retirement passes now skip orders belonging to the other, and
+    a target that no longer exists belongs to neither, so it still goes.
+
+    **Employment falls out of geometry, and needed no state at all.** The plan called for the miner to hold
+    its bench across trips, which meant an "employed" flag and an exception in `OrderCompletionSystem` to stop
+    the claim being handed back at the end of every trip. Neither is there. The claim *is* handed back — and
+    the same agent is hired again next tick anyway, because it is standing on the doorstep it just delivered
+    to and is therefore the nearest free pair of hands to that door. The mine still owns exactly
+    `Interior.Capacity` miners at any moment, because the cap is on claims outstanding rather than on who
+    holds them. A rule that costs nothing to enforce is better than a rule with a release path.
+
+    **A gatherer's shelf is a crafter's output, not a warehouse's.** This is the one that would have been a
+    real bug: `Stores` is "no recipe and an output", which a mine also satisfies, and a warehouse shelf posts
+    a standing request. A mine would have spent the game asking the map to deliver the ore it is standing on
+    top of. `Stores` now excludes gatherers explicitly, and there is a test whose whole job is to watch the
+    order book for a haul order asking for ore.
+
+    **Range is safe here in a way §8's was not.** The market's distance limit could refuse a job nobody
+    nearer would ever take, and refuse it identically for ever. A mine with nothing in reach has nothing to
+    do: it fails to place its order, tick after tick, at the cost of one bounded ring search — and starts
+    working the moment a seam appears in range, with nothing to reset.
+
+    The search rings outward from the door and stops at the first hit, so felling is nearest-first for free
+    and a mine standing on a seam pays for one cell rather than for its whole range. `Reachability` moved out
+    of `OrderAssignSystem` into a type of its own on the way, because picking which tree to fell asks exactly
+    the question picking which warehouse to raid does — and so will picking what to walk at in step 13.
+
+11. **Sowing: the first order whose target is a cell.**
+
+    Everything until now is pull-only demand from an entity that wants something. "Plant a tree at 12,40" is
+    the first order about a *place*, and it is built as that rather than as a planting feature on purpose: a
+    construction site is the same shape, and so is a soldier told to hold a spot.
+
+    One `TaskStepKind.Work` variant whose target is a cell, and one interaction that spawns the object. The
+    spawn goes through a queue and lands as an ordinary `CellObject`, so the grid learns about it on the next
+    grid phase through the single writer, exactly as a placed building does.
+
+12. **A turret and a training camp, as evidence.**
+
+    Two buildings that are not gatherers, built to check the catalog carries its weight before combat doubles
+    the load on it. A turret is `Interior.Capacity = 0`, a `Health` and one system that finds something in
+    range and hurts it. A camp is a crafter whose output is an agent rather than an item — a recipe completion
+    enqueuing an `AgentSpawn`, whose request component and system already exist.
+
+13. **Soldier + threat orders.** Health, factions, target finding, and the one genuinely unsettled question
+    below.
+
+    **Health feeds the cost model, and that is why step 9 priced obstacles instead of forbidding them.** A
+    destructible contributes cost derived from what is left of it, so a battered wall is a cheaper way through
+    than a fresh one and routes drift towards it with nothing steering them. Two rules make it affordable:
+
+    - **Quantise it.** Re-costing on every hit would bump `CostVersion` on every hit, and every field around a
+      building under attack would rebuild for the length of the fight. Four bands over a building's life is
+      four grid edits.
+    - **Nothing may assume "destructible implies 255".** That is the assumption step 9 removes, and it has to
+      stay removed.
+
+    Unsettled, and to be settled here rather than guessed at now: **one shared cost grid cannot say "blocked
+    for its owner, expensive for its attacker".** A friendly bakery must not become a shortcut. The two
+    candidate mechanisms and what each costs:
+
+    | mechanism | cost |
+    | --- | --- |
+    | passability takes a one-bit mask — "may enter `CellFlags.Building` cells" — the way traversal already consults `Exits` | two field variants, "goes through structures" and "does not", shared by both sides rather than one per faction. One grid, one gate graph, built on the civilian view. Leaves soldiers pathing through their own buildings, which needs an answer |
+    | a cost grid per faction | honest and simple. 1 MB plus a gate graph and a field cache each, so roughly 3 MB at two factions, against a budget (§12) with room in it — but it duplicates the one structure carrying a single-writer invariant |
+
+    Target finding reuses the agent spatial hash with a faction filter and is the first genuinely parallel new
+    work in the project (§13.4). Damage goes through one queue with one applier, like `GridEditQueue` and
+    `InteractionQueue`, for the same reason. Destruction is the demolish path, which already gives cells back.
+
+14. **Needs / happiness.**
 
 ### 14.1 Sandbox scene — done
 
@@ -649,6 +898,16 @@ Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and 
 
 ## 15. Open items
 
+- **Per-faction passability has no answer yet** (§14 step 13). One shared cost grid cannot express "blocked
+  for its owner, expensive for its attacker", and the two candidate mechanisms are costed in step 13. Decide
+  it there; nothing before step 13 may assume a destructible is impassable.
+- **Tree cost (60) is tuning, not design.** It sets how far a route will detour round a wood — a lone tree is
+  always walked around while the detour is cheaper than 70, and a thick stand is cut through when going round
+  is worse. It also has a ceiling: field integration is `ushort`, so a route priced past 65534 reads as
+  unreachable, which is ~936 cells of solid forest at this cost. Raise it and check that number.
+- **How many trees may share a cell is a passability decision, not a density one.** Four at 60 stay under
+  `BLOCKED`; the fifth flips the cell, and then felling bumps `PassabilityVersion` and re-scans the chunk's
+  gates for every swing. One per cell is the safe rule.
 - Whether `DeliverInUpTo` / `DeliverOutDownTo` are authored in absolute units or percent of capacity (CoI offers both).
 - Whether warehouse-to-warehouse rebalancing is ever wanted; today it is blocked by design and the player can force it by setting different priorities.
 - Flow-field window size (128² assumed) wants measuring against real building density.

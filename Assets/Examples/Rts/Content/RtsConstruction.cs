@@ -161,6 +161,16 @@ namespace Examples.Rts
                 entities.AddComponent<IdleShelter>(building);
             }
 
+            if (blueprint.IsGatherer)
+            {
+                entities.AddComponentData(building, new Reaps
+                {
+                    Harvests = blueprint.Harvests,
+                    Yields = blueprint.Output,
+                    Range = blueprint.HarvestRange,
+                });
+            }
+
             AddStorage(entities, building, blueprint);
             AddRecipe(entities, building, blueprint);
 
@@ -316,6 +326,25 @@ namespace Examples.Rts
                 {
                     Item = blueprint.Output,
                     Capacity = 20,
+                    DeliverInUpTo = 0,
+                    DeliverOutDownTo = 0,
+                    Priority = 0,
+                });
+                return;
+            }
+
+            if (blueprint.IsGatherer)
+            {
+                // The same shape as a crafter's output, and for the same reason: what lands on this shelf was
+                // put there by the building's own workers, so it must never ask the map to deliver it. A mine
+                // with a warehouse's standing request would post an order for the ore it is standing on.
+                //
+                // Deeper than a crafter's, because a gatherer is throughput-limited by the walk rather than by
+                // a recipe, and a shelf that fills between hauler visits stops its miners dead.
+                slots.Add(new StorageSlot
+                {
+                    Item = blueprint.Output,
+                    Capacity = 60,
                     DeliverInUpTo = 0,
                     DeliverOutDownTo = 0,
                     Priority = 0,

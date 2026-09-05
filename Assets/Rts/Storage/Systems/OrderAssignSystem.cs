@@ -53,12 +53,15 @@ namespace Rts
         private ComponentLookup<Interior> _interiors;
         private ComponentLookup<InteriorClaim> _claims;
         private ComponentLookup<Recipe> _recipes;
+        private ComponentLookup<Reaps> _reaps;
+        private ComponentLookup<CellObject> _cellObjects;
 
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<OrderBook>();
             state.RequireForUpdate<GridWorld>();
             state.RequireForUpdate<FlowFieldCache>();
+            state.RequireForUpdate<CellObjectMap>();
 
             _slots = state.GetBufferLookup<StorageSlot>();
             _entrances = state.GetBufferLookup<BuildingEntranceCell>(isReadOnly: true);
@@ -68,6 +71,8 @@ namespace Rts
             _interiors = state.GetComponentLookup<Interior>();
             _claims = state.GetComponentLookup<InteriorClaim>();
             _recipes = state.GetComponentLookup<Recipe>(isReadOnly: true);
+            _reaps = state.GetComponentLookup<Reaps>(isReadOnly: true);
+            _cellObjects = state.GetComponentLookup<CellObject>(isReadOnly: true);
         }
 
         public void OnUpdate(ref SystemState state)
@@ -86,6 +91,8 @@ namespace Rts
             _interiors.Update(ref state);
             _claims.Update(ref state);
             _recipes.Update(ref state);
+            _reaps.Update(ref state);
+            _cellObjects.Update(ref state);
 
             NativeList<FreeAgent> agents = CollectFreeAgents(ref state);
             if (agents.Length == 0)
@@ -103,12 +110,14 @@ namespace Rts
                 SystemAPI.GetSingleton<GridWorld>().Map
             );
 
+            CellObjectMap objects = SystemAPI.GetSingleton<CellObjectMap>();
+
             double now = SystemAPI.Time.ElapsedTime;
 
             int claims = 0;
             for (int i = 0; i < ranked.Length && claims < MAX_CLAIMS_PER_TICK && agents.Length > 0; i++)
             {
-                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, now))
+                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, objects, now))
                 {
                     claims++;
                 }
@@ -129,12 +138,21 @@ namespace Rts
             NativeList<FreeAgent> agents,
             NativeHashMap<Entity, int> busy,
             in Reachability reach,
+            in CellObjectMap objects,
             double now)
         {
-            return book[orderIndex].Kind switch
+            Order order = book[orderIndex];
+
+            return order.Kind switch
             {
                 OrderKind.Haul => TryAssignHaul(book, orderIndex, sites, agents, busy, reach, now),
-                OrderKind.Work => TryAssignWork(book, orderIndex, agents, reach, now),
+
+                // A gatherer's work order looks like a crafter's and is told apart by what the building is:
+                // one that harvests wants somebody sent *out*, so the two part company here rather than in
+                // the request systems, which post the identical order for the identical reason.
+                OrderKind.Work => _reaps.HasComponent(order.Target)
+                    ? TryAssignGather(book, orderIndex, agents, reach, objects, now)
+                    : TryAssignWork(book, orderIndex, agents, reach, now),
                 _ => false,
             };
         }
@@ -207,6 +225,137 @@ namespace Rts
 
             agents.RemoveAtSwapBack(agentIndex);
             return true;
+        }
+
+        /// <summary>
+        /// Sends a gatherer out to the nearest thing worth harvesting, and home again (design §14 step 10).
+        ///
+        /// The trip is written as an ordinary haul - source, pickup, destination, deposit - and the assigned
+        /// order says so, which is what lets `InteractionSystem` move the goods and `OrderCompletionSystem`
+        /// unwind them without either being taught that mining exists. A seam is a shelf that happens to be
+        /// standing in a field.
+        ///
+        /// **The bench is claimed here, before the walk**, exactly as a crafter's worker claims one - and
+        /// that is what makes the mine own its miners rather than the whole map's haulers taking turns at it.
+        /// The claim is given back when the trip's steps run out, and the same agent is very nearly always
+        /// hired again next tick, because it is standing on the doorstep it just delivered to and is
+        /// therefore the nearest free pair of hands to the door. Employment falls out of geometry, and needs
+        /// no state of its own to leak.
+        ///
+        /// Step 6's warning about holding a claim at one building while walking to another does not reach
+        /// here: the seam end claims nothing, so there is no second claim for a cycle to close on.
+        /// </summary>
+        private bool TryAssignGather(
+            OrderBook book,
+            int orderIndex,
+            NativeList<FreeAgent> agents,
+            in Reachability reach,
+            in CellObjectMap objects,
+            double now)
+        {
+            Order order = book[orderIndex];
+            if (order.Amount <= 0 || !TryEntranceOf(order.Target, out int2 door))
+            {
+                return false;
+            }
+
+            if (!_interiors.TryGetComponent(order.Target, out Interior interior) || !interior.HasRoom)
+            {
+                return false;
+            }
+
+            Reaps reaps = _reaps[order.Target];
+
+            if (!NodeSearch.TryFindNearest(objects, _cellObjects, _slots, reach, door, reaps,
+                                           out Entity node, out int2 nodeCell))
+            {
+                return false;
+            }
+
+            // Hands required: a gatherer carries its load home, so an agent with no capacity is no use here
+            // however good a worker it would be at a bench.
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex,
+                                 mustCarry: true))
+            {
+                return false;
+            }
+
+            FreeAgent agent = agents[agentIndex];
+
+            DynamicBuffer<StorageSlot> nodeSlots = _slots[node];
+            DynamicBuffer<StorageSlot> homeSlots = _slots[order.Target];
+
+            int amount = AmountToFetch(nodeSlots, homeSlots, reaps.Yields, agent.CarryCapacity);
+            if (amount <= 0)
+            {
+                return false;
+            }
+
+            // Both ends held before anyone sets off, so a second gatherer sent to the same seam on the same
+            // tick is given what is left of it rather than the same ore twice.
+            if (!StorageSlotUtils.TryReserveBoth(ref nodeSlots, ref homeSlots, reaps.Yields, amount))
+            {
+                return false;
+            }
+
+            interior.Claimed++;
+            _interiors[order.Target] = interior;
+
+            _claims[agent.Entity] = new InteriorClaim { Building = order.Target };
+            _claims.SetComponentEnabled(agent.Entity, true);
+
+            DynamicBuffer<TaskStep> steps = _steps[agent.Entity];
+            steps.Clear();
+
+            if (agent.Inside != Entity.Null && TryEntranceOf(agent.Inside, out int2 homeDoor))
+            {
+                steps.Add(TaskStep.Exit(agent.Inside, homeDoor));
+            }
+
+            // A doorway walk to the seam as well as to the door. Nothing about harvesting needs the exact
+            // cell - the pickup works off the node's *entity* - and insisting on the centre is what makes
+            // every gatherer bound for one tree steer at a single point.
+            steps.Add(TaskStep.GoToDoor(nodeCell));
+            steps.Add(TaskStep.Pickup(node, PICKUP_SECONDS));
+            steps.Add(TaskStep.GoToDoor(door));
+            steps.Add(TaskStep.Deposit(order.Target, DEPOSIT_SECONDS));
+
+            _orders[agent.Entity] = new AssignedOrder
+            {
+                Kind = OrderKind.Haul,
+                Source = node,
+                Target = order.Target,
+                Item = reaps.Yields,
+                Amount = amount,
+            };
+            _orders.SetComponentEnabled(agent.Entity, true);
+
+            order.Amount = 0;
+            order.LastClaimedTime = now;
+            book[orderIndex] = order;
+
+            agents.RemoveAtSwapBack(agentIndex);
+            return true;
+        }
+
+        /// <summary>
+        /// A load: what is left in the seam, what will fit on the shelf at home, and what one pair of hands
+        /// can carry - whichever runs out first. All three read past the reservations, so trips already
+        /// underway are counted.
+        /// </summary>
+        private static int AmountToFetch(
+            in DynamicBuffer<StorageSlot> source,
+            in DynamicBuffer<StorageSlot> home,
+            ItemId item,
+            int carryCapacity)
+        {
+            if (!StorageSlotUtils.TryGetSlotIndex(source, item, out int from)
+                || !StorageSlotUtils.TryGetSlotIndex(home, item, out int to))
+            {
+                return 0;
+            }
+
+            return math.min(math.min(source[from].AvailableOut, home[to].FreeCapacity), carryCapacity);
         }
 
         private bool TryAssignHaul(
@@ -462,9 +611,15 @@ namespace Rts
         {
             var sites = new NativeList<StorageSite>(32, Allocator.Temp);
 
+            // Resource nodes are held out of the general market on purpose. A seam is not a warehouse with
+            // an awkward door: it is reachable only to a building that harvests it, within the range that
+            // building works (§14 step 10), and letting an ordinary hauler take wood off any tree on the map
+            // would make forestry buildings decorative. Nodes carry no entrance buffer today, so the query
+            // would miss them anyway - saying so is what keeps that an intention rather than an accident.
             foreach ((DynamicBuffer<BuildingEntranceCell> doors, Entity building)
                      in SystemAPI.Query<DynamicBuffer<BuildingEntranceCell>>()
                                  .WithAll<StorageSlot>()
+                                 .WithNone<ResourceNode>()
                                  .WithEntityAccess())
             {
                 // A store nobody can walk up to cannot be a source, whatever is on its shelves.
@@ -550,32 +705,6 @@ namespace Rts
             _limits.TryGetComponent(building, out HaulLimit limit) && limit.MaxConcurrent > 0
                 ? limit.MaxConcurrent
                 : DEFAULT_MAX_CONCURRENT_HAULERS;
-
-        /// <summary>
-        /// The two grid readings that answer "is it even worth sending anyone there", carried together so the
-        /// question can be asked in one line wherever a destination is being chosen.
-        ///
-        /// It only ever *refuses* on a definite no - see <see cref="FlowFieldCache.IsKnownUnreachable"/>. The
-        /// first attempt at a destination nobody has walked to is always allowed, which is what builds the
-        /// field that answers the question properly from then on.
-        /// </summary>
-        private readonly struct Reachability
-        {
-            private readonly FlowFieldCache _fields;
-            private readonly GridMap _map;
-
-            public Reachability(FlowFieldCache fields, GridMap map)
-            {
-                _fields = fields;
-                _map = map;
-            }
-
-            public bool CanTry(int2 destination, int2 from) =>
-                !_fields.IsKnownUnreachable(destination, from, _map);
-
-            public bool CanTry(int2 destination, float2 from) =>
-                CanTry(destination, GridCoords.CellOf(from));
-        }
 
         private struct FreeAgent
         {

@@ -23,6 +23,7 @@ namespace Tests.EditorTests.RtsTests
 
         private readonly SystemHandle _storageRequestSystem;
         private readonly SystemHandle _workRequestSystem;
+        private readonly SystemHandle _gatherRequestSystem;
         private readonly SystemHandle _orderAgingSystem;
         private readonly SystemHandle _orderAssignSystem;
         private readonly SystemHandle _idleAssignSystem;
@@ -58,6 +59,7 @@ namespace Tests.EditorTests.RtsTests
 
             _storageRequestSystem = World.CreateSystem<StorageRequestSystem>();
             _workRequestSystem = World.CreateSystem<WorkRequestSystem>();
+            _gatherRequestSystem = World.CreateSystem<GatherRequestSystem>();
             _orderAgingSystem = World.CreateSystem<OrderAgingSystem>();
             _orderAssignSystem = World.CreateSystem<OrderAssignSystem>();
             _idleAssignSystem = World.CreateSystem<IdleAssignSystem>();
@@ -119,6 +121,7 @@ namespace Tests.EditorTests.RtsTests
             // count ticks to find out whether the matching pass has happened yet.
             _storageRequestSystem.Update(World.Unmanaged);
             _workRequestSystem.Update(World.Unmanaged);
+            _gatherRequestSystem.Update(World.Unmanaged);
             _orderAgingSystem.Update(World.Unmanaged);
             _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
@@ -175,6 +178,38 @@ namespace Tests.EditorTests.RtsTests
             });
 
             return node;
+        }
+
+        /// <summary>
+        /// A building that sends workers out to harvest: a door, benches, and one shelf for the yield which
+        /// is a pure source, exactly as a crafter's output slot is.
+        /// </summary>
+        public Entity CreateGatherer(
+            int2 cell,
+            ObjectKind harvests,
+            ItemId yields,
+            int range = 12,
+            int workers = 2,
+            int capacity = 60)
+        {
+            Entity building = CreateStore(cell, new StorageSlot
+            {
+                Item = yields,
+                Capacity = capacity,
+                DeliverInUpTo = 0,
+                DeliverOutDownTo = 0,
+                Priority = 0,
+            });
+
+            Entities.AddComponentData(building, new Interior { Capacity = workers });
+            Entities.AddComponentData(building, new Reaps
+            {
+                Harvests = harvests,
+                Yields = yields,
+                Range = range,
+            });
+
+            return building;
         }
 
         public Entity CreateBuilding(int2 origin, GridRotation rotation, params int2[] footprintOffsets)

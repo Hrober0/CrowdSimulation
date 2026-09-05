@@ -12,6 +12,16 @@ namespace Examples.Rts
         Warehouse,
         Hut,
 
+        /// <summary>Sends its miners out to the ore seams around it.</summary>
+        Mine,
+
+        /// <summary>The same building, felling trees.</summary>
+        LumberCamp,
+
+        /// <summary>Somewhere for the wood and ore to end up.</summary>
+        WoodYard,
+        OreYard,
+
         /// <summary>A one-way crossing: two piers with one cell of open ground under it.</summary>
         Bridge,
 
@@ -56,6 +66,16 @@ namespace Examples.Rts
         /// </summary>
         public readonly int BridgeCells;
 
+        /// <summary>
+        /// What this building sends its workers out to harvest, or <see cref="ObjectKind.None"/> for one that
+        /// stays at home. The yield is <see cref="Output"/> - a mine's ore is its output in exactly the sense
+        /// a bakery's bread is, which is why nothing downstream has to know where it came from.
+        /// </summary>
+        public readonly ObjectKind Harvests;
+
+        /// <summary>How far out, in cells. See <see cref="Reaps.Range"/>.</summary>
+        public readonly int HarvestRange;
+
         public BuildingBlueprint(
             BuildingKind kind,
             string name,
@@ -66,7 +86,9 @@ namespace Examples.Rts
             ItemId output = default,
             float craftSeconds = 0f,
             bool isShelter = false,
-            int bridgeCells = 0)
+            int bridgeCells = 0,
+            ObjectKind harvests = ObjectKind.None,
+            int harvestRange = 0)
         {
             Kind = kind;
             Name = name;
@@ -78,14 +100,26 @@ namespace Examples.Rts
             CraftSeconds = craftSeconds;
             IsShelter = isShelter;
             BridgeCells = bridgeCells;
+            Harvests = harvests;
+            HarvestRange = harvestRange;
         }
 
         public bool IsBridge => BridgeCells > 0;
 
+        /// <summary>Sends workers out to the map rather than keeping them at a bench.</summary>
+        public bool IsGatherer => Harvests != ObjectKind.None;
+
         public bool Crafts => CraftSeconds > 0f && !Output.IsNone;
 
-        /// <summary>A warehouse: takes one item in and gives it to anyone who wants it more.</summary>
-        public bool Stores => !Crafts && !Output.IsNone;
+        /// <summary>
+        /// A warehouse: takes one item in and gives it to anyone who wants it more.
+        ///
+        /// A gatherer is explicitly not one, even though it also has an output and no recipe. Its shelf is a
+        /// pure source like a crafter's - things arrive on it because its own workers brought them - and a
+        /// warehouse's standing request would have a mine asking the map to deliver the ore it is standing
+        /// on top of.
+        /// </summary>
+        public bool Stores => !Crafts && !IsGatherer && !Output.IsNone;
     }
 
     /// <summary>
@@ -116,6 +150,24 @@ namespace Examples.Rts
             new BuildingBlueprint(
                 BuildingKind.Hut, "Hauler Hut", new int2(2, 2), new Color(0.55f, 0.45f, 0.60f),
                 interior: 6, isShelter: true),
+
+            new BuildingBlueprint(
+                BuildingKind.Mine, "Mine", new int2(2, 2), new Color(0.62f, 0.42f, 0.32f),
+                interior: 3, output: ItemCatalog.Ore,
+                harvests: ObjectKind.Ore, harvestRange: 14),
+
+            new BuildingBlueprint(
+                BuildingKind.LumberCamp, "Lumber Camp", new int2(2, 2), new Color(0.42f, 0.52f, 0.32f),
+                interior: 3, output: ItemCatalog.Wood,
+                harvests: ObjectKind.Tree, harvestRange: 16),
+
+            new BuildingBlueprint(
+                BuildingKind.WoodYard, "Wood Yard", new int2(3, 2), new Color(0.48f, 0.40f, 0.28f),
+                output: ItemCatalog.Wood),
+
+            new BuildingBlueprint(
+                BuildingKind.OreYard, "Ore Yard", new int2(3, 2), new Color(0.52f, 0.42f, 0.46f),
+                output: ItemCatalog.Ore),
 
             new BuildingBlueprint(
                 BuildingKind.Bridge, "Bridge", new int2(3, 1), new Color(0.62f, 0.52f, 0.38f),

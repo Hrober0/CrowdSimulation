@@ -46,7 +46,7 @@ namespace Rts
                 live.Add(crafter);
             }
 
-            Retire(book, live);
+            Retire(ref state, book, live);
             live.Dispose();
         }
 
@@ -78,11 +78,32 @@ namespace Rts
             });
         }
 
-        private static void Retire(OrderBook book, in NativeHashSet<Entity> live)
+        /// <summary>
+        /// Only crafters' work orders. <see cref="GatherRequestSystem"/> posts the same kind of order for
+        /// buildings that have no recipe, and a retirement pass that could not tell them apart would delete
+        /// the other system's orders on the tick they were posted - each system undoing the other for ever,
+        /// with nothing ever getting as far as being claimed.
+        ///
+        /// A target that no longer exists belongs to neither, so it falls through and goes.
+        /// </summary>
+        private static void Retire(ref SystemState state, OrderBook book, in NativeHashSet<Entity> live)
         {
+            EntityManager entities = state.EntityManager;
+
             for (int i = book.Length - 1; i >= 0; i--)
             {
-                if (book[i].Kind == OrderKind.Work && !live.Contains(book[i].Target))
+                Order order = book[i];
+                if (order.Kind != OrderKind.Work)
+                {
+                    continue;
+                }
+
+                if (entities.Exists(order.Target) && !entities.HasComponent<Recipe>(order.Target))
+                {
+                    continue;
+                }
+
+                if (!live.Contains(order.Target))
                 {
                     book.RemoveAt(i);
                 }

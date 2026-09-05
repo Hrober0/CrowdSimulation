@@ -39,6 +39,9 @@ namespace Examples.Rts
         [SerializeField, Min(0), Tooltip("Trees, to give the pathfinder something to route past.")]
         private int _trees = 60;
 
+        [SerializeField, Min(0), Tooltip("Ore seams. Free to walk over, so they route past nothing.")]
+        private int _oreSeams = 14;
+
         [SerializeField, Min(4)] private int _worldRadius = 24;
 
         /// <summary>A property rather than a static field, so there is no shared mutable state anywhere.</summary>
@@ -50,7 +53,19 @@ namespace Examples.Rts
             (BuildingKind.Bakery, new int2(8, 6)),
             (BuildingKind.Warehouse, new int2(16, -6)),
             (BuildingKind.Hut, new int2(0, -10)),
+
+            // Sited against the wood and the ore field below, because a gatherer's whole behaviour is a walk
+            // and a building out of range of anything just stands there.
+            (BuildingKind.LumberCamp, new int2(6, 14)),
+            (BuildingKind.WoodYard, new int2(0, 14)),
+            (BuildingKind.Mine, new int2(6, -16)),
+            (BuildingKind.OreYard, new int2(0, -16)),
         };
+
+        /// <summary>Where the wood stands, and where the seams are. Both near the building that works them.</summary>
+        private static readonly int2 ForestCentre = new(14, 16);
+
+        private static readonly int2 OreFieldCentre = new(14, -18);
 
         private EntityManager _entities;
         private bool _ready;
@@ -148,6 +163,7 @@ namespace Examples.Rts
             }
 
             ScatterTrees();
+            ScatterOre();
             SpawnHaulers();
         }
 
@@ -209,33 +225,69 @@ namespace Examples.Rts
             return map.IsCreated;
         }
 
+        /// <summary>
+        /// One wood rather than trees strewn over the whole map.
+        ///
+        /// Scattering read as noise: single trees everywhere are individually easy to walk round, so nothing
+        /// ever routes through one and a lumber camp has no reason to be anywhere in particular. A stand deep
+        /// enough to be worth cutting through is what makes both interesting - and it is also the shape that
+        /// would have sealed its own middle in, back when a tree was a wall (§14 step 9).
+        /// </summary>
         private void ScatterTrees()
         {
             // Fully qualified: UnityEngine.Random is also in scope here, and the one that takes a seed and
             // stays deterministic is the mathematics one.
             var random = new Unity.Mathematics.Random(12345);
 
+            int radius = (int)math.ceil(math.sqrt(_trees));
+
             for (int i = 0; i < _trees; i++)
             {
-                var cell = new int2(
-                    random.NextInt(-_worldRadius, _worldRadius),
-                    random.NextInt(-_worldRadius, _worldRadius)
+                int2 cell = ForestCentre + new int2(
+                    random.NextInt(-radius, radius + 1),
+                    random.NextInt(-radius, radius + 1)
                 );
 
-                if (IsReservedForBuilding(cell))
+                if (IsReservedForBuilding(cell) || !InWorld(cell))
                 {
                     continue;
                 }
 
-                Entity tree = _entities.CreateEntity(typeof(CellObject));
-                _entities.SetComponentData(tree, new CellObject
-                {
-                    Cell = cell,
-                    Cost = CellData.BLOCKED,
-                    Kind = ObjectKind.Tree,
-                });
+                RtsResources.PlaceTree(_entities, cell);
             }
         }
+
+        /// <summary>
+        /// Ore, in small clusters rather than scattered evenly, because a seam somebody walks past on the way
+        /// to another is what makes a mine's range worth siting well (§14 step 10).
+        /// </summary>
+        private void ScatterOre()
+        {
+            var random = new Unity.Mathematics.Random(4242);
+
+            for (int i = 0; i < _oreSeams; i++)
+            {
+                int2 seed = OreFieldCentre + new int2(random.NextInt(-6, 7), random.NextInt(-5, 6));
+
+                int cluster = random.NextInt(2, 5);
+                for (int j = 0; j < cluster; j++)
+                {
+                    int2 cell = seed + new int2(random.NextInt(-1, 2), random.NextInt(-1, 2));
+
+                    // Ore under a building would be mined out from under it, and a doorstep full of it is a
+                    // doorstep agents queue on for two different reasons.
+                    if (IsReservedForBuilding(cell) || !InWorld(cell))
+                    {
+                        continue;
+                    }
+
+                    RtsResources.PlaceOre(_entities, cell);
+                }
+            }
+        }
+
+        private bool InWorld(int2 cell) =>
+            math.all(cell > -_worldRadius) && math.all(cell < _worldRadius);
 
         /// <summary>
         /// Keeps trees off the buildings and their doorsteps. Checked against the layout rather than against
