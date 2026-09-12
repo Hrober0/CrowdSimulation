@@ -148,7 +148,8 @@ namespace Examples.Rts.UI
 
             foreach (RtsTool tool in new[]
                      {
-                         RtsTool.Inspect, RtsTool.Build, RtsTool.Road, RtsTool.Demolish, RtsTool.SpawnAgent,
+                         RtsTool.Inspect, RtsTool.Command, RtsTool.Build, RtsTool.Road,
+                         RtsTool.Demolish, RtsTool.SpawnAgent,
                      })
             {
                 RtsTool captured = tool;
@@ -316,6 +317,7 @@ namespace Examples.Rts.UI
             RtsTool.Road => "Road",
             RtsTool.Demolish => "Demolish",
             RtsTool.SpawnAgent => "Agents",
+            RtsTool.Command => "Move",
             _ => tool.ToString(),
         };
 

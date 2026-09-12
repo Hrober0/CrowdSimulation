@@ -18,6 +18,9 @@ namespace Examples.Rts
         Demolish,
         Road,
         SpawnAgent,
+
+        /// <summary>Click a unit to pick it up, click the ground to send it there.</summary>
+        Command,
     }
 
     /// <summary>
@@ -60,6 +63,9 @@ namespace Examples.Rts
 
         private uint _spawnSeed = 1;
         private int2 _hoverCell;
+
+        /// <summary>The unit the Command tool last picked up. Instance state - it belongs to this cursor.</summary>
+        private Entity _commanded;
         private int2 _lastPaintCell;
         private int2 _firstPaintCell;
         private bool _hovering;
@@ -166,6 +172,10 @@ namespace Examples.Rts
                     Spawn(grid, cell);
                     break;
 
+                case RtsTool.Command:
+                    Command(cell);
+                    break;
+
                 default:
                     Select(cell);
                     break;
@@ -266,6 +276,84 @@ namespace Examples.Rts
                 // simulation would rather not depend on.
                 Seed = ++_spawnSeed,
             });
+        }
+
+        /// <summary>
+        /// Pick a unit up, or send the one already picked up (design §14 step 13).
+        ///
+        /// **It will command any faction's units, on purpose.** Watching a fight from both sides is the
+        /// whole point of a sandbox, and the alternative - a spectator who can only ever push one side -
+        /// makes the other side's behaviour impossible to provoke. It is not the game rule: eventually the
+        /// player commands its own faction and nobody else's, and <see cref="MayCommand"/> is where that
+        /// becomes one line rather than a hunt through the input code.
+        /// </summary>
+        private void Command(int2 cell)
+        {
+            if (TryFindAgentAt(cell, out Entity agent) && MayCommand(agent))
+            {
+                _commanded = agent;
+                EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Agent(agent, cell)));
+                return;
+            }
+
+            if (!_entities.Exists(_commanded) || !_entities.HasBuffer<TaskStep>(_commanded))
+            {
+                _commanded = Entity.Null;
+                Select(cell);
+                return;
+            }
+
+            SendTo(_commanded, cell);
+            EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Agent(_commanded, cell)));
+        }
+
+        /// <summary>
+        /// Whether the player is allowed to order that unit about. Everyone, for now - see
+        /// <see cref="Command"/> - and the one place to tighten it to
+        /// <c>faction.Id == RtsFactions.PLAYER</c> when the sandbox becomes a game.
+        /// </summary>
+        private bool MayCommand(Entity agent) => _entities.Exists(agent);
+
+        /// <summary>
+        /// Drops whatever the agent was doing and walks it to a cell.
+        ///
+        /// Cancelling is <c>steps.Clear()</c> and switching path following off, which is exactly what
+        /// <c>WatchdogSystem</c> does when it gives up on a walk - so everything that has to be unwound is
+        /// unwound by machinery that already exists, and a player order needs to know nothing about
+        /// reservations or interior claims.
+        ///
+        /// An agent that is indoors is walked out first. Its position is still the doorstep it came in
+        /// through, which is the same fact <c>InteractionSystem</c> reads a worker's way back out from.
+        /// </summary>
+        private void SendTo(Entity agent, int2 cell)
+        {
+            DynamicBuffer<TaskStep> steps = _entities.GetBuffer<TaskStep>(agent);
+            steps.Clear();
+
+            if (_entities.HasComponent<PathFollow>(agent))
+            {
+                _entities.SetComponentEnabled<PathFollow>(agent, false);
+            }
+
+            if (_entities.HasComponent<InsideBuilding>(agent)
+                && _entities.IsComponentEnabled<InsideBuilding>(agent))
+            {
+                Entity building = _entities.GetComponentData<InsideBuilding>(agent).Building;
+                int2 doorstep = GridCoords.CellOf(_entities.GetComponentData<AgentMove>(agent).Position);
+                steps.Add(TaskStep.Exit(building, doorstep));
+            }
+
+            steps.Add(TaskStep.GoTo(cell));
+
+            // Moving a soldier *is* re-posting it: where you last told it to stand is what it guards, and
+            // what its leash is measured from. That makes "move the garrison" and "change what the garrison
+            // covers" one gesture rather than two (see Post).
+            if (_entities.HasComponent<Post>(agent))
+            {
+                Post post = _entities.GetComponentData<Post>(agent);
+                post.Home = GridCoords.CellCenter(cell);
+                _entities.SetComponentData(agent, post);
+            }
         }
 
         private void Select(int2 cell)
