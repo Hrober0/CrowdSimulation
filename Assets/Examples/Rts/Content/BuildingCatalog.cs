@@ -25,6 +25,12 @@ namespace Examples.Rts
         WoodYard,
         OreYard,
 
+        /// <summary>Shoots what it does not like the look of. No door, no shelf, nobody inside.</summary>
+        Turret,
+
+        /// <summary>A crafter whose output walks out of the door.</summary>
+        TrainingCamp,
+
         /// <summary>A one-way crossing: two piers with one cell of open ground under it.</summary>
         Bridge,
 
@@ -86,6 +92,25 @@ namespace Examples.Rts
         /// </summary>
         public readonly ObjectKind Plants;
 
+        /// <summary>
+        /// How much of a beating it takes, or zero for a building nothing can hurt.
+        ///
+        /// Only a turret has one today, and that is not an assertion that a bakery is indestructible - it is
+        /// that nothing yet attacks one. Step 13 fills this column in, and the cost model there reads the
+        /// fraction remaining, which is why the number lives on the blueprint rather than being a constant
+        /// in the combat code.
+        /// </summary>
+        public readonly int Health;
+
+        /// <summary>What it shoots with, or an unarmed <see cref="Rts.Weapon"/> for a building that does not.</summary>
+        public readonly Weapon Weapon;
+
+        /// <summary>
+        /// What walks out of its door when a batch is finished, or a zero
+        /// <see cref="AgentSpec.MaxSpeed"/> for a building that makes things instead of people.
+        /// </summary>
+        public readonly Trains Trains;
+
         public BuildingBlueprint(
             BuildingKind kind,
             string name,
@@ -99,7 +124,10 @@ namespace Examples.Rts
             int bridgeCells = 0,
             ObjectKind harvests = ObjectKind.None,
             int harvestRange = 0,
-            ObjectKind plants = ObjectKind.None)
+            ObjectKind plants = ObjectKind.None,
+            int health = 0,
+            Weapon weapon = default,
+            Trains trains = default)
         {
             Kind = kind;
             Name = name;
@@ -114,6 +142,9 @@ namespace Examples.Rts
             Harvests = harvests;
             HarvestRange = harvestRange;
             Plants = plants;
+            Health = health;
+            Weapon = weapon;
+            Trains = trains;
         }
 
         public bool IsBridge => BridgeCells > 0;
@@ -123,7 +154,27 @@ namespace Examples.Rts
 
         public bool IsPlanter => Plants != ObjectKind.None;
 
-        public bool Crafts => CraftSeconds > 0f && !Output.IsNone;
+        public bool IsTurret => Weapon.IsArmed;
+
+        /// <summary>Arms its worker rather than filling a shelf. A crafter in every other respect.</summary>
+        public bool IsCamp => Trains.Gives.IsArmed;
+
+        /// <summary>
+        /// Runs a recipe. A camp counts, and that is the whole of what makes one work: it has inputs, a
+        /// craft time and a work order like any other crafter, and what it is short of is an output *item*.
+        /// </summary>
+        public bool Crafts => CraftSeconds > 0f && (!Output.IsNone || IsCamp);
+
+        /// <summary>
+        /// Whether anyone ever goes in. A door is cut for a building agents visit - to work in it, to fetch
+        /// from it or to deliver to it - and a turret is the first building that is none of those.
+        ///
+        /// Worth deriving rather than authoring: a door is not free. It flags a cell as an entrance, which
+        /// makes it a cell the arrival queue ranks and the one-way brush must leave alone, and it forces
+        /// placement to refuse any spot whose southern neighbour cannot be stood on. A turret in a corner is
+        /// a reasonable turret.
+        /// </summary>
+        public bool HasDoor => Interior > 0 || !Input.IsNone || !Output.IsNone;
 
         /// <summary>
         /// A warehouse: takes one item in and gives it to anyone who wants it more.
@@ -137,9 +188,9 @@ namespace Examples.Rts
     }
 
     /// <summary>
-    /// The five things this example can build. Between them they make a two-stage production chain with
-    /// hauling at every join - grain to flour to bread to a warehouse - which is enough to watch every part
-    /// of §7 and §8 do its job.
+    /// Everything this example can build. At its centre is a two-stage production chain with hauling at
+    /// every join - grain to flour to bread to a warehouse - which is enough to watch every part of §7 and
+    /// §8 do its job.
     /// </summary>
     public static class BuildingCatalog
     {
@@ -186,6 +237,29 @@ namespace Examples.Rts
             new BuildingBlueprint(
                 BuildingKind.OreYard, "Ore Yard", new int2(3, 2), new Color(0.52f, 0.42f, 0.46f),
                 output: ItemCatalog.Ore),
+
+            // The two of §14 step 12. Between them they are the check that the rows above are a *catalog*
+            // and not a list of special cases: a turret has none of the five things every other building
+            // here has, and a camp has all of them but one.
+            new BuildingBlueprint(
+                BuildingKind.Turret, "Turret", new int2(1, 1), new Color(0.70f, 0.30f, 0.35f),
+                health: 250,
+                weapon: new Weapon { Range = 9f, Damage = 20, ReloadSeconds = 0.8f }),
+
+            // A soldier outranges a turret by nothing and hits for less: a turret is a fixed thing that
+            // has to be worth its cell, and a soldier's advantage is that it can be somewhere else tomorrow.
+            new BuildingBlueprint(
+                BuildingKind.TrainingCamp, "Training Camp", new int2(2, 2), new Color(0.45f, 0.40f, 0.55f),
+                interior: 2, input: ItemCatalog.Bread, craftSeconds: 4f,
+                health: 300,
+                trains: new Trains
+                {
+                    Gives = new Weapon { Range = 6f, Damage = 12, ReloadSeconds = 0.7f },
+
+                    // Far enough to cover the approach to the buildings around it, short enough that a
+                    // raider walking past cannot pull the garrison off the camp (see Post).
+                    Leash = 14f,
+                }),
 
             new BuildingBlueprint(
                 BuildingKind.Bridge, "Bridge", new int2(3, 1), new Color(0.62f, 0.52f, 0.38f),

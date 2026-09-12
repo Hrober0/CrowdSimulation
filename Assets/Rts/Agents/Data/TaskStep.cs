@@ -16,16 +16,27 @@ namespace Rts
 
         /// <summary>Step back out onto <see cref="TaskStep.Cell"/>.</summary>
         Exit,
+
+        /// <summary>
+        /// Close on <see cref="TaskStep.Target"/> until it is within <see cref="TaskStep.ArriveDistance"/>,
+        /// then stand there while the weapon does the rest.
+        ///
+        /// The one step whose destination *moves*, which is why it cannot be expressed as a
+        /// <see cref="GoTo"/>: the cell it is walking at is recomputed from the target every tick, and the
+        /// step ends when the target dies, escapes the leash, or is close enough to shoot.
+        /// </summary>
+        Engage,
     }
 
     /// <summary>
     /// One step of what an agent is doing (design §9). There is no per-type state machine: a worker, a hauler
-    /// and a soldier are the same archetype running the same four steps in different orders.
+    /// and a soldier are the same archetype running the same handful of steps in different orders.
     ///
     /// <code>
     /// worker  GoTo(slot)  -> Interact(inf)
     /// hauler  GoTo(src)   -> Interact(pickup) -> GoTo(dst) -> Interact(deposit)
     /// idle    GoTo(door)  -> Enter(hut)
+    /// soldier Engage(enemy)
     /// </code>
     ///
     /// Six entries inline. The design budgeted four, which is the length of the hauler task above; the two
@@ -144,6 +155,21 @@ namespace Rts
             Target = crafter,
             Duration = duration,
             Interaction = InteractionKind.Work,
+        };
+
+        /// <summary>
+        /// Close on something and shoot it. <paramref name="range"/> is the weapon's, so the agent stops at
+        /// the edge of what it can hit rather than walking onto its target - a ranged unit that closes to the
+        /// centre of the cell it is shooting at is a melee unit.
+        /// </summary>
+        public static TaskStep Engage(Entity target, float range) => new()
+        {
+            Kind = TaskStepKind.Engage,
+            Target = target,
+
+            // A shade inside the weapon's reach, so that one step of avoidance jostling does not put the
+            // target back out of range and start the walk over.
+            ArriveDistance = range * 0.85f,
         };
 
         /// <summary>

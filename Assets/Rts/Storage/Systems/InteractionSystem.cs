@@ -174,7 +174,24 @@ namespace Rts
                 return;
             }
 
-            if (CanStillWork(entities, crafter, craft: true))
+            bool more = CanStillWork(entities, crafter, craft: true, out bool crafted);
+
+            // A batch at a camp changes the worker rather than filling a shelf (§14 step 13). Done here and
+            // now, unlike every other spawn in the project, because nothing is spawned: arming is an
+            // enableable bit on an archetype that already carries the weapon, so there is no structural
+            // change to defer and no queue to defer it to.
+            if (crafted && entities.HasComponent<Trains>(crafter))
+            {
+                var camp = entities.GetComponentData<Trains>(crafter);
+                AgentFactory.Arm(entities, agent, camp.Gives, camp.Leash);
+
+                // One batch is a whole enlistment, whatever is left on the shelf. The shift cannot go on,
+                // because the worker who would have worked it is a soldier now with somewhere else to be -
+                // and the camp posts its order again on the next tick for whoever is free.
+                more = false;
+            }
+
+            if (more)
             {
                 Recipe recipe = entities.GetComponentData<Recipe>(crafter);
                 entities.GetBuffer<TaskStep>(agent).Add(TaskStep.Work(crafter, recipe.CraftSeconds));
@@ -191,9 +208,17 @@ namespace Rts
         /// Makes a batch if one can be made, and reports whether another could follow. Both answers come
         /// from <see cref="RecipeUtils.CanCraft"/>, so the worker and the building that asked for it can
         /// never disagree about whether there was work.
+        ///
+        /// <paramref name="crafted"/> is the third answer, and it is a different question from the return
+        /// value: "a batch was made just now" is what a camp turns into an enlistment, and "another could
+        /// follow" is what keeps a worker at a bench. They part company at a camp, which arms its worker on
+        /// the batch it just made and then has nobody left to work the next one.
         /// </summary>
-        private static bool CanStillWork(in EntityManager entities, Entity crafter, bool craft)
+        private static bool CanStillWork(in EntityManager entities, Entity crafter, bool craft,
+                                         out bool crafted)
         {
+            crafted = false;
+
             if (!entities.Exists(crafter)
                 || !entities.HasComponent<Recipe>(crafter)
                 || !entities.HasBuffer<StorageSlot>(crafter))
@@ -208,6 +233,7 @@ namespace Rts
             if (craft && RecipeUtils.CanCraft(slots, inputs, outputs))
             {
                 RecipeUtils.Craft(ref slots, inputs, outputs);
+                crafted = true;
             }
 
             return RecipeUtils.CanCraft(slots, inputs, outputs);

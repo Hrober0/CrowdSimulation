@@ -40,11 +40,15 @@ namespace Rts
         /// </summary>
         private const float PARK_SPACING = 0.8f;
 
+        private ComponentLookup<Faction> _factions;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<GridWorld>();
             state.RequireForUpdate<FlowFieldCache>();
             state.RequireForUpdate<AgentSpatialHash>();
+
+            _factions = state.GetComponentLookup<Faction>(isReadOnly: true);
         }
 
         public void OnUpdate(ref SystemState state)
@@ -52,6 +56,8 @@ namespace Rts
             GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
             FlowFieldCache cache = SystemAPI.GetSingleton<FlowFieldCache>();
             NativeSpatialHash<AgentMove> crowd = SystemAPI.GetSingleton<AgentSpatialHash>().Hash;
+
+            _factions.Update(ref state);
 
             NativeList<ShelterCandidate> shelters = CollectShelters(ref state);
 
@@ -61,10 +67,12 @@ namespace Rts
             int claims = 0;
 
             foreach ((DynamicBuffer<TaskStep> steps, RefRO<AgentMove> agent, EnabledRefRO<PathFollow> walking,
-                      RefRW<InteriorClaim> claim, EnabledRefRW<InteriorClaim> claimed, Entity entity)
+                      RefRW<InteriorClaim> claim, EnabledRefRW<InteriorClaim> claimed,
+                      RefRO<Faction> faction, EnabledRefRO<Weapon> armed, Entity entity)
                      in SystemAPI.Query<DynamicBuffer<TaskStep>, RefRO<AgentMove>, EnabledRefRO<PathFollow>,
-                                        RefRW<InteriorClaim>, EnabledRefRW<InteriorClaim>>()
-                                 .WithPresent<PathFollow, InteriorClaim>()
+                                        RefRW<InteriorClaim>, EnabledRefRW<InteriorClaim>,
+                                        RefRO<Faction>, EnabledRefRO<Weapon>>()
+                                 .WithPresent<PathFollow, InteriorClaim, Weapon>()
                                  .WithDisabled<InsideBuilding, AssignedOrder>()
                                  .WithEntityAccess())
             {
@@ -85,7 +93,11 @@ namespace Rts
 
                 float2 position = agent.ValueRO.Position;
 
-                if (claims < MAX_CLAIMS_PER_TICK && TryNearestShelter(shelters, cache, map, position, out int index))
+                // A soldier takes no bed. A hut's beds are the hauling economy's throughput, and an army
+                // resting in them would starve it - so an armed agent falls straight through to parking,
+                // which is what "stand somewhere that is not in the way" was always for.
+                if (claims < MAX_CLAIMS_PER_TICK && !armed.ValueRO
+                    && TryNearestShelter(shelters, cache, map, position, faction.ValueRO, out int index))
                 {
                     ShelterCandidate shelter = shelters[index];
                     shelter.Free--;
@@ -154,6 +166,7 @@ namespace Rts
                     Building = entity,
                     Entrance = entrances[0].Cell,
                     Free = interior.ValueRO.FreeSlots,
+                    Faction = Faction.Of(_factions, entity),
                 });
             }
 
@@ -209,6 +222,7 @@ namespace Rts
             in FlowFieldCache cache,
             in GridMap map,
             float2 position,
+            Faction faction,
             out int index)
         {
             index = -1;
@@ -218,6 +232,14 @@ namespace Rts
             for (int i = 0; i < shelters.Length; i++)
             {
                 if (shelters[i].Free <= 0)
+                {
+                    continue;
+                }
+
+                // Somebody else's hut is not shelter. Checked here rather than by filtering the list,
+                // because the list is shared by every agent this tick and each of them asks a different
+                // question of it.
+                if (!shelters[i].Faction.Equals(faction))
                 {
                     continue;
                 }
@@ -350,6 +372,8 @@ namespace Rts
             public int Free;
 
             public int TakenThisTick;
+
+            public Faction Faction;
         }
     }
 }

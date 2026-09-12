@@ -525,7 +525,10 @@ namespace Examples.Rts
                 }
             }
 
-            DrawDoorPreview(origin, cellSize);
+            if (blueprint.HasDoor)
+            {
+                DrawDoorPreview(origin, cellSize);
+            }
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using Rts;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -26,12 +27,27 @@ namespace Examples.Rts
         /// <summary>Units carried per trip. Zero means the agent will never be given a haul.</summary>
         public int CarryCapacity;
 
+        public int MaxHealth;
+
         /// <summary>
         /// Spawn with nothing to do rather than walking to <see cref="GoalCell"/>. Idle agents are picked up
         /// by the economy on the next tick - which is what you want when dropping a crowd into a working
         /// world, as opposed to a demo that wants everyone marching at one spot.
         /// </summary>
         public bool Idle;
+
+        /// <summary>Which side the crowd is on. See <see cref="RtsFactions"/>.</summary>
+        public byte Faction;
+
+        /// <summary>
+        /// What they carry, if anything. An unarmed spawn makes workers; an armed one makes soldiers, which
+        /// is how the example gets an enemy onto the map at all - nothing in the game produces one until a
+        /// faction has a camp of its own.
+        /// </summary>
+        public Weapon Weapon;
+
+        /// <summary>How far an armed spawn will chase. Zero takes the default. See <see cref="Post"/>.</summary>
+        public float Leash;
 
         public uint Seed;
     }

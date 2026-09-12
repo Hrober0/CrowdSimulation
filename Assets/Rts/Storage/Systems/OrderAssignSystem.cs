@@ -55,6 +55,10 @@ namespace Rts
         private ComponentLookup<AssignedOrder> _orders;
         private ComponentLookup<HaulLimit> _limits;
         private ComponentLookup<Interior> _interiors;
+        private ComponentLookup<Faction> _factions;
+        private ComponentLookup<Weapon> _weapons;
+        private ComponentLookup<AgentMove> _agents;
+        private ComponentLookup<Post> _posts;
         private ComponentLookup<InteriorClaim> _claims;
         private ComponentLookup<Recipe> _recipes;
         private ComponentLookup<Reaps> _reaps;
@@ -74,6 +78,10 @@ namespace Rts
             _orders = state.GetComponentLookup<AssignedOrder>();
             _limits = state.GetComponentLookup<HaulLimit>(isReadOnly: true);
             _interiors = state.GetComponentLookup<Interior>();
+            _factions = state.GetComponentLookup<Faction>(isReadOnly: true);
+            _weapons = state.GetComponentLookup<Weapon>(isReadOnly: true);
+            _agents = state.GetComponentLookup<AgentMove>(isReadOnly: true);
+            _posts = state.GetComponentLookup<Post>(isReadOnly: true);
             _claims = state.GetComponentLookup<InteriorClaim>();
             _recipes = state.GetComponentLookup<Recipe>(isReadOnly: true);
             _reaps = state.GetComponentLookup<Reaps>(isReadOnly: true);
@@ -95,6 +103,10 @@ namespace Rts
             _orders.Update(ref state);
             _limits.Update(ref state);
             _interiors.Update(ref state);
+            _factions.Update(ref state);
+            _weapons.Update(ref state);
+            _agents.Update(ref state);
+            _posts.Update(ref state);
             _claims.Update(ref state);
             _recipes.Update(ref state);
             _reaps.Update(ref state);
@@ -139,6 +151,14 @@ namespace Rts
             PruneEmptyOrders(book);
         }
 
+        /// <summary>An ordinary job: an unarmed hand belonging to whoever owns the building that asked.</summary>
+        private AgentWanted Labour(Entity requester, int2 where, bool mustCarry = false) => new()
+        {
+            Side = Faction.Of(_factions, requester),
+            MustCarry = mustCarry,
+            Where = GridCoords.CellCenter(where),
+        };
+
         private bool TryAssign(
             OrderBook book,
             int orderIndex,
@@ -155,6 +175,11 @@ namespace Rts
             if (order.Kind == OrderKind.Haul)
             {
                 return TryAssignHaul(book, orderIndex, sites, agents, busy, reach, now);
+            }
+
+            if (order.Kind == OrderKind.Fight)
+            {
+                return TryAssignFight(book, orderIndex, agents, reach);
             }
 
             if (order.Kind != OrderKind.Work)
@@ -186,6 +211,75 @@ namespace Rts
         }
 
         /// <summary>
+        /// Sends a soldier at a threat (design §14 step 13).
+        ///
+        /// The shortest of the four, because a fight needs none of the machinery the others do: there is
+        /// nothing to reserve, no room to hold and no bench to claim - a target is a place on the map, and
+        /// two soldiers arriving at one is a fight rather than a fault. What stops the pile-on is that the
+        /// order is claimed once and then gone, which is the same thing that stops six haulers loading one
+        /// crate.
+        ///
+        /// The order is emptied rather than removed. Every other branch here counts an order down and lets
+        /// <c>PruneEmptyOrders</c> sweep at the end of the tick, and that is not a style choice: the loop is
+        /// walking a *ranked* array of indices into the book, so taking an entry out from under it makes
+        /// every later index point at the wrong order or off the end.
+        /// </summary>
+        private bool TryAssignFight(
+            OrderBook book,
+            int orderIndex,
+            NativeList<FreeAgent> agents,
+            in Reachability reach)
+        {
+            Order order = book[orderIndex];
+
+            if (!_agents.HasComponent(order.Target) || !_agents.IsComponentEnabled(order.Target))
+            {
+                return false;
+            }
+
+            float2 at = _agents[order.Target].Position;
+            int2 cell = GridCoords.CellOf(at);
+
+            var wanted = new AgentWanted
+            {
+                Side = Faction.Of(_factions, order.Target),
+                EnemiesOfSide = true,
+                Armed = true,
+                Where = at,
+            };
+
+            if (!TryNearestAgent(agents, at, reach, cell, wanted, out int agentIndex))
+            {
+                return false;
+            }
+
+            FreeAgent soldier = agents[agentIndex];
+
+            if (!_steps.HasBuffer(soldier.Entity) || !_weapons.HasComponent(soldier.Entity))
+            {
+                return false;
+            }
+
+            DynamicBuffer<TaskStep> steps = _steps[soldier.Entity];
+            steps.Clear();
+            steps.Add(TaskStep.Engage(order.Target, _weapons[soldier.Entity].Range));
+
+            _orders[soldier.Entity] = new AssignedOrder
+            {
+                Kind = OrderKind.Fight,
+                Target = order.Target,
+            };
+
+            _orders.SetComponentEnabled(soldier.Entity, true);
+
+            agents.RemoveAtSwapBack(agentIndex);
+
+            order.Amount = 0;
+            book[orderIndex] = order;
+            return true;
+        }
+
+        /// <summary>
         /// Sends a worker to a building that has asked for one. The claim is taken here - before the walk -
         /// exactly as a bed in a hut is, which is what keeps six agents from converging on a workshop with
         /// two benches (§6, §8).
@@ -208,7 +302,8 @@ namespace Rts
                 return false;
             }
 
-            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex))
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door,
+                                 Labour(order.Target, door), out int agentIndex))
             {
                 return false;
             }
@@ -302,8 +397,8 @@ namespace Rts
 
             // Hands required: a gatherer carries its load home, so an agent with no capacity is no use here
             // however good a worker it would be at a bench.
-            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex,
-                                 mustCarry: true))
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door,
+                                 Labour(order.Target, door, mustCarry: true), out int agentIndex))
             {
                 return false;
             }
@@ -410,7 +505,8 @@ namespace Rts
             }
 
             // No hands needed: a planter's worker carries nothing there and nothing back.
-            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door, out int agentIndex))
+            if (!TryNearestAgent(agents, GridCoords.CellCenter(door), reach, door,
+                                 Labour(order.Target, door), out int agentIndex))
             {
                 return false;
             }
@@ -512,8 +608,9 @@ namespace Rts
                 return false;
             }
 
-            if (!TryNearestAgent(agents, source.Point, reach, source.EntranceCell, out int agentIndex,
-                                 mustCarry: true))
+            if (!TryNearestAgent(agents, source.Point, reach, source.EntranceCell,
+                                 Labour(order.Target, source.EntranceCell, mustCarry: true),
+                                 out int agentIndex))
             {
                 return false;
             }
@@ -651,20 +748,72 @@ namespace Rts
         /// That turns roughly one probe per agent into roughly one per new nearest, which is why dropping the
         /// cap leaves this loop cheaper than it was with it.
         /// </remarks>
+        /// <summary>
+        /// Which agents an order will accept. One struct rather than a row of booleans, because the four
+        /// questions are not independent - a fight order wants an armed enemy of the target and a haul order
+        /// wants an unarmed member of the requester's own side, and writing that as separate flags invites a
+        /// caller to ask for the half of it that makes no sense.
+        /// </summary>
+        private struct AgentWanted
+        {
+            /// <summary>The side the order is about: whose work it is, or whose body is being shot at.</summary>
+            public Faction Side;
+
+            /// <summary>
+            /// True for a fight order. Its target is the enemy, so what it wants is anyone that thing is an
+            /// enemy of - which is how a third faction on the map is dispatched at it too, with no faction
+            /// written on the order at all.
+            /// </summary>
+            public bool EnemiesOfSide;
+
+            public bool MustCarry;
+
+            /// <summary>
+            /// Armed and unarmed are never interchangeable, so this is an equality rather than a minimum:
+            /// labour orders refuse soldiers and fight orders refuse workers, from one field.
+            /// </summary>
+            public bool Armed;
+
+            /// <summary>Where the work is, for a soldier that may not be sent past its leash.</summary>
+            public float2 Where;
+
+            public readonly bool Accepts(in FreeAgent agent)
+            {
+                bool side = EnemiesOfSide
+                    ? Faction.AreEnemies(agent.Faction, Side)
+                    : agent.Faction.Equals(Side);
+
+                if (!side || agent.Armed != Armed)
+                {
+                    return false;
+                }
+
+                if (MustCarry && agent.CarryCapacity <= 0)
+                {
+                    return false;
+                }
+
+                // The leash is what keeps a garrison a garrison: a soldier is only ever sent at something
+                // near the place it was told to stand, so one expendable scout cannot walk a base's
+                // defenders off it (§14 step 13).
+                return !Armed || agent.Post.Leash <= 0f || agent.Post.IsWithinLeash(Where);
+            }
+        }
+
         private static bool TryNearestAgent(
             in NativeList<FreeAgent> agents,
             float2 point,
             in Reachability reach,
             int2 destination,
-            out int index,
-            bool mustCarry = false)
+            in AgentWanted wanted,
+            out int index)
         {
             index = -1;
             float best = float.MaxValue;
 
             for (int i = 0; i < agents.Length; i++)
             {
-                if (mustCarry && agents[i].CarryCapacity <= 0)
+                if (!wanted.Accepts(agents[i]))
                 {
                     continue;
                 }
@@ -691,13 +840,21 @@ namespace Rts
         {
             var agents = new NativeList<FreeAgent>(64, Allocator.Temp);
 
-            // WithPresent on both, because the agents most likely to be free are exactly the ones resting
-            // inside a hut, and those have AgentMove disabled.
+            // WithPresent everywhere, because the agents most likely to be free are exactly the ones resting
+            // inside a hut - those have AgentMove disabled - and because soldiers belong in this list too.
+            //
+            // Armed and unarmed are collected together and sorted out per order (see AgentWanted). One list
+            // and one predicate, rather than a query that can only answer one of the two questions: a fight
+            // order wants exactly the agents a haul order must never be given.
+            // The post is read through a lookup rather than asked for in the query: SystemAPI.Query takes
+            // seven type arguments and this already wants seven of them.
             foreach ((RefRO<AgentMove> move, RefRO<Carry> carry, RefRO<InsideBuilding> inside,
-                      EnabledRefRO<InsideBuilding> isInside, DynamicBuffer<TaskStep> steps, Entity entity)
+                      EnabledRefRO<InsideBuilding> isInside, DynamicBuffer<TaskStep> steps,
+                      RefRO<Faction> faction, EnabledRefRO<Weapon> armed, Entity entity)
                      in SystemAPI.Query<RefRO<AgentMove>, RefRO<Carry>, RefRO<InsideBuilding>,
-                                        EnabledRefRO<InsideBuilding>, DynamicBuffer<TaskStep>>()
-                                 .WithPresent<AgentMove, InsideBuilding>()
+                                        EnabledRefRO<InsideBuilding>, DynamicBuffer<TaskStep>,
+                                        RefRO<Faction>, EnabledRefRO<Weapon>>()
+                                 .WithPresent<AgentMove, InsideBuilding, Weapon>()
                                  .WithDisabled<AssignedOrder>()
                                  .WithEntityAccess())
             {
@@ -712,6 +869,9 @@ namespace Rts
                     Entity = entity,
                     Position = move.ValueRO.Position,
                     CarryCapacity = carry.ValueRO.Capacity,
+                    Faction = faction.ValueRO,
+                    Armed = armed.ValueRO,
+                    Post = _posts.HasComponent(entity) ? _posts[entity] : default,
                     Inside = isInside.ValueRO ? inside.ValueRO.Building : Entity.Null,
                 });
             }
@@ -823,6 +983,13 @@ namespace Rts
             public Entity Entity;
             public float2 Position;
             public int CarryCapacity;
+            public Faction Faction;
+
+            /// <summary>A soldier. Labour and soldiery are disjoint, which is what this sorts them into.</summary>
+            public bool Armed;
+
+            /// <summary>Where it is posted, and how far from there it may be sent. See <see cref="Post"/>.</summary>
+            public Post Post;
 
             /// <summary>The building it is resting in, or <see cref="Entity.Null"/> if it is out on the map.</summary>
             public Entity Inside;

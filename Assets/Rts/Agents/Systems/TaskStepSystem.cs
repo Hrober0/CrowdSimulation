@@ -1,5 +1,7 @@
+using GridNav;
 using Unity.Burst;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace Rts
 {
@@ -25,9 +27,17 @@ namespace Rts
         /// <summary>Used when a task step is given to an agent that has never been told how close is close enough.</summary>
         private const float DEFAULT_ARRIVE_DISTANCE = 0.4f;
 
+        private ComponentLookup<AgentMove> _agents;
+        private ComponentLookup<Health> _health;
+        private ComponentLookup<Post> _posts;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<InteractionQueue>();
+
+            _agents = state.GetComponentLookup<AgentMove>(isReadOnly: true);
+            _health = state.GetComponentLookup<Health>(isReadOnly: true);
+            _posts = state.GetComponentLookup<Post>(isReadOnly: true);
         }
 
         [BurstCompile]
@@ -35,6 +45,10 @@ namespace Rts
         {
             InteractionQueue interactions = SystemAPI.GetSingleton<InteractionQueue>();
             float deltaTime = SystemAPI.Time.DeltaTime;
+
+            _agents.Update(ref state);
+            _health.Update(ref state);
+            _posts.Update(ref state);
 
             // WithPresent on both, because an agent inside a building has PathFollow disabled and is exactly
             // the agent whose Interact steps - a whole shift of them - still have to run.
@@ -81,6 +95,34 @@ namespace Rts
                         walking.ValueRW = true;
                         break;
 
+                    case TaskStepKind.Engage:
+                    {
+                        // Re-aimed every tick, because this is the one step whose destination walks away.
+                        // Everything that ends a chase ends it here: the target dying, the target getting
+                        // out of the leash, or the soldier getting close enough that the weapon can do the
+                        // rest without anybody taking another step.
+                        if (!TryChase(entity, step, ref follow.ValueRW, out bool closeEnough))
+                        {
+                            walking.ValueRW = false;
+                            arrived.ValueRW = false;
+                            steps.RemoveAt(0);
+                            break;
+                        }
+
+                        if (closeEnough)
+                        {
+                            // In range and standing. The weapon is fired by AttackSystem, which needs no
+                            // telling - it shoots whatever is nearest, and this is what put the soldier
+                            // where that is the right thing.
+                            walking.ValueRW = false;
+                            break;
+                        }
+
+                        arrived.ValueRW = false;
+                        walking.ValueRW = true;
+                        break;
+                    }
+
                     case TaskStepKind.Enter:
                     case TaskStepKind.Exit:
                         // Left at the head on purpose. A doorway takes time and admits one agent at a time
@@ -121,6 +163,66 @@ namespace Rts
         /// Points an agent at a cell. <c>RoutedChunk = -1</c> is no chunk, which is what makes
         /// <see cref="PathRouteSystem"/> work out a route on the first frame rather than trust these values.
         /// </summary>
+        /// <summary>
+        /// Keeps a chase pointed at its target, and says whether there is still a chase to keep.
+        ///
+        /// False means the step is over, for one of three reasons that all end the same way: the target is
+        /// gone or dead, the chaser has no body to chase with, or the *target* has left the chaser's leash.
+        /// The leash is measured from the post rather than from the soldier, which is what makes it a limit
+        /// on where the fight may happen rather than on how far a soldier may walk in one go - a soldier
+        /// dragged out and released comes back because the order stops being handed to it, not because it
+        /// hit an invisible wall.
+        /// </summary>
+        private bool TryChase(Entity chaser, in TaskStep step, ref PathFollow follow, out bool closeEnough)
+        {
+            closeEnough = false;
+
+            if (!_agents.HasComponent(chaser) || !_agents.HasComponent(step.Target))
+            {
+                return false;
+            }
+
+            if (_health.HasComponent(step.Target) && !_health[step.Target].IsAlive)
+            {
+                return false;
+            }
+
+            // Out of the world rather than out of range: a target that has stepped inside a building has
+            // AgentMove disabled, cannot be shot, and is not worth standing outside for.
+            if (!_agents.IsComponentEnabled(step.Target))
+            {
+                return false;
+            }
+
+            float2 target = _agents[step.Target].Position;
+
+            if (_posts.HasComponent(chaser))
+            {
+                Post post = _posts[chaser];
+                if (post.Leash > 0f && !post.IsWithinLeash(target))
+                {
+                    return false;
+                }
+            }
+
+            float2 here = _agents[chaser].Position;
+            if (math.lengthsq(target - here) <= step.ArriveDistance * step.ArriveDistance)
+            {
+                closeEnough = true;
+                return true;
+            }
+
+            int2 cell = GridCoords.CellOf(target);
+            if (!follow.GoalCell.Equals(cell))
+            {
+                TaskStep aimed = step;
+                aimed.Cell = cell;
+                follow = Walk(follow, aimed);
+            }
+
+            return true;
+        }
+
         private static PathFollow Walk(PathFollow follow, in TaskStep step)
         {
             follow.GoalCell = step.Cell;

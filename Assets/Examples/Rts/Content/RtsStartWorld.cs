@@ -42,6 +42,9 @@ namespace Examples.Rts
         [SerializeField, Min(0), Tooltip("Ore seams. Free to walk over, so they route past nothing.")]
         private int _oreSeams = 14;
 
+        [SerializeField, Min(0), Tooltip("Raiders walking the lane the turrets cover, so the turrets do something.")]
+        private int _raiders = 8;
+
         [SerializeField, Min(4)] private int _worldRadius = 24;
 
         /// <summary>A property rather than a static field, so there is no shared mutable state anywhere.</summary>
@@ -64,6 +67,16 @@ namespace Examples.Rts
             // Put on bare ground rather than against the wood, because what it does is only visible where
             // there is nothing: a grove appears beside it while you watch.
             (BuildingKind.Planter, new int2(-16, 16)),
+
+            // Downstream of the bakery, because what it eats is bread: the camp and the warehouse both ask
+            // for the same loaves, at priorities six and one, which is the clearest look at strict priority
+            // the example has.
+            (BuildingKind.TrainingCamp, new int2(16, 2)),
+
+            // Either side of the lane the raiders walk (see SpawnRaiders), because a turret sited where
+            // nothing passes is a turret that never fires.
+            (BuildingKind.Turret, new int2(-6, 2)),
+            (BuildingKind.Turret, new int2(-6, -3)),
         };
 
         /// <summary>Where the wood stands, and where the seams are. Both near the building that works them.</summary>
@@ -169,6 +182,7 @@ namespace Examples.Rts
             ScatterTrees();
             ScatterOre();
             SpawnHaulers();
+            SpawnRaiders();
         }
 
         private void Clear()
@@ -327,8 +341,49 @@ namespace Examples.Rts
                 MaxSpeed = 3f,
                 Radius = 0.42f,
                 CarryCapacity = 10,
+                MaxHealth = 100,
+                Faction = RtsFactions.PLAYER,
                 Idle = true,
                 Seed = 7,
+            });
+        }
+
+        /// <summary>
+        /// A column of raiders walking west to east across the middle of the map, so the turrets on that lane
+        /// have something to shoot (§14 step 12).
+        ///
+        /// Scaffolding, and it says so: nothing in the game produces an enemy until soldiers arrive in step
+        /// 13, and a turret with nothing in range is a building that cannot be seen to work at all. They walk
+        /// rather than stand because being shot at while crossing is the thing worth watching - three shots
+        /// each at this health, which is about as long as it takes to walk past one turret.
+        /// </summary>
+        private void SpawnRaiders()
+        {
+            if (_raiders <= 0)
+            {
+                return;
+            }
+
+            Entity request = _entities.CreateEntity(typeof(AgentSpawn));
+            _entities.SetComponentData(request, new AgentSpawn
+            {
+                Count = _raiders,
+                Center = new float2(-21f, 0f),
+                Size = new float2(3f, 8f),
+                GoalCell = new int2(20, 0),
+                MaxSpeed = 2.5f,
+                Radius = 0.42f,
+                MaxHealth = 60,
+                Faction = RtsFactions.RAIDERS,
+
+                // Armed, so the fight goes both ways: raiders walking past a turret shoot back at it, and a
+                // player soldier standing in the lane is something they have to get through.
+                Weapon = new Weapon { Range = 5f, Damage = 8, ReloadSeconds = 1f },
+
+                // Short, because a raider's job is to cross the map rather than to garrison it: it will
+                // turn aside for what is close and then carry on walking east.
+                Leash = 7f,
+                Seed = 99,
             });
         }
     }

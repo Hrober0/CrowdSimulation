@@ -29,6 +29,9 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _idleAssignSystem;
         private readonly SystemHandle _nodeDepletionSystem;
         private readonly SystemHandle _plantingSystem;
+        private readonly SystemHandle _damageApplySystem;
+        private readonly SystemHandle _attackSystem;
+        private readonly SystemHandle _threatDetectionSystem;
 
         private readonly SystemHandle _agentSpatialHashSystem;
         private readonly SystemHandle _taskStepSystem;
@@ -42,7 +45,10 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _interiorTransitionSystem;
         private readonly SystemHandle _interactionSystem;
         private readonly SystemHandle _orderCompletionSystem;
+        private readonly SystemHandle _reaperSystem;
         private readonly SystemHandle _watchdogSystem;
+
+        private readonly EntityArchetype _agentArchetype;
 
         private double _elapsed;
 
@@ -67,6 +73,12 @@ namespace Tests.EditorTests.RtsTests
             _nodeDepletionSystem = World.CreateSystem<ResourceNodeDepletionSystem>();
             _plantingSystem = World.CreateSystem<PlantingSystem>();
 
+            // The applier first, because it is the one that owns the damage queue everything armed
+            // writes into.
+            _damageApplySystem = World.CreateSystem<DamageApplySystem>();
+            _attackSystem = World.CreateSystem<AttackSystem>();
+            _threatDetectionSystem = World.CreateSystem<ThreatDetectionSystem>();
+
             _agentSpatialHashSystem = World.CreateSystem<AgentSpatialHashSystem>();
             _taskStepSystem = World.CreateSystem<TaskStepSystem>();
             _bridgeTransitSystem = World.CreateSystem<BridgeTransitSystem>();
@@ -79,12 +91,15 @@ namespace Tests.EditorTests.RtsTests
             _interiorTransitionSystem = World.CreateSystem<InteriorTransitionSystem>();
             _interactionSystem = World.CreateSystem<InteractionSystem>();
             _orderCompletionSystem = World.CreateSystem<OrderCompletionSystem>();
+            _reaperSystem = World.CreateSystem<ReaperSystem>();
             _watchdogSystem = World.CreateSystem<WatchdogSystem>();
 
             World.EntityManager.CreateSingleton(
                 GridSettings.FromCells(new int2(sizeInCells, sizeInCells), centerOnOrigin: true)
             );
             _gridMapSystem.Update(World.Unmanaged);
+
+            _agentArchetype = AgentFactory.Archetype(World.EntityManager);
         }
 
         public World World { get; }
@@ -124,10 +139,13 @@ namespace Tests.EditorTests.RtsTests
             _storageRequestSystem.Update(World.Unmanaged);
             _workRequestSystem.Update(World.Unmanaged);
             _fieldWorkRequestSystem.Update(World.Unmanaged);
+            _threatDetectionSystem.Update(World.Unmanaged);
             _orderAgingSystem.Update(World.Unmanaged);
             _orderAssignSystem.Update(World.Unmanaged);
             _idleAssignSystem.Update(World.Unmanaged);
             _nodeDepletionSystem.Update(World.Unmanaged);
+            _attackSystem.Update(World.Unmanaged);
+            _damageApplySystem.Update(World.Unmanaged);
 
             _agentSpatialHashSystem.Update(World.Unmanaged);
             _taskStepSystem.Update(World.Unmanaged);
@@ -142,6 +160,7 @@ namespace Tests.EditorTests.RtsTests
             _interactionSystem.Update(World.Unmanaged);
             _plantingSystem.Update(World.Unmanaged);
             _orderCompletionSystem.Update(World.Unmanaged);
+            _reaperSystem.Update(World.Unmanaged);
             _watchdogSystem.Update(World.Unmanaged);
 
             Entities.CompleteAllTrackedJobs();
@@ -355,39 +374,53 @@ namespace Tests.EditorTests.RtsTests
             return entity;
         }
 
-        /// <summary>An agent with nowhere to be, which is what <see cref="IdleAssignSystem"/> is looking for.</summary>
-        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.42f, int carryCapacity = 10)
+        /// <summary>
+        /// An agent with nowhere to be, which is what <see cref="IdleAssignSystem"/> is looking for.
+        ///
+        /// Built by <see cref="AgentFactory"/> rather than by hand, so a test agent is the production agent
+        /// of section 9 - a component added to the archetype later cannot be missing from just the tests.
+        /// </summary>
+        public Entity CreateIdleAgent(float2 position, float maxSpeed = 4f, float radius = 0.42f,
+                                      int carryCapacity = 10, int maxHealth = 100, byte faction = 0,
+                                      Weapon weapon = default, float leash = 0f)
         {
-            Entity entity = Entities.CreateEntity(
-                typeof(AgentMove), typeof(PathFollow), typeof(ArrivedTag),
-                typeof(InsideBuilding), typeof(InteriorClaim), typeof(DoorUse), typeof(OnBridge),
-                typeof(Carry), typeof(AssignedOrder), typeof(MovementWatchdog), typeof(ViewVisible)
-            );
-
-            Entities.AddBuffer<PathRoute>(entity);
-            Entities.AddBuffer<TaskStep>(entity);
-
-            Entities.SetComponentData(entity, new AgentMove
+            return AgentFactory.Create(Entities, _agentArchetype, new AgentSpec
             {
-                Entity = entity,
                 Position = position,
                 MaxSpeed = maxSpeed,
                 Radius = radius,
+                CarryCapacity = carryCapacity,
+                MaxHealth = maxHealth,
+                Faction = faction,
+                Weapon = weapon,
+                Leash = leash,
+            });
+        }
+
+        /// <summary>
+        /// An unarmed agent on another side. Something for a turret to shoot that does not shoot back, which
+        /// is what most targeting tests want.
+        /// </summary>
+        public Entity CreateHostileAgent(float2 position, int maxHealth = 60, byte faction = 1) =>
+            CreateIdleAgent(position, maxHealth: maxHealth, faction: faction);
+
+        /// <summary>An armed agent: the same archetype with one bit flipped (§14 step 13).</summary>
+        public Entity CreateSoldier(float2 position, byte faction = 0, int maxHealth = 100,
+                                    float range = 6f, int damage = 12, float reloadSeconds = 0.5f,
+                                    float leash = 12f) =>
+            CreateIdleAgent(position, maxHealth: maxHealth, faction: faction, leash: leash, weapon: new Weapon
+            {
+                Range = range,
+                Damage = damage,
+                ReloadSeconds = reloadSeconds,
             });
 
-            Entities.SetComponentData(entity, new PathFollow { ArriveDistance = 0.4f, RoutedChunk = -1 });
-            Entities.SetComponentData(entity, new Carry { Capacity = carryCapacity });
-            Entities.SetComponentData(entity, new MovementWatchdog { LastProgressPosition = position });
+        public Post PostOf(Entity agent) => Entities.GetComponentData<Post>(agent);
 
-            Entities.SetComponentEnabled<PathFollow>(entity, false);
-            Entities.SetComponentEnabled<ArrivedTag>(entity, false);
-            Entities.SetComponentEnabled<InsideBuilding>(entity, false);
-            Entities.SetComponentEnabled<InteriorClaim>(entity, false);
-            Entities.SetComponentEnabled<DoorUse>(entity, false);
-            Entities.SetComponentEnabled<OnBridge>(entity, false);
-            Entities.SetComponentEnabled<AssignedOrder>(entity, false);
-            return entity;
-        }
+        public bool IsArmed(Entity agent) =>
+            Entities.HasComponent<Weapon>(agent) && Entities.IsComponentEnabled<Weapon>(agent);
+
+        public Faction FactionOf(Entity entity) => Entities.GetComponentData<Faction>(entity);
 
         /// <summary>A building with one storage slot and a door on its south wall.</summary>
         public Entity CreateStore(int2 cell, StorageSlot slot)
@@ -463,6 +496,71 @@ namespace Tests.EditorTests.RtsTests
             Entities.AddBuffer<RecipeOutput>(building).Add(new RecipeOutput { Item = output, Amount = 1 });
 
             return building;
+        }
+
+        /// <summary>
+        /// A building that shoots: a footprint, and no door at all. The absence is the point - a turret is
+        /// the first building nobody ever goes into, and everything downstream has to cope with that.
+        /// </summary>
+        public Entity CreateTurret(int2 cell, float range = 8f, int damage = 20, float reloadSeconds = 0.5f,
+                                   int health = 250, byte faction = 0)
+        {
+            Entity building = CreateBuilding(cell, GridRotation.None, int2.zero);
+
+            Entities.AddComponentData(building, new Weapon
+            {
+                Range = range,
+                Damage = damage,
+                ReloadSeconds = reloadSeconds,
+            });
+
+            Entities.AddComponentData(building, Health.Full(health));
+            Entities.AddComponentData(building, new Faction { Id = faction });
+            return building;
+        }
+
+        /// <summary>
+        /// A camp: a crafter in every respect except that its batch walks out of the door. It has an input
+        /// slot, benches, a recipe and an empty output buffer, which is exactly what a bakery would look like
+        /// if its bread were a person.
+        /// </summary>
+        public Entity CreateCamp(int2 cell, ItemId input, int benches = 1, float craftSeconds = 1f,
+                                 int inputStock = 0, byte faction = 0)
+        {
+            Entity building = CreateBuilding(cell, GridRotation.None, int2.zero);
+            AddEntrance(building, int2.zero, Direction.South);
+            Entities.AddComponentData(building, new Interior { Capacity = benches });
+
+            Entities.AddBuffer<StorageSlot>(building).Add(new StorageSlot
+            {
+                Item = input,
+                Amount = inputStock,
+                Capacity = 20,
+                DeliverInUpTo = 20,
+                DeliverOutDownTo = 20,
+                Priority = 5,
+            });
+
+            Entities.AddComponentData(building, new Recipe { CraftSeconds = craftSeconds, Priority = 5 });
+            Entities.AddBuffer<RecipeInput>(building).Add(new RecipeInput { Item = input, Amount = 1 });
+            Entities.AddBuffer<RecipeOutput>(building);
+
+            Entities.AddComponentData(building, new Trains
+            {
+                Gives = new Weapon { Range = 6f, Damage = 12, ReloadSeconds = 0.5f },
+                Leash = 12f,
+            });
+
+            Entities.AddComponentData(building, new Faction { Id = faction });
+            return building;
+        }
+
+        public Health HealthOf(Entity entity) => Entities.GetComponentData<Health>(entity);
+
+        public int CountAgents()
+        {
+            using EntityQuery query = Entities.CreateEntityQuery(ComponentType.ReadOnly<AgentMove>());
+            return query.CalculateEntityCount();
         }
 
         public DynamicBuffer<StorageSlot> SlotsOf(Entity building) => Entities.GetBuffer<StorageSlot>(building);

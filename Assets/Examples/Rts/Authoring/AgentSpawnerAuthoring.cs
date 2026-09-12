@@ -28,6 +28,12 @@ namespace Examples.Rts
         [SerializeField, Min(0), Tooltip("Units carried per haul trip. 0 makes them incapable of hauling.")]
         private int _carryCapacity = 10;
 
+        [SerializeField, Min(0), Tooltip("How much of a beating one takes. 0 leaves it at the default.")]
+        private int _maxHealth = 100;
+
+        [SerializeField, Min(0), Tooltip("Which side they are on. 0 is the player's.")]
+        private int _faction = RtsFactions.PLAYER;
+
         [SerializeField, Tooltip("Changing it re-scatters the crowd without moving anything.")]
         private uint _seed = 1;
 
@@ -68,6 +74,8 @@ namespace Examples.Rts
                     MaxSpeed = authoring._maxSpeed,
                     Radius = authoring._radius,
                     CarryCapacity = authoring._carryCapacity,
+                    MaxHealth = authoring._maxHealth,
+                    Faction = (byte)math.clamp(authoring._faction, 0, byte.MaxValue),
 
                     // Zero is the one seed Unity.Mathematics.Random rejects, and an inspector default of 0 is
                     // exactly what someone will leave it at.

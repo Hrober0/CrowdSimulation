@@ -93,7 +93,9 @@ namespace Examples.Rts
                 }
             }
 
-            return map.IsPassable(DoorstepOf(origin, rotation));
+            // A building nobody ever walks into has no doorstep to keep clear, and refusing to put a turret
+            // in a corner because the cell below it is a wall would be a rule with nothing behind it.
+            return !blueprint.HasDoor || map.IsPassable(DoorstepOf(origin, rotation));
         }
 
         /// <summary>
@@ -120,7 +122,8 @@ namespace Examples.Rts
             BuildingGeometry.CellOf(origin, DoorWallOffset, rotation);
 
         public static Entity Place(EntityManager entities, in BuildingBlueprint blueprint, int2 cursor,
-                                   GridRotation rotation = GridRotation.None)
+                                   GridRotation rotation = GridRotation.None,
+                                   byte faction = RtsFactions.PLAYER)
         {
             Entity building = entities.CreateEntity();
 
@@ -129,6 +132,11 @@ namespace Examples.Rts
                 OriginCell = OriginFor(blueprint, cursor, rotation),
                 Rotation = rotation,
             });
+
+            // Every building has a side, bridges included. A thing with no faction would read as neutral,
+            // and neutral is a third state nothing here is written for - `Faction.Of` treats the absence as
+            // side zero anyway, so leaving it off would quietly make everything the player's.
+            entities.AddComponentData(building, new Faction { Id = faction });
 
             if (blueprint.IsBridge)
             {
@@ -148,8 +156,14 @@ namespace Examples.Rts
 
             // The offsets go in unrotated: BuildingFootprintSystem turns them by the placement's rotation,
             // so writing them turned here would apply the quarter turn twice.
-            entities.AddBuffer<BuildingEntranceOffset>(building)
-                    .Add(new BuildingEntranceOffset { Offset = DoorWallOffset, Side = DOOR_SIDE });
+            //
+            // Present but empty for a building with no door, rather than absent: the buffer is what several
+            // systems key "is this a thing agents visit" on, and an empty one answers that honestly.
+            DynamicBuffer<BuildingEntranceOffset> doors = entities.AddBuffer<BuildingEntranceOffset>(building);
+            if (blueprint.HasDoor)
+            {
+                doors.Add(new BuildingEntranceOffset { Offset = DoorWallOffset, Side = DOOR_SIDE });
+            }
 
             if (blueprint.Interior > 0)
             {
@@ -183,6 +197,21 @@ namespace Examples.Rts
                     YieldAmount = RtsResources.YieldAmountOf(blueprint.Plants),
                     Range = blueprint.HarvestRange,
                 });
+            }
+
+            if (blueprint.IsTurret)
+            {
+                entities.AddComponentData(building, blueprint.Weapon);
+            }
+
+            if (blueprint.IsCamp)
+            {
+                entities.AddComponentData(building, blueprint.Trains);
+            }
+
+            if (blueprint.Health > 0)
+            {
+                entities.AddComponentData(building, Health.Full(blueprint.Health));
             }
 
             AddStorage(entities, building, blueprint);
@@ -335,15 +364,22 @@ namespace Examples.Rts
 
             if (blueprint.Crafts)
             {
-                // Crafter output: never asks, gives everything away.
-                slots.Add(new StorageSlot
+                // A camp has no output shelf, because what it makes walks off on its own. Nothing else
+                // changes: RecipeUtils.CanCraft asks for room for the outputs a recipe names, and a recipe
+                // that names none needs none.
+                if (!blueprint.Output.IsNone)
                 {
-                    Item = blueprint.Output,
-                    Capacity = 20,
-                    DeliverInUpTo = 0,
-                    DeliverOutDownTo = 0,
-                    Priority = 0,
-                });
+                    // Crafter output: never asks, gives everything away.
+                    slots.Add(new StorageSlot
+                    {
+                        Item = blueprint.Output,
+                        Capacity = 20,
+                        DeliverInUpTo = 0,
+                        DeliverOutDownTo = 0,
+                        Priority = 0,
+                    });
+                }
+
                 return;
             }
 
@@ -399,8 +435,13 @@ namespace Examples.Rts
                 inputs.Add(new RecipeInput { Item = blueprint.Input, Amount = 1 });
             }
 
-            entities.AddBuffer<RecipeOutput>(building)
-                    .Add(new RecipeOutput { Item = blueprint.Output, Amount = 1 });
+            // Present but empty for a camp, for the same reason the entrance buffer is: WorkRequestSystem
+            // queries on it, and a crafter without one would simply never be asked for a worker.
+            DynamicBuffer<RecipeOutput> outputs = entities.AddBuffer<RecipeOutput>(building);
+            if (!blueprint.Output.IsNone)
+            {
+                outputs.Add(new RecipeOutput { Item = blueprint.Output, Amount = 1 });
+            }
         }
 
         private static bool HasAnyFlag(in GridMap map, int2 cell, CellFlags flags) =>

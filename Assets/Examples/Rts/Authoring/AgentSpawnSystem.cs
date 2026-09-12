@@ -11,6 +11,10 @@ namespace Examples.Rts
     /// will spawn agents from buildings, but nothing can be seen walking until something puts agents on the
     /// map.
     ///
+    /// What an agent is made of is <see cref="AgentFactory"/>'s business, not this system's - a camp makes
+    /// them too now (§14 step 12), and two hand-written copies of one archetype is one of them silently
+    /// missing a component that was added later.
+    ///
     /// Agents are only placed on passable cells. Starting inside a blocked one is not survivable - the clamp
     /// in <see cref="AgentIntegrateSystem"/> refuses every move out of it, and the agent would stand there
     /// forever with nothing to explain why.
@@ -29,23 +33,7 @@ namespace Examples.Rts
             state.RequireForUpdate<GridWorld>();
             state.RequireForUpdate<AgentSpawn>();
 
-            // One archetype for every agent, whatever it ends up doing (§9). What a hauler, a worker and a
-            // soldier differ in is the contents of their TaskStep buffer, not their components.
-            _archetype = state.EntityManager.CreateArchetype(
-                typeof(AgentMove),
-                typeof(PathFollow),
-                typeof(ArrivedTag),
-                typeof(PathRoute),
-                typeof(TaskStep),
-                typeof(InsideBuilding),
-                typeof(InteriorClaim),
-                typeof(DoorUse),
-                typeof(OnBridge),
-                typeof(Carry),
-                typeof(AssignedOrder),
-                typeof(MovementWatchdog),
-                typeof(ViewVisible)
-            );
+            _archetype = AgentFactory.Archetype(state.EntityManager);
         }
 
         public void OnUpdate(ref SystemState state)
@@ -83,22 +71,16 @@ namespace Examples.Rts
                     continue;
                 }
 
-                Entity agent = state.EntityManager.CreateEntity(_archetype);
-
-                state.EntityManager.SetComponentData(agent, new AgentMove
+                Entity agent = AgentFactory.Create(state.EntityManager, _archetype, new AgentSpec
                 {
-                    Entity = agent,
                     Position = position,
                     MaxSpeed = request.MaxSpeed,
                     Radius = request.Radius,
-                });
-
-                state.EntityManager.SetComponentData(agent, new PathFollow
-                {
-                    ArriveDistance = 0.4f,
-
-                    // -1 is no chunk, which is what makes the first frame route rather than trust these.
-                    RoutedChunk = -1,
+                    CarryCapacity = request.CarryCapacity,
+                    MaxHealth = request.MaxHealth,
+                    Faction = request.Faction,
+                    Weapon = request.Weapon,
+                    Leash = request.Leash,
                 });
 
                 // The walk is a task step rather than an enabled PathFollow: TaskStepSystem owns when an
@@ -109,20 +91,6 @@ namespace Examples.Rts
                 {
                     state.EntityManager.GetBuffer<TaskStep>(agent).Add(TaskStep.GoTo(request.GoalCell));
                 }
-
-                state.EntityManager.SetComponentData(agent, new Carry { Capacity = request.CarryCapacity });
-                state.EntityManager.SetComponentData(agent, new MovementWatchdog
-                {
-                    LastProgressPosition = position,
-                });
-
-                state.EntityManager.SetComponentEnabled<PathFollow>(agent, false);
-                state.EntityManager.SetComponentEnabled<ArrivedTag>(agent, false);
-                state.EntityManager.SetComponentEnabled<InsideBuilding>(agent, false);
-                state.EntityManager.SetComponentEnabled<InteriorClaim>(agent, false);
-                state.EntityManager.SetComponentEnabled<DoorUse>(agent, false);
-                state.EntityManager.SetComponentEnabled<OnBridge>(agent, false);
-                state.EntityManager.SetComponentEnabled<AssignedOrder>(agent, false);
             }
         }
 

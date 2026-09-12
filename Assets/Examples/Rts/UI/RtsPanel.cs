@@ -220,8 +220,9 @@ namespace Examples.Rts.UI
         }
 
         /// <summary>
-        /// Which way the door faces, except for a bridge, which has no door - a crossing is turned to choose
-        /// which way it runs, and "Door: South" on one would be a label about something that is not there.
+        /// Which way the door faces, except for the buildings that have none - a bridge is turned to choose
+        /// which way it runs, and a turret is turned to no effect at all. "Door: South" on either would be a
+        /// label about something that is not there.
         /// </summary>
         private string RotateLabel()
         {
@@ -230,9 +231,9 @@ namespace Examples.Rts.UI
                 return "Rotate (R)";
             }
 
-            return BuildingCatalog.Of(_tools.BuildKind).IsBridge
-                ? "Rotate (R)"
-                : $"Door: {_tools.BuildDoorSide} (R)";
+            return BuildingCatalog.Of(_tools.BuildKind).HasDoor
+                ? $"Door: {_tools.BuildDoorSide} (R)"
+                : "Rotate (R)";
         }
 
         private void BuildRoadRow(VisualElement panel)
@@ -354,6 +355,11 @@ namespace Examples.Rts.UI
 
             _text.Clear();
 
+            AppendFaction(building);
+            AppendHealth(building);
+
+            AppendWeapon(building);
+
             if (_entities.HasComponent<Interior>(building))
             {
                 var interior = _entities.GetComponentData<Interior>(building);
@@ -366,7 +372,9 @@ namespace Examples.Rts.UI
                 _text.Append("Recipe: ");
                 _text.Append(Describe(_entities.GetBuffer<RecipeInput>(building)));
                 _text.Append(" -> ");
-                _text.Append(Describe(_entities.GetBuffer<RecipeOutput>(building)));
+                _text.Append(_entities.HasComponent<Trains>(building)
+                                 ? "a soldier (its worker)"
+                                 : Describe(_entities.GetBuffer<RecipeOutput>(building)));
                 _text.AppendLine($"  ({recipe.CraftSeconds:0.#}s)");
             }
 
@@ -391,6 +399,54 @@ namespace Examples.Rts.UI
             {
                 _slots.Clear();
             }
+        }
+
+        /// <summary>
+        /// Whose it is. Shown for everything that has a side rather than only for enemies, because "whose
+        /// is this" is the first question about anything once there is more than one answer.
+        /// </summary>
+        private void AppendFaction(Entity entity)
+        {
+            if (!_entities.HasComponent<Faction>(entity))
+            {
+                return;
+            }
+
+            byte id = _entities.GetComponentData<Faction>(entity).Id;
+            _text.AppendLine($"Side: {RtsFactions.Name(id)}");
+        }
+
+        /// <summary>
+        /// What it shoots with, if it shoots. One method for a turret and for a soldier, because one
+        /// component covers both - which is the thing step 13 set out to show.
+        /// </summary>
+        private void AppendWeapon(Entity entity)
+        {
+            if (!_entities.HasComponent<Weapon>(entity) || !_entities.IsComponentEnabled<Weapon>(entity))
+            {
+                return;
+            }
+
+            var weapon = _entities.GetComponentData<Weapon>(entity);
+            _text.Append($"Shoots {weapon.Damage} every {weapon.ReloadSeconds:0.#}s within {weapon.Range:0.#}");
+            _text.AppendLine(weapon.LastTarget == Entity.Null
+                                 ? "   (no target)"
+                                 : $"   (at {weapon.LastTarget.Index})");
+        }
+
+        /// <summary>
+        /// What is left of it, for the things that can be destroyed. Nothing at all for the things that
+        /// cannot, rather than a full bar - a bar that never moves reads as a thing that can be attacked.
+        /// </summary>
+        private void AppendHealth(Entity entity)
+        {
+            if (!_entities.HasComponent<Health>(entity))
+            {
+                return;
+            }
+
+            var health = _entities.GetComponentData<Health>(entity);
+            _text.AppendLine($"Health {health.Current} / {health.Max}");
         }
 
         private void RefreshSlot(RtsSlotRow row, StorageSlot slot) => row.Refresh(slot, _adjustPriority);
@@ -440,9 +496,16 @@ namespace Examples.Rts.UI
 
         private void ShowAgent(Entity agent)
         {
-            _selectionTitle.text = $"Agent {agent.Index}";
+            bool armed = _entities.HasComponent<Weapon>(agent)
+                         && _entities.IsComponentEnabled<Weapon>(agent);
+
+            _selectionTitle.text = armed ? $"Soldier {agent.Index}" : $"Agent {agent.Index}";
             _slots.Clear();
             _text.Clear();
+
+            AppendFaction(agent);
+            AppendHealth(agent);
+            AppendWeapon(agent);
 
             if (_entities.HasComponent<AgentMove>(agent))
             {
