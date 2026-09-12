@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 8 of §14 are implemented, plus the sandbox scene of §14.1, the doorway work of §14.2 and the bridges of §14.3; steps 9 and 10 are not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 13 of §14 are implemented, plus the sandbox scene of §14.1, the doorway work of §14.2 and the bridges of §14.3; step 14 is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -287,7 +287,7 @@ GoTo(target) -> Interact(target, duration) -> GoTo(target2) -> Interact(...)
 
 - **worker in building**: `GoTo(slot) -> Interact(inf)` producing work ticks
 - **hauler**: `GoTo(src) -> Interact(pickup) -> GoTo(dst) -> Interact(deposit)`
-- **soldier**: `GoTo(enemy) -> Interact(attack)` plus a retarget rule
+- **soldier**: `Engage(enemy)` — one step that re-aims itself, ending on a kill, a leash or weapon range
 
 No per-type state machine. What `Interact` means is the only per-kind code.
 
@@ -369,7 +369,9 @@ The system order below is a consequence of these. They matter more than the list
 | **RtsEconomyGroup — 10 Hz** | | | |
 | 6 | `StorageRequestSystem` | StorageSlot | order buffer |
 | 7 | `WorkRequestSystem` | WorkSlots, StorageSlot | order buffer |
-| 8 | `ThreatDetectionSystem` | positions, factions | order buffer |
+| 8 | `ThreatDetectionSystem` | agent hash, `Post`, `Faction` | order buffer |
+| 8a | `AttackSystem` | agent hash, `Weapon`, `Faction` | damage queue, `Weapon.NextShotTime` |
+| 8b | `DamageApplySystem` | damage queue | **`Health`**, ECB destroy |
 | 9 | `OrderAgingSystem` | orders | effective priority |
 | 10 | `OrderAssignSystem` | orders, agent hash | **reservations**, ClaimedBy, TaskStep, slot claims |
 | 11 | `IdleAssignSystem` | huts, agent hash | TaskStep, interior claims |
@@ -381,8 +383,10 @@ The system order below is a consequence of these. They matter more than the list
 | 16 | `AvoidanceSyncSystem` | AgentMove | AgentLookup, RVO velocities |
 | 17 | `AgentIntegrateSystem` | GridMap | Position, **blocked-cell clamp**, arrival flags, watchdog |
 | 18 | `InteriorTransitionSystem` | interior queue | enableable flags, Interior.Occupied, view release |
-| 19 | `InteractionSystem` | TaskStep | **StorageSlot amounts**, Carry, health |
+| 19 | `InteractionSystem` | TaskStep | **StorageSlot amounts**, Carry, plant/train queues |
+| 19a | `PlantingSystem` / `TrainingSystem` | plant queue, train queue | new `CellObject`s, new agents |
 | 20 | `OrderCompletionSystem` | completed tasks | order release, agent idle |
+| 20a | `ReaperSystem` | `Health` | order release, ECB destroy |
 | 21 | `WatchdogSystem` | watchdog timers | release claim, requeue order |
 | **RtsViewGroup** | | | |
 | 22 | `ViewSyncSystem` | AgentMove | pooled GameObject transforms |
@@ -444,7 +448,8 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
 | gather/sow search | 10 Hz | node map, fields, `Reaps`/`Sows` | candidate list | any other search |
 | gather/sow commit | 10 Hz | candidate list | reservations, `TaskStep`, `Interior.Claimed` | nothing — invariant 4 |
 | node depletion | 10 Hz | `StorageSlot` | ECB destroy | any search |
-| damage apply (step 13) | 10 Hz | damage queue | `Health` | nothing — one applier |
+| target finding | 10 Hz | agent hash, `Weapon`, `Faction` | damage queue | any other search |
+| damage apply | 10 Hz | damage queue | `Health` | nothing — one applier |
 
 ## 14. Build order
 
@@ -726,29 +731,155 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
     not tidiness: creating an entity is a structural change, and `InteractionSystem` is in the middle of a
     loop holding buffers it would invalidate underneath itself.
 
-12. **A turret and a training camp, as evidence.**
+12. **Done.** A turret and a training camp, as evidence.
 
     Two buildings that are not gatherers, built to check the catalog carries its weight before combat doubles
-    the load on it. A turret is `Interior.Capacity = 0`, a `Health` and one system that finds something in
-    range and hurts it. A camp is a crafter whose output is an agent rather than an item — a recipe completion
-    enqueuing an `AgentSpawn`, whose request component and system already exist.
+    the load on it. A turret is no interior, a `Health` and one system that finds something in range and hurts
+    it. A camp is a crafter whose output is an agent rather than an item — a recipe completion enqueuing a
+    trainee, through the same agent-making code a starting crowd goes through.
 
-13. **Soldier + threat orders.** Health, factions, target finding, and the one genuinely unsettled question
-    below.
+    The catalog did carry its weight: both buildings are rows of `BuildingBlueprint` and neither needed a
+    branch anywhere that places or draws one. Five things settled while building them.
 
-    **Health feeds the cost model, and that is why step 9 priced obstacles instead of forbidding them.** A
-    destructible contributes cost derived from what is left of it, so a battered wall is a cheaper way through
-    than a fresh one and routes drift towards it with nothing steering them. Two rules make it affordable:
+    **The camp is the interesting one, and what it proved is that a recipe with no output is not a broken
+    recipe.** `RecipeUtils.CanCraft` asks for the inputs on the shelf and room for the outputs; a batch that
+    names no outputs needs no room, so a camp is never blocked by the shelf it does not have and the check
+    that governs every crafter governs this one unchanged. `WorkRequestSystem`, the order market, the interior
+    claim and the worker's shift all treat a camp as a bakery, because as far as any of them can see it is
+    one. The only new fact in the building is a `Trains` component saying what walks out.
 
-    - **Quantise it.** Re-costing on every hit would bump `CostVersion` on every hit, and every field around a
-      building under attack would rebuild for the length of the fight. Four bands over a building's life is
-      four grid edits.
-    - **Nothing may assume "destructible implies 255".** That is the assumption step 9 removes, and it has to
-      stay removed.
+    **A trainee went through a queue, and then stopped needing to.** As first built the camp created an
+    agent, which is a structural change, so it was enqueued the way a planting is. Step 13 replaced creation
+    with *conversion* — the worker who did the shift is the soldier — and a conversion is one enableable bit,
+    so the queue, its system and the structural change all went away together. Recorded because the lesson is
+    general: the cheapest way past an expensive operation is usually to find that it was not the operation you
+    needed.
 
-    Unsettled, and to be settled here rather than guessed at now: **one shared cost grid cannot say "blocked
-    for its owner, expensive for its attacker".** A friendly bakery must not become a shortcut. The two
-    candidate mechanisms and what each costs:
+    **One place makes an agent now.** §9 says there is one archetype whatever an agent ends up doing, and that
+    was easy to keep true while a single system spawned crowds. A camp is a second source and the test world a
+    third, and three hand-written copies of one archetype is two of them silently missing a component added
+    later — which does not fail loudly, it drops the agent out of whichever query needed it. `AgentFactory` is
+    the archetype and the initialisation, and all three go through it.
+
+    **A turret has no door, and deriving that rather than authoring it is worth the line.** A door is not
+    free: it flags a cell as an entrance, which makes it a cell the arrival queue ranks and the one-way brush
+    must leave alone, and it forces placement to refuse any spot whose doorstep cannot be stood on — so a
+    turret in a corner would have been unbuildable for no reason. `HasDoor` is “Interior, or an input, or an
+    output”, which is the honest definition of a building somebody visits, and the turret is the first
+    building in the project that is none of those.
+
+    **Damage goes through one queue with one applier, a step earlier than planned.** Step 13 lists it, but the
+    turret is already two producers the moment two turrets are in range of one raider, and `Health` is exactly
+    the kind of shared field §13.2 keeps to a single writer. `DamageApplySystem` is that writer; what reaches
+    zero is destroyed, and destroying is all there is to it — a building gives its cells back through its
+    cleanup buffers exactly as a demolished one does, and an agent leaves the spatial hash and the view pool
+    by not being there the next time either is rebuilt.
+
+    What a turret shoots is a `Hostile` tag, and it is a placeholder that says so. Factions are step 13's, and
+    inventing half of one here would have meant writing the target rules twice. The tag is enableable and
+    carried by every agent rather than added to the hostile ones, so the one archetype stays one archetype.
+    Its second job is exclusion: the order market and the idle rule both skip hostiles, or a raider standing
+    still would be handed a bed and a crate of bread — “idle” is exactly what an enemy walking past looks like.
+
+    Raiders are spawned by the sandbox rather than by anything in the game, and that is scaffolding in the
+    same sense `AgentSpawnSystem` always was: nothing produces an enemy until soldiers arrive, and a turret
+    with nothing in range is a building that cannot be seen to work at all.
+
+13. **Done.** Soldier + threat orders. Health, factions, target finding, and the question that was
+    unsettled when this step was written.
+
+    Nine things settled while building it. The first five came with factions and the soldier; the last four
+    with pursuit and with finally answering the passability question.
+
+    **A faction is a byte, and the only question ever asked of it is whether two differ.** No relationship
+    table, no alliances, no neutrals: `Faction.AreEnemies` is `a.Id != b.Id`, and a third side is therefore
+    everybody's enemy with nothing written for the case. The absence of the component reads as side zero
+    rather than as a third state, which is what let every building and test that predates factions keep
+    working unchanged.
+
+    **A soldier is an agent whose weapon is switched on.** There is no `Soldier` tag, because "is armed" and
+    "is a soldier" would then be two facts that could disagree. The one enableable bit does three jobs: the
+    attack system queries on it, the order market skips on it — a soldier is not labour — and the idle rule
+    skips on it, because a hut's beds are the hauling economy's throughput and an army sleeping in them would
+    starve it. Three rules, one fact, and it is in the archetype (§9) so arming costs no structural change.
+
+    **A turret and a soldier turned out to be one component.** That was what step 12 was evidence for without
+    knowing it: a turret is "a thing with a position that hurts what it can reach", and so is a soldier. They
+    differ in where the position comes from — a footprint or an `AgentMove` — so `AttackSystem` has two
+    queries and one targeting rule rather than two of each, and a turret and a soldier cannot come to
+    disagree about what an enemy is. Buildings are targets as well as shooters, found by walking the list:
+    there is no cell-to-building index anywhere in the project, buildings are counted in dozens against agents
+    in thousands, and an index would be a structure to keep in step for no gain.
+
+    **A camp converts rather than creates, and that is a design decision.** A camp that produced a second body
+    would make soldiers free in the only currency that matters — people — and would owe an entity creation per
+    batch. Taking the worker costs the economy a pair of hands, which is what an army should cost, and costs
+    the simulation nothing.
+
+    **Each faction has its own economy, and it cost one comparison.** Every order in the game is matched to an
+    agent at one choke point, `TryNearestAgent`, so "nobody works for the other side" is a single equality
+    there; the shelter pick got the same treatment. That is much better than the alternative of excluding
+    enemies from the market wholesale, which is what the placeholder tag did — a second faction with buildings
+    of its own now gets haulers and crafters for free rather than needing a second mechanism.
+
+    The player can currently order **any** faction's units to move, through a Command tool in the example.
+    That is a sandbox affordance rather than the game rule — watching a fight from both sides is the point of
+    a sandbox — and it is one predicate, `RtsToolController.MayCommand`, so tightening it to "its own faction
+    only" is a line rather than a hunt.
+
+    **A threat is an order, not a reflex, and that is the whole of why pursuit is safe.** Letting each soldier
+    walk at whatever it can see is fewer lines and gives the thundering herd §8 was written to prevent: ten
+    soldiers converge on one raider, nine arrive to find it dead, and the flank they left is open.
+    `ThreatDetectionSystem` posts one order per threat and the market hands it to exactly one agent — the same
+    rationing that stops six haulers loading one crate. A fight order also needed *no* faction written on it:
+    its target is the enemy, so the agents eligible to take it are everyone that thing is an enemy of, which
+    dispatches a third faction at it correctly for free.
+
+    **The leash is a mechanism, not a tuning number.** A soldier that chases without limit can be walked away
+    from what it guards by one expendable scout, and a defence that can be emptied by running past it is not a
+    defence. So a soldier has a `Post` — the last place it was *told* to be — and is only ever dispatched at
+    threats near it. Moving a soldier re-posts it, which makes "move the garrison" and "change what the
+    garrison covers" one gesture.
+
+    **`Engage` is the first task step whose destination moves.** Every other step names a cell; this one names
+    an entity and recomputes the cell each tick, and ends on any of three things — the target dies, the target
+    leaves the leash, or it is close enough to shoot. That last one is the rule that keeps a ranged unit
+    ranged: it stops at 85% of its weapon's reach rather than walking onto the thing it is shooting, and the
+    same rule is what lets a soldier attack a *building* by standing off it.
+
+    **The passability question is answered by not asking it: the cost grid stays civilian.** A structure is
+    blocked for everyone, and attacking one is a task step rather than a routing decision. That drops the
+    health-driven cost model this step originally called for, and the trade is worth stating plainly — what is
+    lost is routes drifting towards a battered wall with nothing steering them; what is gained is one grid,
+    one gate graph and one field cache, whatever the number of sides. The two options costed below were a
+    per-faction grid, which the "two *or more* factions" requirement turns into unbounded duplication of the
+    one structure carrying a single-writer invariant, and a one-bit mask, which is constant-cost but leaves
+    soldiers pathing through their own bakery and never had an answer for it. A breach being *ordered* rather
+    than emergent is also simply better: it is steerable, and destroying a structure still opens the ground
+    for everyone through the demolish path that already exists.
+
+    Two things were owed and are now paid. **A dead agent is unwound before it is destroyed** — a hauler shot
+    halfway to a warehouse was leaving a reservation on a shelf and a bench it never sat on, which is a leak
+    that shows up much later as a warehouse that quietly stops accepting deliveries. `ReaperSystem` does the
+    unwinding through the same `OrderReleaseUtils` an ordinary finished task uses, which is also why
+    `DamageApplySystem` no longer destroys anything: the one writer of `Health` now writes only health.
+
+    **Health was to have fed the cost model. It does not, and the reason is the passability question below.**
+    The plan was that a destructible contributes cost derived from what is left of it, so that a battered wall
+    is a cheaper way through than a fresh one and routes drift towards it with nothing steering them — paid
+    for by quantising it into four bands over a building's life, so that a fight costs four grid edits rather
+    than one per hit. What killed it is that a *shared* grid cannot make that offer to one side only, and a
+    friendly bakery turning into a shortcut for its own haulers as it burns is worse than the feature is good.
+    So a structure is blocked for everybody at any health, and a breach is ordered rather than emergent.
+
+    Step 9's rule survives it and is worth restating, because it is about trees rather than buildings:
+    **nothing may assume that an obstacle is 255.** A wood is priced, and that is what keeps a planting zone
+    from walling its own planter in.
+
+    Settled here, by taking neither option: **one shared cost grid cannot say "blocked for its owner,
+    expensive for its attacker"**, and a friendly bakery must not become a shortcut — so the grid stays
+    civilian and a structure stays blocked for everybody. The two candidates that were costed, and why each
+    lost:
 
     | mechanism | cost |
     | --- | --- |
@@ -941,7 +1072,17 @@ Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and 
   sowing, so a farm as things stand would cut down what it planted the instant the sapling landed. Whether
   maturity is an age, a stock that fills over time, or a second object kind is undecided - and it is the
   whole of what a farm is, so it wants deciding rather than defaulting.
-- **Per-faction passability has no answer yet** (§14 step 13). One shared cost grid cannot express "blocked
+- **There is no line of sight** (§14 step 13). A weapon's range is a plain distance, so a shot passes through
+  walls, woods, buildings and hills alike. That is an absence rather than a decision, and it wants settling
+  beside the passability question below, since both are answers to "what does a structure block".
+- **A soldier cannot be ordered to attack a particular thing.** Threat orders are automatic and defensive:
+  a soldier goes after what comes near its post, and the player's only lever is where the post is. An
+  explicit "attack that" order is the same `Engage` step with a different poster, and it is what an assault
+  needs — the machinery is there, the intent is not.
+- **`ThreatDetectionSystem` is a per-soldier box query at 10 Hz.** Fine at the head counts here and the
+  wrong shape at a thousand soldiers, where it wants to be the parallel faction target index of §13.5 with
+  the serial commit behind it. The search is already read-only and the commit already separate, so the change
+  is where it runs rather than what it does. One shared cost grid cannot express "blocked
   for its owner, expensive for its attacker", and the two candidate mechanisms are costed in step 13. Decide
   it there; nothing before step 13 may assume a destructible is impassable.
 - **Tree cost (60) is tuning, not design.** It sets how far a route will detour round a wood — a lone tree is
@@ -957,6 +1098,10 @@ Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and 
 - `MaxConcurrentHaulers` / `MaxConcurrentVisitors` values are tuning, not design — 8 and 8 today, and both want measuring on a real map. So does the 0.4 s door, which is now a throughput number as much as an animation one.
 - **A doorstep interaction does not hold the doorway.** A hauler standing on a step through a `Pickup` is counted by the queue, but it does not hold the `DoorUse` resource, so an agent inside can still start walking out into it. Harmless today — both last well under a second and avoidance sorts out the overlap — and the fix, if it ever matters, is to give the interaction the same hold rather than to invent a second mechanism.
 - **A bridge mouth is not queued for** (§14.3). It is a contended cell that `ArrivalQueueSystem` cannot rank, because it ranks by cost to the agent's own destination and a mouth is nobody's destination. RVO and the stall watchdog cover it as they cover any congested cell; whether that is good enough wants watching on a map with a busy bridge on it.
+- **Every number on a turret except its range is tuning** (§14 step 12): 20 damage on a 0.8 s reload against
+  60 health is three shots and a couple of seconds per raider, chosen so that one turret visibly loses to a
+  column and two visibly beat it. The range is not tuning in the same way — it sets how far a turret reaches
+  past the cells it blocks, and a turret whose range is under about two cells is a wall with a gun on it.
 - **`MAX_WAIT_AT_FAR_END` (3 s) and `MAX_LINK_GATES_PER_CHUNK` (4) are tuning, not design.** Both want measuring against a real map, like `MaxConcurrentHaulers` and the 0.4 s door.
 - **The avoidance numbers are tuning, not design** (`AgentVelocityJob`): 12 neighbours, a 1.5 s agent horizon, a body half the collision radius, and a 0.25 s speed ramp. They move together — the horizon sets the sight distance, and sight is only worth widening while the neighbour budget can hold what it finds — so a change to one wants the others looked at. The horizon is the one with a ceiling in both directions: too short and a constraint arrives too late to act on, too long and an agent brakes for a crowd it would never have met.
 
