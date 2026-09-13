@@ -1,6 +1,6 @@
 # RTS Template – Design
 
-Status: agreed design. Steps 0 to 13 of §14 are implemented, plus the sandbox scene of §14.1, the doorway work of §14.2 and the bridges of §14.3; step 14 is not yet built. Decisions recorded here are settled unless noted as *open*.
+Status: agreed design. Steps 0 to 13 of §14 are implemented, plus the sandbox scene of §14.1, the doorway work of §14.2, the bridges of §14.3 and the breach routing of §14.4; step 14 is not yet built. Decisions recorded here are settled unless noted as *open*.
 
 ## 1. Why a grid replaces the navmesh for this game
 
@@ -91,6 +91,22 @@ For trees, a post-integration **clamp** covers penetration at O(1): if an agent'
 Harvesting a forest churns cost constantly; without the split it would rebuild the navigation graph on every swing. Bumping `CostVersion` on both kinds of change is what lets each consumer watch exactly one counter.
 
 A passability change on a chunk border also bumps the **neighbouring** chunk's `PassabilityVersion`: a border pair belongs to the gates of both chunks (§4.1), and only one of the two cells is inside the chunk that changed.
+
+### 3.1 The structure channel
+
+Two more per-cell facts, written only where a building stands: **who owns it** (a byte) and **how much of it
+is left** (a `ushort`, quantised to four bands over the building's life). They are what let
+`GridMap.GetCost(cell, traversal)` price a wall as a breach for the seekers that can break it (§14 step 13).
+
+Three rules keep it honest:
+
+1. **A structure's contribution to the cost sum is exactly `CellData.BLOCKED`.** That is a contract, not an
+   observation — the breach price is computed by taking that much back out and putting the breach in, so a
+   placement that contributed some other amount would be wrong by the difference with nothing saying so.
+2. **Health is banded before it is written, not after.** Four writes over a building's whole life; a route
+   worth having does not change between one shot and the next.
+3. **Damage bumps `StructureVersion` only.** Consumers that cannot breach never look at it, so a fight costs
+   the bread economy's flow fields nothing.
 
 ## 4. L1 — Pathfinding
 
@@ -364,7 +380,7 @@ The system order below is a consequence of these. They matter more than the list
 | 2 | `BuildingFootprintSystem` | placement events | cost-delta queue, RVO obstacle queue |
 | 3 | `GridApplySystem` | queues | **GridMap**, chunk versions |
 | **PathfindingGroup** | | | |
-| 4 | `ChunkGateGraphSystem` | GridMap, `PassabilityVersion` | gate graph, dirty chunks only |
+| 4 | `ChunkGateGraphSystem` | GridMap, passability + structure versions | one gate graph per traversal, dirty chunks only |
 | 5 | `FlowFieldCacheSystem` | GridMap, gate graph, field requests | field cache, max N fields per frame |
 | **RtsEconomyGroup — 10 Hz** | | | |
 | 6 | `StorageRequestSystem` | StorageSlot | order buffer |
@@ -847,16 +863,46 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
     ranged: it stops at 85% of its weapon's reach rather than walking onto the thing it is shooting, and the
     same rule is what lets a soldier attack a *building* by standing off it.
 
-    **The passability question is answered by not asking it: the cost grid stays civilian.** A structure is
-    blocked for everyone, and attacking one is a task step rather than a routing decision. That drops the
-    health-driven cost model this step originally called for, and the trade is worth stating plainly — what is
-    lost is routes drifting towards a battered wall with nothing steering them; what is gained is one grid,
-    one gate graph and one field cache, whatever the number of sides. The two options costed below were a
-    per-faction grid, which the "two *or more* factions" requirement turns into unbounded duplication of the
-    one structure carrying a single-writer invariant, and a one-bit mask, which is constant-cost but leaves
-    soldiers pathing through their own bakery and never had an answer for it. A breach being *ordered* rather
-    than emergent is also simply better: it is steerable, and destroying a structure still opens the ground
-    for everyone through the demolish path that already exists.
+    **The passability question is answered by making cost a function of the seeker, in three classes.** It
+    took three attempts and the third is the one below; the first two are recorded in §14.4 because the way
+    they were wrong is the argument for this one.
+
+    A cell that carries a structure stores two more facts — who owns it, and how much of it is left — and a
+    seeker carries a `Traversal`: a `BreachClass` of `None`, `Low` or `High`, plus its own faction. Cost is
+    then one function with three rules:
+
+    - a seeker that does no damage pays the stored cost, so a structure is a wall;
+    - a seeker looking at **its own** side's structure pays the stored cost too;
+    - anyone else pays the walk *without* the wall, plus health ÷ damage priced as that many cells of walking.
+
+    Three things fall out of that, and each one killed a mechanism that had been on the table.
+
+    **The civilian rule is not a special case, it is the damage-zero instance of the same arithmetic.** There
+    is no civilian field and assault field to keep in step, and no branch anywhere deciding which a unit
+    reads — which is what the two-variant design would have needed everywhere.
+
+    **"Its own side's wall is a wall" is exact, not a mitigation.** That was the objection the one-bit mask
+    never had an answer for, and it costs one comparison.
+
+    **Health ÷ damage is the right unit because it is time.** A route is then a straight comparison between
+    seconds spent walking round and seconds spent hitting, and the pathfinder picks the cheaper with nothing
+    weighting anything. "Cost derived from what is left of it", which is what this step originally said, is
+    not a quantity anybody can tune.
+
+    Two consequences worth writing down. **Three classes, not a damage number**: cost that varied per unit
+    would make a flow field a per-agent structure, and a field shared by everyone heading to one destination
+    is the whole reason §1 gives for the grid replacing the navmesh. Buckets keep the sharing, and a wave —
+    one destination, one class — is the natural unit of it. **What a class is worth lives on the map**
+    (`GridSettings.LowDamage` / `HighDamage`), not on the agent: it is what the shared fields were built with,
+    so two units in one class have to agree about it. A unit's weapon decides which class it is in, never what
+    the class is worth.
+
+    The ceiling is tighter than it looks and is a design constraint rather than a detail. Costs live under
+    `CellData.BLOCKED`, so the most a breach can ever be worth is about **twenty-five cells of detour**;
+    beyond that it saturates and the answer is "go round", which is the honest reading. And structure health
+    gets its own version counter beside `PassabilityVersion` and `CostVersion`, because a wall is a wall to a
+    hauler at any health — without the third counter a siege would rebuild every civilian field around it for
+    the length of the fight, to no effect whatever.
 
     Two things were owed and are now paid. **A dead agent is unwound before it is destroyed** — a hauler shot
     halfway to a warehouse was leaving a reservation on a shelf and a bench it never sat on, which is a leak
@@ -876,10 +922,9 @@ Write sets for the work of steps 9–13, so overlap is checkable rather than hop
     **nothing may assume that an obstacle is 255.** A wood is priced, and that is what keeps a planting zone
     from walling its own planter in.
 
-    Settled here, by taking neither option: **one shared cost grid cannot say "blocked for its owner,
-    expensive for its attacker"**, and a friendly bakery must not become a shortcut — so the grid stays
-    civilian and a structure stays blocked for everybody. The two candidates that were costed, and why each
-    lost:
+    The problem all three attempts were attacking: **one shared cost grid cannot say "blocked for its owner,
+    expensive for its attacker"** while a friendly bakery must not become a shortcut. The two candidates
+    costed when this step was written, and why each lost to the seeker-class model above:
 
     | mechanism | cost |
     | --- | --- |
@@ -1066,15 +1111,85 @@ Costs of the whole thing, stated rather than discovered later: the gate graph gr
 
 Regression cover, all EditMode (`BridgeTests`): the piers block and the gap and both mouths stay walkable; an agent walks *under* a bridge without using it; a bridge cannot open a wall it crosses; a pier in water gives the water back exactly; a span too short or not in line is refused and takes nothing; rotating a bridge turns the whole thing; the field prices the crossing to the unit and reports `LINK_STEP`; the far bank is unreachable without a bridge and unreachable *backwards* with one; an agent crosses a walled map and carries on to its goal; a carried agent is on the map but not walking, and moves at walking pace; a taken far bank backs the deck up in order and closes the mouth; clearing it drains the queue; a bank that never clears does not stop the bridge for good; demolishing a bridge under an agent puts it back somewhere it can walk; and a bridge across a chunk border appears in the coarse route as a link gate while one inside a chunk correctly does not.
 
+### 14.4 Breach cost: the third answer to passability — done
+
+Step 13 asked one question this design could not answer for three versions: **a shared cost grid cannot say
+"blocked for its owner, expensive for its attacker"**. It is recorded here rather than only in the step
+because the two wrong answers are the argument for the right one, and because the requirement that settled it
+arrived after the step was written.
+
+**The requirement.** The enemy attacks in *waves*. A wave has to find the best way in, and "best" has to
+include breaking through when breaking through is cheaper than walking round. Against a player who walls
+cleverly, a wave that only ever takes the long way looks stupid — and no amount of reacting after the fact
+fixes that, because by then it has already walked the long way.
+
+**First answer: keep the grid civilian.** Structures blocked for everyone; attacking one is a task step, so a
+breach is ordered rather than emergent. Cheap and honest, and wrong for waves: the choice of *where* to
+breach has to be made before setting off, and this makes it a decision somebody has to script.
+
+**Second answer: two flow field variants**, civilian and assault, the assault one pricing structures by
+health. Right in outline — it puts the choice back in the routing — but it never had an answer for "a soldier
+must not path through its own bakery", and it needs a gate graph and a field cache per variant *and* per
+faction once the sides multiply.
+
+**Third answer, and the one built: cost is a function of the seeker, quantised into three classes.** The
+detail is in step 13; what matters here is that it subsumes both. The civilian variant stops being a variant
+and becomes the damage-zero case of one arithmetic. The own-bakery problem stops being a mitigation and
+becomes one comparison against the owner byte. And the thing that made the second answer expensive — a
+structure per faction per field — is bounded by making the class a bucket rather than a damage figure, so a
+whole wave shares one field exactly as a crowd of haulers shares a warehouse's.
+
+**What is built.** The cost model: the structure channel of §3.1, `BreachClass` / `Traversal`,
+`GridMap.GetCost(cell, traversal)` and `IsPassable(cell, traversal)`, the `SetStructure` / `ClearStructure`
+edits through the single writer, the four-band quantisation and its own version counter, and
+`StructureDamageSystem` re-pricing a building as it burns. Nine tests in `BreachCostTests` pin the arithmetic
+and the two exclusion rules.
+
+**The flow field routes with it.** `FlowFieldCache` is keyed by `FieldKey` — a destination *and* a traversal
+— so an army and a hauler walking to the same cell get different fields, and a wall between them and it is a
+detour for one and a door for the other. The build job differs by exactly one line, the cost lookup; the
+search either side of it is unchanged.
+
+An agent's traversal lives on `PathFollow`, which is where routing state already lives. That was worth
+choosing carefully: every system that reads a field for an agent already holds that component, so putting it
+there cost one field instead of three extra arguments on five queries.
+
+**What a field routing through a wall does not mean is that a body walks through one.** The integrator still
+clamps agents out of blocked cells. The field says "the cheapest way in is here"; the agent arrives at the
+wall and attacks it, and the walking through happens once it is down. That is what makes the choice of breach
+point emergent while the breaking itself stays an ordinary task.
+
+**The gate graph routes with it too.** A gate is an opening between two chunks, so whether one exists is a
+passability question and a breacher answers it differently: there is a graph per traversal, one entity each
+rather than one array, because a graph carries native containers and those cannot be nested. Only the views
+somebody asks for are built — the civilian one always, the rest on request, the same bargain the field cache
+makes — and a graph is never evicted, because there are a handful at most and dropping one when the last
+soldier of a class died would mean rebuilding the map's gates when the next is trained.
+
+Without it, routing was breach-aware only inside the 128-cell field window: a wave crossing a large map would
+have planned its way round a wall it could have come through, then changed its mind on arrival.
+
+**A border cell is half of a pair, and structures had forgotten it.** The gate between two chunks is owned by
+whichever one's east or north edge it sits on, so a wall battered down in the *first* column of a chunk opens
+a gate belonging to the chunk to its west. Bumping only the cell's own chunk left that gate shut — a hole in
+the wall the long-range router could not see, invisible to every test on a map smaller than one field window.
+Cost edits had always bumped the neighbour across a border; the structure counter now does the same.
+
+That last one is the argument for the test map being 320 cells. Below the window size the field covers every
+walk and the gate tier never runs at all, which is exactly how the gap sat unnoticed while everything passed.
+
 ## 15. Open items
 
 - **A building that both sows and reaps needs a growth rule first** (§14 step 11). Reaping is tried before
   sowing, so a farm as things stand would cut down what it planted the instant the sapling landed. Whether
   maturity is an age, a stock that fills over time, or a second object kind is undecided - and it is the
   whole of what a farm is, so it wants deciding rather than defaulting.
+- **A breach class is a promise about a class, not about a unit** (§14.4). Routing prices a wall at
+  `health / GridSettings.HighDamage`, and a unit in that class whose own weapon is much weaker will set off
+  expecting a breach that takes it far longer. Keeping a class's figure near its members' real damage is
+  tuning that nothing enforces.
 - **There is no line of sight** (§14 step 13). A weapon's range is a plain distance, so a shot passes through
-  walls, woods, buildings and hills alike. That is an absence rather than a decision, and it wants settling
-  beside the passability question below, since both are answers to "what does a structure block".
+  walls, woods, buildings and hills alike. That is an absence rather than a decision.
 - **A soldier cannot be ordered to attack a particular thing.** Threat orders are automatic and defensive:
   a soldier goes after what comes near its post, and the player's only lever is where the post is. An
   explicit "attack that" order is the same `Engage` step with a different poster, and it is what an assault
