@@ -65,7 +65,13 @@ namespace Rts
                                    .Build();
 
             state.RequireForUpdate<GridWorld>();
+
+            _health = state.GetComponentLookup<Health>(isReadOnly: true);
+            _factions = state.GetComponentLookup<Faction>(isReadOnly: true);
         }
+
+        private ComponentLookup<Health> _health;
+        private ComponentLookup<Faction> _factions;
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
@@ -74,6 +80,9 @@ namespace Rts
             {
                 return;
             }
+
+            _health.Update(ref state);
+            _factions.Update(ref state);
 
             GridEditQueue edits = SystemAPI.GetSingletonRW<GridWorld>().ValueRW.Edits;
             var commands = new EntityCommandBuffer(Allocator.Temp);
@@ -90,6 +99,17 @@ namespace Rts
                     commands.AddBuffer<BuildingEntranceCell>(entity);
 
                 BuildingPlacement placed = placement.ValueRO;
+
+                // What a seeker that can knock the building down needs to know: whose it is and how much of
+                // it is left. Written beside the cost rather than instead of it - the cell is still blocked
+                // for everyone who cannot break it, which is nearly everyone (§14 step 13, amended).
+                bool destructible = _health.HasComponent(entity);
+                ushort health = destructible
+                    ? StructureBands.HealthOf(_health[entity])
+                    : (ushort)0;
+
+                byte owner = _factions.HasComponent(entity) ? _factions[entity].Id : (byte)0;
+
                 foreach (BuildingFootprintOffset offset in footprint)
                 {
                     int2 cell = BuildingGeometry.CellOf(placed.OriginCell, offset.Offset, placed.Rotation);
@@ -97,7 +117,20 @@ namespace Rts
                     edits.Enqueue(GridEdit.CostDelta(cell, FOOTPRINT_COST));
                     edits.Enqueue(GridEdit.AddFlags(cell, CellFlags.Building));
 
+                    if (health > 0)
+                    {
+                        edits.Enqueue(GridEdit.SetStructure(cell, owner, health));
+                    }
+
                     occupied.Add(new BuildingFootprintCell { Cell = cell });
+                }
+
+                if (destructible)
+                {
+                    commands.AddComponent(entity, new StructureBand
+                    {
+                        Value = StructureBands.Of(_health[entity]),
+                    });
                 }
 
                 if (SystemAPI.HasBuffer<BuildingEntranceOffset>(entity))
@@ -135,6 +168,7 @@ namespace Rts
                 {
                     edits.Enqueue(GridEdit.CostDelta(cell.Cell, -FOOTPRINT_COST));
                     edits.Enqueue(GridEdit.RemoveFlags(cell.Cell, CellFlags.Building));
+                    edits.Enqueue(GridEdit.ClearStructure(cell.Cell));
                 }
 
                 // Flags are bits, not counts, so two buildings whose doorsteps land on the same cell would

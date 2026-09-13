@@ -16,6 +16,7 @@ namespace Tests.EditorTests.RtsTests
         private readonly SystemHandle _gridMapSystem;
         private readonly SystemHandle _cellObjectSystem;
         private readonly SystemHandle _buildingSystem;
+        private readonly SystemHandle _structureDamageSystem;
         private readonly SystemHandle _gridApplySystem;
 
         private readonly SystemHandle _gateGraphSystem;
@@ -59,6 +60,7 @@ namespace Tests.EditorTests.RtsTests
             _gridMapSystem = World.CreateSystem<GridMapSystem>();
             _cellObjectSystem = World.CreateSystem<CellObjectRegistrationSystem>();
             _buildingSystem = World.CreateSystem<BuildingFootprintSystem>();
+            _structureDamageSystem = World.CreateSystem<StructureDamageSystem>();
             _gridApplySystem = World.CreateSystem<GridApplySystem>();
 
             _gateGraphSystem = World.CreateSystem<ChunkGateGraphSystem>();
@@ -119,6 +121,7 @@ namespace Tests.EditorTests.RtsTests
         {
             _cellObjectSystem.Update(World.Unmanaged);
             _buildingSystem.Update(World.Unmanaged);
+            _structureDamageSystem.Update(World.Unmanaged);
             _gridApplySystem.Update(World.Unmanaged);
             Entities.CompleteAllTrackedJobs();
         }
@@ -407,12 +410,13 @@ namespace Tests.EditorTests.RtsTests
         /// <summary>An armed agent: the same archetype with one bit flipped (§14 step 13).</summary>
         public Entity CreateSoldier(float2 position, byte faction = 0, int maxHealth = 100,
                                     float range = 6f, int damage = 12, float reloadSeconds = 0.5f,
-                                    float leash = 12f) =>
+                                    float leash = 12f, BreachClass breach = BreachClass.None) =>
             CreateIdleAgent(position, maxHealth: maxHealth, faction: faction, leash: leash, weapon: new Weapon
             {
                 Range = range,
                 Damage = damage,
                 ReloadSeconds = reloadSeconds,
+                Breach = breach,
             });
 
         public Post PostOf(Entity agent) => Entities.GetComponentData<Post>(agent);

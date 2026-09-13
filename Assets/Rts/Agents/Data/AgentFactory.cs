@@ -1,3 +1,4 @@
+using GridNav;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -119,6 +120,8 @@ namespace Rts
 
                 // -1 is no chunk, which is what makes the first frame route rather than trust these.
                 RoutedChunk = -1,
+
+                Traversal = TraversalOf(spec.Weapon, spec.Faction),
             });
 
             entities.SetComponentData(agent, new Carry { Capacity = spec.CarryCapacity });
@@ -160,6 +163,14 @@ namespace Rts
         /// is already the rule <see cref="Carry"/> states, and a soldier queueing for a crate of flour is not
         /// a thing anyone has to write a rule against.
         /// </summary>
+        /// <summary>
+        /// Which cost model an agent walks on: its side, and what its weapon can knock down. An unarmed
+        /// weapon is a civilian, which is the default and covers every agent in the game that is not a
+        /// soldier.
+        /// </summary>
+        public static Traversal TraversalOf(in Weapon weapon, byte faction) =>
+            new(weapon.IsArmed ? weapon.Breach : BreachClass.None, faction);
+
         public static void Arm(EntityManager entities, Entity agent, in Weapon weapon, float leash)
         {
             if (!entities.Exists(agent) || !entities.HasComponent<Weapon>(agent))
@@ -169,6 +180,12 @@ namespace Rts
 
             entities.SetComponentData(agent, weapon);
             entities.SetComponentEnabled<Weapon>(agent, true);
+
+            // Arming can change how the agent routes, not only what it can hurt: a soldier that can break a
+            // wall down prices one as a way through (§14.4). Written here so the two can never disagree.
+            PathFollow follow = entities.GetComponentData<PathFollow>(agent);
+            follow.Traversal = TraversalOf(weapon, entities.GetComponentData<Faction>(agent).Id);
+            entities.SetComponentData(agent, follow);
 
             // Its post is where it stood when it was armed - the camp it walked out of, or wherever the
             // spawn put it. The player moves it by moving the soldier (§14 step 13).

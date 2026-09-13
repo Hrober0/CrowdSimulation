@@ -196,7 +196,7 @@ namespace Rts
                 bool engaged = nearGoal && (distance <= ENGAGE_DISTANCE || path.Holding);
 
                 if (!engaged || !TryStepsToGoal(cache, path.GoalCell, GridCoords.CellOf(position), distance,
-                                                out float steps))
+                                                path.Traversal, out float steps))
                 {
                     Release(follow);
                     continue;
@@ -249,9 +249,10 @@ namespace Rts
             int2 destination,
             int2 cell,
             float distance,
+            Traversal traversal,
             out float steps)
         {
-            if (!cache.TryGetSlot(destination, out int slot) || !cache.Covers(slot, cell))
+            if (!cache.TryGetSlot(destination, out int slot, traversal) || !cache.Covers(slot, cell))
             {
                 steps = distance;
                 return true;

@@ -1,3 +1,4 @@
+using GridNav;
 using Rts;
 using Unity.Mathematics;
 using UnityEngine;
@@ -254,7 +255,16 @@ namespace Examples.Rts
                 health: 300,
                 trains: new Trains
                 {
-                    Gives = new Weapon { Range = 6f, Damage = 12, ReloadSeconds = 0.7f },
+                    Gives = new Weapon
+                    {
+                        Range = 6f,
+                        Damage = 12,
+                        ReloadSeconds = 0.7f,
+
+                        // A defender, so it needs only enough to come at something that has walled itself
+                        // in - not enough to make a shortcut of every hut on the way (§14.4).
+                        Breach = BreachClass.Low,
+                    },
 
                     // Far enough to cover the approach to the buildings around it, short enough that a
                     // raider walking past cannot pull the garrison off the camp (see Post).

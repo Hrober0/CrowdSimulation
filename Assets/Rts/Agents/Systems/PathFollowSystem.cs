@@ -106,7 +106,7 @@ namespace Rts
                 return Steer(agent, GridCoords.CellCenter(path.WaypointCell), speed);
             }
 
-            if (!cache.TryGetSlot(path.WaypointCell, out int slot))
+            if (!cache.TryGetSlot(path.WaypointCell, out int slot, path.Traversal))
             {
                 return float2.zero; // the field was asked for and will be there next frame
             }
@@ -135,7 +135,7 @@ namespace Rts
         private static float2 BackOff(in GridMap map, in FlowFieldCache cache,
                                       in AgentMove agent, in PathFollow path)
         {
-            if (!cache.TryGetSlot(path.GoalCell, out int slot))
+            if (!cache.TryGetSlot(path.GoalCell, out int slot, path.Traversal))
             {
                 return float2.zero;
             }

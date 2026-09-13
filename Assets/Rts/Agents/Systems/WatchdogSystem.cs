@@ -84,8 +84,11 @@ namespace Rts
                     continue;
                 }
 
+                // Asked of the agent's own cost model: a soldier that can break through a wall has a route
+                // where a hauler does not, and giving up on its walk because the *civilian* field says there
+                // is no way round would be giving up on the way in.
                 bool noRoute = cache.IsKnownUnreachable(
-                    follow.ValueRO.GoalCell, GridCoords.CellOf(position), map);
+                    follow.ValueRO.GoalCell, GridCoords.CellOf(position), map, follow.ValueRO.Traversal);
 
                 // Progress means nothing when there is nowhere to progress *to*: an agent with no route can
                 // still be shoved half a cell by a crowd, and reading that as "getting somewhere" is what

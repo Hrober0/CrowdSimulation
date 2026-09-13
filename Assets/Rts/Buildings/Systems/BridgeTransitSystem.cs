@@ -320,7 +320,7 @@ namespace Rts
                     continue;
                 }
 
-                if (!cache.TryGetSlot(path.ValueRO.WaypointCell, out int slot)
+                if (!cache.TryGetSlot(path.ValueRO.WaypointCell, out int slot, path.ValueRO.Traversal)
                     || !cache.IsLinkStep(slot, cell))
                 {
                     continue;

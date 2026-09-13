@@ -28,7 +28,7 @@ namespace Rts
 
             foreach (RefRO<PathFollow> path in SystemAPI.Query<RefRO<PathFollow>>())
             {
-                cache.Request(path.ValueRO.WaypointCell);
+                cache.Request(path.ValueRO.WaypointCell, path.ValueRO.Traversal);
             }
         }
     }

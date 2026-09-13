@@ -1,3 +1,4 @@
+using GridNav;
 using Unity.Entities;
 
 namespace Rts
@@ -37,6 +38,16 @@ namespace Rts
         /// same raider is correct, and reserving one would be a mechanism with no question behind it.
         /// </summary>
         public Entity LastTarget;
+
+        /// <summary>
+        /// How hard it hits *structures*, for routing (design §14.4). Separate from <see cref="Damage"/> on
+        /// purpose: hurting people and knocking down walls are different jobs, and a weapon good at one is
+        /// often useless at the other. It is authored rather than derived from the damage figure, so a
+        /// battering ram and a rifle can differ without either being renumbered.
+        ///
+        /// <see cref="BreachClass.None"/> - the default - routes exactly like a civilian: round the wall.
+        /// </summary>
+        public BreachClass Breach;
 
         public bool IsArmed => Range > 0f && Damage > 0;
     }

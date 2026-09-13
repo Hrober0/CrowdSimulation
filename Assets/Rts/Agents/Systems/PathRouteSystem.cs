@@ -17,6 +17,11 @@ namespace Rts
     ///
     /// A route is worked out again whenever the agent changes chunk, which keeps it honest when avoidance
     /// pushes an agent somewhere it did not intend to go, and removes any need to track progress along it.
+    ///
+    /// The graph an agent routes on is its own (§14.4): gates are openings, and a seeker that can knock a
+    /// wall down has openings a hauler does not. Asking for the wrong graph would be the long-range version
+    /// of the bug the traversal-keyed flow field fixed - a wave planning its way round a wall it could have
+    /// come straight through, and only noticing once it was close enough for the field to take over.
     /// </summary>
     [UpdateInGroup(typeof(RtsAgentGroup))]
     [UpdateAfter(typeof(AgentSpatialHashSystem))]
@@ -27,13 +32,14 @@ namespace Rts
         {
             state.RequireForUpdate<GridWorld>();
             state.RequireForUpdate<ChunkGateGraph>();
+            state.RequireForUpdate<GateGraphRequests>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
-            ChunkGateGraph graph = SystemAPI.GetSingleton<ChunkGateGraph>();
+            GateGraphRequests graphRequests = SystemAPI.GetSingleton<GateGraphRequests>();
 
             var gates = new NativeList<int>(16, Allocator.Temp);
 
@@ -53,6 +59,21 @@ namespace Rts
                     path.RoutedGoal = path.GoalCell;
                     path.RoutedChunk = -1;
                     route.Clear();
+                    follow.ValueRW = path;
+                    continue;
+                }
+
+                // Out of the field's reach, so the gate graph decides - and which graph that is depends on
+                // the agent. Asked for here rather than at spawn, because asking is what keeps a graph alive
+                // and an agent that never routes long-range never needs one built.
+                graphRequests.Request(path.Traversal);
+
+                if (!TryGetGraph(ref state, path.Traversal, out ChunkGateGraph graph))
+                {
+                    // The graph was asked for and will be there next frame. Steering straight at the goal
+                    // for one frame is the same answer the flow field gives while it is being built.
+                    path.WaypointCell = path.GoalCell;
+                    path.RoutedChunk = -1;
                     follow.ValueRW = path;
                     continue;
                 }
@@ -82,6 +103,27 @@ namespace Rts
             }
 
             gates.Dispose();
+        }
+
+        /// <summary>
+        /// The gate graph built for this traversal, if there is one yet.
+        ///
+        /// A linear scan over a handful of entities, once per agent that is routing long-range. There is one
+        /// graph per traversal in play - civilian plus a class or two - so a map would beat an array of five.
+        /// </summary>
+        private bool TryGetGraph(ref SystemState state, Traversal traversal, out ChunkGateGraph found)
+        {
+            foreach (RefRO<ChunkGateGraph> graph in SystemAPI.Query<RefRO<ChunkGateGraph>>())
+            {
+                if (graph.ValueRO.Traversal.Equals(traversal))
+                {
+                    found = graph.ValueRO;
+                    return true;
+                }
+            }
+
+            found = default;
+            return false;
         }
     }
 }

@@ -378,7 +378,18 @@ namespace Examples.Rts
 
                 // Armed, so the fight goes both ways: raiders walking past a turret shoot back at it, and a
                 // player soldier standing in the lane is something they have to get through.
-                Weapon = new Weapon { Range = 5f, Damage = 8, ReloadSeconds = 1f },
+                //
+                // High breach, so a wall across the lane is a way in rather than a detour (§14.4) - which is
+                // the whole behaviour that model exists for. Twenty a shot keeps the promise roughly honest:
+                // the class prices a 300-health building at six shots and the weapon takes fifteen, which is
+                // optimistic but the same order.
+                Weapon = new Weapon
+                {
+                    Range = 5f,
+                    Damage = 20,
+                    ReloadSeconds = 1f,
+                    Breach = BreachClass.High,
+                },
 
                 // Short, because a raider's job is to cross the map rather than to garrison it: it will
                 // turn aside for what is close and then carry on walking east.

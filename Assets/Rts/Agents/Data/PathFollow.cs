@@ -1,3 +1,4 @@
+using GridNav;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -27,6 +28,16 @@ namespace Rts
 
         /// <summary>The chunk the agent was in when it routed. Leaving it is what triggers a re-route.</summary>
         public int RoutedChunk;
+
+        /// <summary>
+        /// Which cost model this agent walks on (design §14.4). Civilian for everyone unarmed, which is the
+        /// default and therefore what every agent that predates breaching gets.
+        ///
+        /// It lives here rather than being worked out at each lookup because it is routing state, and every
+        /// system that reads a flow field for an agent already holds this component - so putting it here is
+        /// the difference between one field and three extra arguments on five queries.
+        /// </summary>
+        public Traversal Traversal;
 
         /// <summary>
         /// How close to the goal this agent is allowed to get while it waits its turn, in cells. Written by

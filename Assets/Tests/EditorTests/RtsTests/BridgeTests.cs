@@ -493,7 +493,7 @@ namespace Tests.EditorTests.RtsTests
             using EntityQuery query = world.Entities.CreateEntityQuery(
                 ComponentType.ReadOnly<ChunkGateGraph>());
 
-            ChunkGateGraph graph = query.GetSingleton<ChunkGateGraph>();
+            ChunkGateGraph graph = CivilianGraph(query);
 
             var gates = new NativeList<int>(16, Allocator.Temp);
             bool found = GatePathFinder.TryFindGatePath(
@@ -528,7 +528,7 @@ namespace Tests.EditorTests.RtsTests
             using EntityQuery query = world.Entities.CreateEntityQuery(
                 ComponentType.ReadOnly<ChunkGateGraph>());
 
-            ChunkGateGraph graph = query.GetSingleton<ChunkGateGraph>();
+            ChunkGateGraph graph = CivilianGraph(query);
 
             var gates = new NativeList<int>(16, Allocator.Temp);
             bool found = GatePathFinder.TryFindGatePath(
@@ -582,6 +582,23 @@ namespace Tests.EditorTests.RtsTests
             Entity agent = world.CreateIdleAgent(GridCoords.CellCenter(cell));
             world.Entities.GetBuffer<TaskStep>(agent).Add(TaskStep.Interact(Entity.Null, 10_000f));
             return agent;
+        }
+        /// <summary>
+        /// The civilian gate graph. There is one graph per traversal in play now (§14.4), and a bridge is a
+        /// civilian question.
+        /// </summary>
+        private static ChunkGateGraph CivilianGraph(EntityQuery query)
+        {
+            using var graphs = query.ToComponentDataArray<ChunkGateGraph>(Allocator.Temp);
+            foreach (ChunkGateGraph graph in graphs)
+            {
+                if (!graph.Traversal.CanBreach)
+                {
+                    return graph;
+                }
+            }
+
+            return default;
         }
     }
 }
