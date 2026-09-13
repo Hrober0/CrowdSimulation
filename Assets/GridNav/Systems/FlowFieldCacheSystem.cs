@@ -73,9 +73,9 @@ namespace GridNav
         {
             var toBuild = new NativeList<int>(MAX_BUILDS_PER_FRAME, Allocator.TempJob);
 
-            foreach (int2 goalCell in cache.Requests)
+            foreach (FieldKey key in cache.Requests)
             {
-                if (cache.TryGetSlot(goalCell, out int slot) && cache.IsFresh(slot, map))
+                if (cache.TryGetSlot(key.Goal, out int slot, key.Traversal) && cache.IsFresh(slot, map))
                 {
                     cache.MarkUsed(slot); // asking for a field is what keeps it from being evicted
                     continue;
@@ -88,7 +88,7 @@ namespace GridNav
 
                 // No slot free means every field in the cache is in use this frame. The request is simply not
                 // served - the same outcome as missing the build cap above, and agents ask again next frame.
-                if (!cache.TryAcquireSlot(goalCell, map, out int acquired))
+                if (!cache.TryAcquireSlot(key, map, out int acquired))
                 {
                     continue;
                 }

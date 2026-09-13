@@ -28,16 +28,18 @@ namespace GridNav
         /// <summary>
         /// Cost of walking from <paramref name="source"/> to every cell of the chunk.
         /// </summary>
-        public static void CostsFrom(in GridMap map, int2 chunkMin, int2 source, NativeArray<int> distance) =>
-            Search(map, chunkMin, source, distance, false);
+        public static void CostsFrom(in GridMap map, int2 chunkMin, int2 source, NativeArray<int> distance,
+                                     Traversal traversal = default) =>
+            Search(map, chunkMin, source, distance, false, traversal);
 
         /// <summary>
         /// Cost of walking to <paramref name="target"/> from every cell of the chunk - the same search with
         /// every edge reversed, which is why it tests the *neighbour's* exit bit. Getting that backwards
         /// produces routes that run the wrong way down a one-way road, and nothing complains (§3).
         /// </summary>
-        public static void CostsTo(in GridMap map, int2 chunkMin, int2 target, NativeArray<int> distance) =>
-            Search(map, chunkMin, target, distance, true);
+        public static void CostsTo(in GridMap map, int2 chunkMin, int2 target, NativeArray<int> distance,
+                                   Traversal traversal = default) =>
+            Search(map, chunkMin, target, distance, true, traversal);
 
         public static int LocalIndexOf(int2 chunkMin, int2 cell)
         {
@@ -51,14 +53,15 @@ namespace GridNav
             return math.all(local >= 0) && math.all(local < GridMap.CHUNK_SIZE);
         }
 
-        private static void Search(in GridMap map, int2 chunkMin, int2 origin, NativeArray<int> distance, bool reverse)
+        private static void Search(in GridMap map, int2 chunkMin, int2 origin, NativeArray<int> distance,
+                                   bool reverse, Traversal traversal)
         {
             for (int i = 0; i < distance.Length; i++)
             {
                 distance[i] = UNREACHED;
             }
 
-            if (!IsInside(chunkMin, origin) || !map.IsPassable(origin))
+            if (!IsInside(chunkMin, origin) || !map.IsPassable(origin, traversal))
             {
                 return;
             }
@@ -96,15 +99,15 @@ namespace GridNav
                     // the real step is next -> cell, so the neighbour's exit bit decides and the cost is
                     // that of entering cell.
                     bool walkable = reverse
-                        ? map.CanTraverseFromNeighbour(cell, direction)
-                        : map.CanTraverse(cell, direction);
+                        ? map.CanTraverseFromNeighbour(cell, direction, traversal)
+                        : map.CanTraverse(cell, direction, traversal);
 
                     if (!walkable)
                     {
                         continue;
                     }
 
-                    int cost = node.Cost + NavCost.OfCell(map.GetCost(reverse ? cell : next));
+                    int cost = node.Cost + NavCost.OfCell(map.GetCost(reverse ? cell : next, traversal));
                     int nextLocal = LocalIndexOf(chunkMin, next);
                     if (cost >= distance[nextLocal])
                     {
@@ -115,7 +118,7 @@ namespace GridNav
                     queue.Enqueue(new CellNode { LocalIndex = nextLocal, Cost = cost });
                 }
 
-                FollowLink(map, chunkMin, cell, node.Cost, distance, ref queue, reverse);
+                FollowLink(map, chunkMin, cell, node.Cost, traversal, distance, ref queue, reverse);
             }
 
             queue.Dispose();
@@ -130,7 +133,7 @@ namespace GridNav
         /// on it. The cost is the same expression either way - the crossing plus stepping onto the far bank -
         /// which it has to be, or the two searches would disagree about how far apart the banks are.
         /// </summary>
-        private static void FollowLink(in GridMap map, int2 chunkMin, int2 cell, int here,
+        private static void FollowLink(in GridMap map, int2 chunkMin, int2 cell, int here, Traversal traversal,
                                        NativeArray<int> distance, ref NativePriorityQueue<CellNode> queue,
                                        bool reverse)
         {
@@ -156,12 +159,12 @@ namespace GridNav
                 far = link.To;
             }
 
-            if (!IsInside(chunkMin, far) || !map.IsPassable(far))
+            if (!IsInside(chunkMin, far) || !map.IsPassable(far, traversal))
             {
                 return;
             }
 
-            int cost = here + NavCost.OfCell(map.GetCost(link.To)) + link.Cost;
+            int cost = here + NavCost.OfCell(map.GetCost(link.To, traversal)) + link.Cost;
             int farLocal = LocalIndexOf(chunkMin, far);
             if (cost >= distance[farLocal])
             {

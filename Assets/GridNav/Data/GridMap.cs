@@ -40,6 +40,11 @@ namespace GridNav
         [NativeDisableParallelForRestriction] private NativeArray<ushort> _costSum;
         [NativeDisableParallelForRestriction] private NativeArray<byte> _flags;
         [NativeDisableParallelForRestriction] private NativeArray<byte> _exits;
+
+        // What is standing on the cell, for the seekers that can knock it down. Health zero means nothing is
+        // there, which is why a structure is never stored with none left - it is cleared instead.
+        [NativeDisableParallelForRestriction] private NativeArray<ushort> _structureHealth;
+        [NativeDisableParallelForRestriction] private NativeArray<byte> _structureOwner;
         [NativeDisableParallelForRestriction] private NativeArray<ChunkVersions> _versions;
         [NativeDisableParallelForRestriction] private NativeArray<NavLink> _links;
 
@@ -59,8 +64,13 @@ namespace GridNav
             _costSum = new NativeArray<ushort>(cells, allocator);
             _flags = new NativeArray<byte>(cells, allocator);
             _exits = new NativeArray<byte>(cells, allocator);
+            _structureHealth = new NativeArray<ushort>(cells, allocator);
+            _structureOwner = new NativeArray<byte>(cells, allocator);
             _versions = new NativeArray<ChunkVersions>(chunks, allocator);
             _links = new NativeArray<NavLink>(MAX_LINKS, allocator);
+
+            LowDamage = 0;
+            HighDamage = 0;
 
             for (int i = 0; i < cells; i++)
             {
@@ -111,6 +121,116 @@ namespace GridNav
 
         public int ChunkIndex(int2 chunkCoord) => chunkCoord.y * _chunkCount.x + chunkCoord.x;
 
+        /// <summary>
+        /// Damage per shot for <see cref="BreachClass.Low"/> and <see cref="BreachClass.High"/>.
+        ///
+        /// On the map rather than on the agent, and that is deliberate. What a class *means* has to be one
+        /// answer for the whole world, because it is what the shared fields were built with - if two units
+        /// in the same class disagreed about it they would need two fields, which is the thing classes exist
+        /// to prevent. An individual unit's weapon decides which class it belongs to, never what the class
+        /// is worth.
+        /// </summary>
+        public ushort LowDamage;
+
+        public ushort HighDamage;
+
+        /// <summary>What one shot is worth in walking, in cost units. See <see cref="BreachCost"/>.</summary>
+        public const int COST_PER_SHOT = NavCost.STEP;
+
+        /// <summary>
+        /// What a structure standing on a cell contributes to <see cref="GetCost(int2)"/>.
+        ///
+        /// A contract rather than an observation: whoever puts a building down adds exactly this, so that
+        /// a seeker able to break it can take exactly this back out and substitute the breach price. If a
+        /// placement ever adds some other amount, the breach cost is wrong by the difference and nothing
+        /// says so.
+        /// </summary>
+        public const ushort STRUCTURE_BLOCK = CellData.BLOCKED;
+
+        /// <summary>
+        /// What it costs to go *through* a structure instead of round it: how many shots it takes, priced as
+        /// that many cells of walking.
+        ///
+        /// Health over damage is the whole model, and the reason it is the right one is that it comes out in
+        /// the same currency as the rest of the field - time. A route is then a straight comparison between
+        /// seconds spent walking and seconds spent hitting, and the pathfinder picks the cheaper without
+        /// anybody weighting anything.
+        ///
+        /// It saturates rather than growing without bound, and it has to: costs live under
+        /// <see cref="CellData.BLOCKED"/>, so the most a breach can ever be worth is about twenty-five cells
+        /// of detour. Past that the answer is "go round", which is what returning BLOCKED says.
+        /// </summary>
+        public ushort BreachCost(ushort health, BreachClass breach)
+        {
+            int damage = breach switch
+            {
+                BreachClass.Low => LowDamage,
+                BreachClass.High => HighDamage,
+                _ => 0,
+            };
+
+            if (damage <= 0 || health == 0)
+            {
+                return CellData.BLOCKED;
+            }
+
+            // Rounded up: half a shot still costs a whole one.
+            int shots = (health + damage - 1) / damage;
+            int cost = shots * COST_PER_SHOT;
+
+            return cost >= CellData.BLOCKED ? CellData.BLOCKED : (ushort)cost;
+        }
+
+        /// <summary>Health of the structure on the cell, or zero if there is none.</summary>
+        public ushort GetStructureHealth(int2 cell) =>
+            InBounds(cell) ? _structureHealth[CellIndex(cell)] : (ushort)0;
+
+        /// <summary>Which faction owns the structure on the cell. Meaningless where health is zero.</summary>
+        public byte GetStructureOwner(int2 cell) =>
+            InBounds(cell) ? _structureOwner[CellIndex(cell)] : (byte)0;
+
+        /// <summary>
+        /// What the cell costs *this* seeker (design §14 step 13, amended).
+        ///
+        /// Three rules, and between them they replace the two-field design this started as:
+        ///
+        /// - a seeker that cannot break anything pays the stored cost, so a structure is a wall — this is the
+        ///   civilian case, and it is the same arithmetic rather than a separate path;
+        /// - a seeker standing in front of **its own** structure pays the stored cost too, so an army never
+        ///   routes through its own bakery;
+        /// - anyone else pays the walk without the wall, plus the price of knocking it down.
+        /// </summary>
+        public ushort GetCost(int2 cell, Traversal traversal)
+        {
+            if (!InBounds(cell))
+            {
+                return CellData.BLOCKED;
+            }
+
+            int index = CellIndex(cell);
+            ushort stored = _costSum[index];
+            ushort health = _structureHealth[index];
+
+            if (health == 0 || !traversal.CanBreach || _structureOwner[index] == traversal.Faction)
+            {
+                return stored;
+            }
+
+            ushort breach = BreachCost(health, traversal.Breach);
+            if (breach >= CellData.BLOCKED)
+            {
+                return stored;
+            }
+
+            // The wall comes out of the sum and the breach goes in. Whatever else is on the cell - the
+            // terrain underneath, a road, a tree that grew against it - is still paid for.
+            int without = stored - STRUCTURE_BLOCK;
+            return (ushort)math.clamp(without + breach, 0, CellData.BLOCKED);
+        }
+
+        /// <summary>Whether this seeker may enter at all. See <see cref="GetCost(int2, Traversal)"/>.</summary>
+        public bool IsPassable(int2 cell, Traversal traversal) => GetCost(cell, traversal) < CellData.BLOCKED;
+
         public CellData GetCell(int2 cell)
         {
             if (!InBounds(cell))
@@ -135,7 +255,7 @@ namespace GridNav
         /// Whether an agent standing on <paramref name="from"/> may step to its neighbour in
         /// <paramref name="direction"/>: both cells passable and the mover's exit bit set.
         /// </summary>
-        public bool CanTraverse(int2 from, Direction direction)
+        public bool CanTraverse(int2 from, Direction direction, Traversal traversal = default)
         {
             if (!InBounds(from))
             {
@@ -143,9 +263,9 @@ namespace GridNav
             }
 
             int index = CellIndex(from);
-            return _costSum[index] < CellData.BLOCKED
+            return IsPassable(from, traversal)
                    && DirectionUtils.Allows(_exits[index], direction)
-                   && IsPassable(from + DirectionUtils.Offset(direction));
+                   && IsPassable(from + DirectionUtils.Offset(direction), traversal);
         }
 
         /// <summary>
@@ -157,8 +277,10 @@ namespace GridNav
         /// neighbour's exit bit. Checking the cell's own bit builds a field that sends agents the wrong way
         /// down a one-way road, silently (§3).
         /// </summary>
-        public bool CanTraverseFromNeighbour(int2 cell, Direction neighbourDirection) =>
-            CanTraverse(cell + DirectionUtils.Offset(neighbourDirection), DirectionUtils.Opposite(neighbourDirection));
+        public bool CanTraverseFromNeighbour(int2 cell, Direction neighbourDirection,
+                                             Traversal traversal = default) =>
+            CanTraverse(cell + DirectionUtils.Offset(neighbourDirection),
+                        DirectionUtils.Opposite(neighbourDirection), traversal);
 
         public ChunkVersions GetChunkVersions(int2 chunkCoord) =>
             ChunkInBounds(chunkCoord) ? _versions[ChunkIndex(chunkCoord)] : default;
@@ -261,7 +383,77 @@ namespace GridNav
                 case GridEdit.OpType.SetExits:
                     ApplyExits(index, edit.Cell, (byte)(edit.Value & DirectionUtils.ALL_EXITS));
                     break;
+
+                case GridEdit.OpType.SetStructure:
+                    ApplyStructure(index, edit.Cell, (byte)(edit.Value & 0xFF),
+                                   (ushort)math.clamp(edit.Value >> 8, 0, ushort.MaxValue));
+                    break;
             }
+        }
+
+        /// <summary>
+        /// Records what is standing here. Bumps only <see cref="ChunkVersions.StructureVersion"/>, because
+        /// nothing about a structure's health changes what the cell costs anybody who cannot break it - and
+        /// the whole point of the separate counter is that a fight leaves the economy's fields alone.
+        /// </summary>
+        private void ApplyStructure(int index, int2 cell, byte owner, ushort health)
+        {
+            if (_structureHealth[index] == health && _structureOwner[index] == owner)
+            {
+                return;
+            }
+
+            _structureHealth[index] = health;
+            _structureOwner[index] = health == 0 ? (byte)0 : owner;
+
+            BumpStructureVersions(cell);
+        }
+
+        /// <summary>
+        /// Marks the structure change on the cell's chunk **and on the chunk across any border it sits on**.
+        ///
+        /// The neighbour is not an afterthought: a border cell is half of a border *pair*, and the gate that
+        /// pair forms is owned by whichever chunk's east or north edge it is. A wall battered down in the
+        /// first column of one chunk opens a gate that belongs to the chunk to its west, and bumping only its
+        /// own chunk leaves that gate shut - a hole in the wall the long-range router cannot see. This is the
+        /// same rule cost changes follow, for the same reason.
+        /// </summary>
+        private void BumpStructureVersions(int2 cell)
+        {
+            int2 chunkCoord = ChunkCoordOf(cell);
+            BumpStructureChunk(chunkCoord);
+
+            int2 local = LocalCoordOf(cell);
+            if (local.x == 0)
+            {
+                BumpStructureChunk(chunkCoord + new int2(-1, 0));
+            }
+            else if (local.x == CHUNK_MASK)
+            {
+                BumpStructureChunk(chunkCoord + new int2(1, 0));
+            }
+
+            if (local.y == 0)
+            {
+                BumpStructureChunk(chunkCoord + new int2(0, -1));
+            }
+            else if (local.y == CHUNK_MASK)
+            {
+                BumpStructureChunk(chunkCoord + new int2(0, 1));
+            }
+        }
+
+        private void BumpStructureChunk(int2 chunkCoord)
+        {
+            if (!ChunkInBounds(chunkCoord))
+            {
+                return;
+            }
+
+            int chunkIndex = ChunkIndex(chunkCoord);
+            ChunkVersions versions = _versions[chunkIndex];
+            versions.StructureVersion++;
+            _versions[chunkIndex] = versions;
         }
 
         private void ApplyCostDelta(int index, int2 cell, int delta)
@@ -457,6 +649,16 @@ namespace GridNav
             if (_exits.IsCreated)
             {
                 _exits.Dispose();
+            }
+
+            if (_structureHealth.IsCreated)
+            {
+                _structureHealth.Dispose();
+            }
+
+            if (_structureOwner.IsCreated)
+            {
+                _structureOwner.Dispose();
             }
 
             if (_versions.IsCreated)

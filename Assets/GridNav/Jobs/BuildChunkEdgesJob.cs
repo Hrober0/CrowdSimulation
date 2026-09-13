@@ -34,7 +34,7 @@ namespace GridNav
                 BuildEdges(chunkIndex, chunkCoord, touching);
             }
 
-            Graph.SetBuiltVersion(chunkIndex, Map.GetChunkVersions(chunkCoord).PassabilityVersion);
+            Graph.SetBuiltVersion(chunkIndex, ChunkGateGraph.VersionOf(Map, chunkCoord, Graph.Traversal));
         }
 
         /// <summary>
@@ -145,7 +145,7 @@ namespace GridNav
             for (int from = 0; from < touching; from++)
             {
                 int2 start = Graph.CellInChunk(Graph.TouchingGate(chunkIndex, from), chunkIndex);
-                ChunkSearch.CostsFrom(Map, chunkMin, start, distance);
+                ChunkSearch.CostsFrom(Map, chunkMin, start, distance, Graph.Traversal);
 
                 for (int to = 0; to < touching; to++)
                 {

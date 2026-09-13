@@ -25,7 +25,11 @@ namespace GridNav
         {
             gatePath.Clear();
 
-            if (!map.IsPassable(startCell) || !map.IsPassable(goalCell) || !graph.IsCreated)
+            // Asked of the graph's own view of the map. A breacher standing on ground its own graph calls
+            // walkable must not be turned away because the civilian reading of the same cell is a wall.
+            if (!map.IsPassable(startCell, graph.Traversal)
+                || !map.IsPassable(goalCell, graph.Traversal)
+                || !graph.IsCreated)
             {
                 return false;
             }

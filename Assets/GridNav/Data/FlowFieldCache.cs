@@ -6,11 +6,15 @@ using Unity.Mathematics;
 namespace GridNav
 {
     /// <summary>
-    /// A small pool of flow fields, keyed by destination and evicted least-recently-used (design §4).
+    /// A small pool of flow fields, keyed by <see cref="FieldKey"/> and evicted least-recently-used (§4).
     ///
     /// Agents do not build fields; they ask for one and read whatever is there. A field asked for on one
     /// frame is served on the next, which is what keeps field generation and steering from ever needing a
     /// sync point between them (§13.2, invariant 3).
+    ///
+    /// The key is a destination **and a traversal**. Everything unarmed shares the civilian one, which is
+    /// what nearly every caller wants and why the traversal defaults away at every entry point below - a
+    /// hauler's code reads exactly as it did before structures could be broken through (§14.4).
     /// </summary>
     public struct FlowFieldCache : IComponentData, IDisposable
     {
@@ -18,15 +22,15 @@ namespace GridNav
         public const int CAPACITY = 32;
 
         private FlowFieldStorage _storage;
-        private NativeParallelHashMap<int2, int> _slotByGoal;
-        private NativeParallelHashSet<int2> _requests;
+        private NativeParallelHashMap<FieldKey, int> _slotByGoal;
+        private NativeParallelHashSet<FieldKey> _requests;
         private NativeReference<int> _clock;
 
         public FlowFieldCache(Allocator allocator)
         {
             _storage = new FlowFieldStorage(CAPACITY, allocator);
-            _slotByGoal = new NativeParallelHashMap<int2, int>(CAPACITY * 2, allocator);
-            _requests = new NativeParallelHashSet<int2>(256, allocator);
+            _slotByGoal = new NativeParallelHashMap<FieldKey, int>(CAPACITY * 2, allocator);
+            _requests = new NativeParallelHashSet<FieldKey>(256, allocator);
             _clock = new NativeReference<int>(allocator);
         }
 
@@ -35,13 +39,14 @@ namespace GridNav
         /// <summary>The cells themselves. Hand this to a build job, not the whole cache.</summary>
         public FlowFieldStorage Storage => _storage;
 
-        /// <summary>Destinations asked for since the last build pass. A set, so asking twice is free.</summary>
-        public NativeParallelHashSet<int2> Requests => _requests;
+        /// <summary>Fields asked for since the last build pass. A set, so asking twice is free.</summary>
+        public NativeParallelHashSet<FieldKey> Requests => _requests;
 
         /// <summary>Ask for a field. Cheap and idempotent - agents call it every frame they are walking.</summary>
-        public void Request(int2 goalCell) => _requests.Add(goalCell);
+        public void Request(int2 goalCell, Traversal traversal = default) =>
+            _requests.Add(new FieldKey(goalCell, traversal));
 
-        public NativeParallelHashSet<int2>.ParallelWriter RequestWriter() => _requests.AsParallelWriter();
+        public NativeParallelHashSet<FieldKey>.ParallelWriter RequestWriter() => _requests.AsParallelWriter();
 
         public FlowFieldSlot GetSlot(int slot) => _storage.GetSlot(slot);
 
@@ -55,22 +60,24 @@ namespace GridNav
         /// mapping that no longer owns its slot reads as "no field", the agent asks again, and the next frame
         /// builds it one: wrong-and-invisible becomes late-by-a-frame.
         /// </summary>
-        public bool TryGetSlot(int2 goalCell, out int slot)
+        public bool TryGetSlot(int2 goalCell, out int slot, Traversal traversal = default)
         {
-            if (!_slotByGoal.TryGetValue(goalCell, out slot))
+            var key = new FieldKey(goalCell, traversal);
+            if (!_slotByGoal.TryGetValue(key, out slot))
             {
                 return false;
             }
 
             FlowFieldSlot entry = _storage.GetSlot(slot);
-            return entry.Built && entry.GoalCell.Equals(goalCell);
+            return entry.Built && entry.GoalCell.Equals(goalCell) && entry.Traversal.Equals(traversal);
         }
 
         /// <summary>Whether nothing under the field's window has changed since it was built.</summary>
         public bool IsFresh(int slot, in GridMap map)
         {
             FlowFieldSlot entry = _storage.GetSlot(slot);
-            return entry.Built && entry.VersionStamp == FlowField.VersionStampOf(map, entry.WindowMin);
+            return entry.Built
+                   && entry.VersionStamp == FlowField.VersionStampOf(map, entry.WindowMin, entry.Traversal);
         }
 
         public bool Covers(int slot, int2 cell) => FlowField.Contains(_storage.GetSlot(slot).WindowMin, cell);
@@ -131,8 +138,9 @@ namespace GridNav
         /// could have walked into. A wrong "false" costs one attempt, which builds the field that answers
         /// properly next time; a wrong "true" is a task nobody ever picks up.
         /// </summary>
-        public bool IsKnownUnreachable(int2 destination, int2 from, in GridMap map) =>
-            TryGetSlot(destination, out int slot)
+        public bool IsKnownUnreachable(int2 destination, int2 from, in GridMap map,
+                                       Traversal traversal = default) =>
+            TryGetSlot(destination, out int slot, traversal)
             && IsFresh(slot, map)
             && Covers(slot, from)
             && IntegrationAt(slot, from) == FlowField.UNREACHABLE;
@@ -164,18 +172,21 @@ namespace GridNav
         /// else is already using - is how one field ends up answering for two destinations, and that is not a
         /// frame of latency but a crowd walking to the wrong place indefinitely.
         /// </summary>
-        internal bool TryAcquireSlot(int2 goalCell, in GridMap map, out int slot)
+        internal bool TryAcquireSlot(FieldKey key, in GridMap map, out int slot)
         {
-            if (_slotByGoal.TryGetValue(goalCell, out slot))
+            int2 goalCell = key.Goal;
+
+            if (_slotByGoal.TryGetValue(key, out slot))
             {
-                if (_storage.GetSlot(slot).GoalCell.Equals(goalCell))
+                FlowFieldSlot held = _storage.GetSlot(slot);
+                if (held.GoalCell.Equals(goalCell) && held.Traversal.Equals(key.Traversal))
                 {
                     return true;
                 }
 
                 // A leftover from an eviction: the slot belongs to somebody else now, so this mapping is
                 // worse than nothing and goes before a new slot is looked for.
-                _slotByGoal.Remove(goalCell);
+                _slotByGoal.Remove(key);
             }
 
             if (!TryTakeSlot(out slot))
@@ -185,10 +196,11 @@ namespace GridNav
 
             ReleaseMapping(slot);
 
-            _slotByGoal[goalCell] = slot;
+            _slotByGoal[key] = slot;
             _storage.SetSlot(slot, new FlowFieldSlot
             {
                 GoalCell = goalCell,
+                Traversal = key.Traversal,
                 WindowMin = FlowField.WindowMinFor(map, goalCell),
                 VersionStamp = 0,
                 LastUsed = _clock.Value,
@@ -245,7 +257,8 @@ namespace GridNav
         /// </summary>
         private void ReleaseMapping(int slot)
         {
-            int2 previous = _storage.GetSlot(slot).GoalCell;
+            FlowFieldSlot entry = _storage.GetSlot(slot);
+            var previous = new FieldKey(entry.GoalCell, entry.Traversal);
 
             if (_slotByGoal.TryGetValue(previous, out int owner) && owner == slot)
             {

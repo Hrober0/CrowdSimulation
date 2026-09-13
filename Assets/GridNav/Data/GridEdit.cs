@@ -31,6 +31,12 @@ namespace GridNav
 
             /// <summary>Take that connection back out.</summary>
             RemoveLink,
+
+            /// <summary>
+            /// Record what is standing on the cell and how much of it is left: owner in the low byte of
+            /// <see cref="Value"/>, remaining health in the rest. Health zero clears it.
+            /// </summary>
+            SetStructure,
         }
 
         public readonly int2 Cell;
@@ -71,6 +77,22 @@ namespace GridNav
             new(from, to, OpType.AddLink, cost);
 
         public static GridEdit RemoveLink(int2 from, int2 to) => new(from, to, OpType.RemoveLink, 0);
+
+        /// <summary>
+        /// Says that a structure belonging to <paramref name="owner"/> stands here with
+        /// <paramref name="health"/> left.
+        ///
+        /// It does **not** make the cell impassable - the caller still adds <see cref="CellData.BLOCKED"/> to
+        /// the cost the way it always did. This is the extra fact that lets a seeker which can break things
+        /// price the cell as a breach instead (see <see cref="GridMap.GetCost(int2, Traversal)"/>), and the
+        /// contract between the two is that a structure's contribution to the cost sum is exactly
+        /// <see cref="CellData.BLOCKED"/>, so it can be backed out again.
+        /// </summary>
+        public static GridEdit SetStructure(int2 cell, byte owner, ushort health) =>
+            new(cell, default, OpType.SetStructure, (health << 8) | owner);
+
+        /// <summary>Nothing stands here any more. The cost refund is a separate <see cref="CostDelta"/>.</summary>
+        public static GridEdit ClearStructure(int2 cell) => new(cell, default, OpType.SetStructure, 0);
 
         public override string ToString() =>
             Op is OpType.AddLink or OpType.RemoveLink

@@ -24,9 +24,16 @@ namespace GridNav
             }
 
             GridSettings settings = SystemAPI.GetSingleton<GridSettings>();
+
+            var map = new GridMap(settings.MinCell, settings.ChunkCount, Allocator.Persistent)
+            {
+                LowDamage = settings.LowDamage,
+                HighDamage = settings.HighDamage,
+            };
+
             state.EntityManager.CreateSingleton(new GridWorld
             {
-                Map = new GridMap(settings.MinCell, settings.ChunkCount, Allocator.Persistent),
+                Map = map,
                 Edits = new GridEditQueue(Allocator.Persistent),
             }, "GridWorld");
 

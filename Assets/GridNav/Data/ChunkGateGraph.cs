@@ -60,8 +60,18 @@ namespace GridNav
 
         private readonly int2 _chunkCount;
 
-        public ChunkGateGraph(int2 chunkCount, Allocator allocator)
+        /// <summary>
+        /// Whose view of the map this graph describes (design §14.4).
+        ///
+        /// A gate is an opening between two chunks, and whether an opening exists is a question about
+        /// *passability* - which a seeker able to knock a wall down answers differently. So a breaching
+        /// traversal cannot share the civilian graph: it needs gates where the civilian view sees only wall.
+        /// </summary>
+        public readonly Traversal Traversal;
+
+        public ChunkGateGraph(int2 chunkCount, Allocator allocator, Traversal traversal = default)
         {
+            Traversal = traversal;
             _chunkCount = math.max(chunkCount, new int2(1, 1));
             int chunks = _chunkCount.x * _chunkCount.y;
 
@@ -204,8 +214,23 @@ namespace GridNav
         public ushort EdgeCost(int chunkIndex, int fromLocal, int toLocal) =>
             _edgeCosts[EdgeIndex(chunkIndex, fromLocal, toLocal)];
 
-        public bool NeedsRebuild(int chunkIndex, uint passabilityVersion) =>
-            _builtVersion[chunkIndex] != passabilityVersion;
+        public bool NeedsRebuild(int chunkIndex, uint version) => _builtVersion[chunkIndex] != version;
+
+        /// <summary>
+        /// The version a chunk's gates were built against.
+        ///
+        /// Passability for everyone, plus the structure counter for a graph that can breach - because a wall
+        /// coming down opens a gate for the army and changes nothing for anybody else. That asymmetry is why
+        /// the third counter exists (§3.1), and folding the two together here would rebuild every civilian
+        /// graph for the length of every siege.
+        /// </summary>
+        public static uint VersionOf(in GridMap map, int2 chunkCoord, Traversal traversal)
+        {
+            ChunkVersions versions = map.GetChunkVersions(chunkCoord);
+            return traversal.CanBreach
+                ? versions.PassabilityVersion + versions.StructureVersion
+                : versions.PassabilityVersion;
+        }
 
         private int EdgeIndex(int chunkIndex, int fromLocal, int toLocal) =>
             (chunkIndex * MAX_GATES_TOUCHING_CHUNK + fromLocal) * MAX_GATES_TOUCHING_CHUNK + toLocal;

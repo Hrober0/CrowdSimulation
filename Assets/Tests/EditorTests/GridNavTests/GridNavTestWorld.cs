@@ -35,7 +35,31 @@ namespace Tests.EditorTests.GridNavTests
 
         public GridWorld Grid => GetSingleton<GridWorld>();
 
-        public ChunkGateGraph Graph => GetSingleton<ChunkGateGraph>();
+        /// <summary>The civilian gate graph. There is one per traversal in play now (§14.4).</summary>
+        public ChunkGateGraph Graph => GraphFor(default);
+
+        public ChunkGateGraph GraphFor(Traversal traversal)
+        {
+            using EntityQuery query = World.EntityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<ChunkGateGraph>());
+
+            using var graphs = query.ToComponentDataArray<ChunkGateGraph>(Unity.Collections.Allocator.Temp);
+            foreach (ChunkGateGraph graph in graphs)
+            {
+                if (graph.Traversal.Equals(traversal))
+                {
+                    return graph;
+                }
+            }
+
+            return default;
+        }
+
+        /// <summary>
+        /// Asks for a gate graph for a traversal that can breach. One tick later it exists (§14.4).
+        /// </summary>
+        public void RequestGraph(Traversal traversal) =>
+            GetSingleton<GateGraphRequests>().Request(traversal);
 
         public FlowFieldCache Fields => GetSingleton<FlowFieldCache>();
 

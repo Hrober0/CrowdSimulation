@@ -68,7 +68,7 @@ namespace GridNav
 
                 // Both banks have to be stood on. A blocked mouth means the crossing is not available, and
                 // leaving the slot empty is how the graph says so.
-                if (!Map.IsPassable(link.From) || !Map.IsPassable(link.To))
+                if (!Map.IsPassable(link.From, Graph.Traversal) || !Map.IsPassable(link.To, Graph.Traversal))
                 {
                     continue;
                 }
@@ -122,12 +122,12 @@ namespace GridNav
                 int2 b = a + across;
 
                 GateCrossing crossing = GateCrossing.None;
-                if (Map.CanTraverse(a, outward))
+                if (Map.CanTraverse(a, outward, Graph.Traversal))
                 {
                     crossing |= GateCrossing.AToB;
                 }
 
-                if (Map.CanTraverse(b, inward))
+                if (Map.CanTraverse(b, inward, Graph.Traversal))
                 {
                     crossing |= GateCrossing.BToA;
                 }

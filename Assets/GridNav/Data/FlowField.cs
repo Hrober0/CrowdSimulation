@@ -65,18 +65,31 @@ namespace GridNav
         /// <summary>
         /// Sum of the cost versions of every chunk the window touches. Any change under the window moves a
         /// counter up, so the sum moves too and the field is known to be stale (§3).
+        ///
+        /// A field built for a seeker that can break things adds the structure versions as well, and one that
+        /// cannot does not even look at them. That asymmetry is the point of the third counter: a wall being
+        /// battered down changes the route for the army and changes nothing at all for the bread, so only the
+        /// army's fields rebuild (§3.1).
         /// </summary>
-        public static uint VersionStampOf(in GridMap map, int2 windowMin)
+        public static uint VersionStampOf(in GridMap map, int2 windowMin, Traversal traversal = default)
         {
             int2 first = map.ChunkCoordOf(math.clamp(windowMin, map.MinCell, map.MaxCell));
             int2 last = map.ChunkCoordOf(math.clamp(windowMin + (WINDOW_SIZE - 1), map.MinCell, map.MaxCell));
+
+            bool breaches = traversal.CanBreach;
 
             uint stamp = 0;
             for (int y = first.y; y <= last.y; y++)
             {
                 for (int x = first.x; x <= last.x; x++)
                 {
-                    stamp += map.GetChunkVersions(new int2(x, y)).CostVersion;
+                    ChunkVersions versions = map.GetChunkVersions(new int2(x, y));
+                    stamp += versions.CostVersion;
+
+                    if (breaches)
+                    {
+                        stamp += versions.StructureVersion;
+                    }
                 }
             }
 
@@ -84,10 +97,18 @@ namespace GridNav
         }
     }
 
-    /// <summary>One cached field: which destination it serves, where its window sits, and how fresh it is.</summary>
+    /// <summary>
+    /// Which destination a cached field serves, **for whom**, where its window sits and how fresh it is.
+    ///
+    /// The traversal is half of the identity, not a detail: an army and a hauler walking to the same cell
+    /// want different fields, because a wall between them and it is a detour for one and a door for the
+    /// other (§14.4).
+    /// </summary>
     public struct FlowFieldSlot
     {
         public int2 GoalCell;
+
+        public Traversal Traversal;
         public int2 WindowMin;
         public uint VersionStamp;
         public int LastUsed;

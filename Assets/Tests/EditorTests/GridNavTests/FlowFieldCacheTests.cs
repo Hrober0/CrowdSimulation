@@ -261,14 +261,14 @@ namespace Tests.EditorTests.GridNavTests
             for (int i = 0; i < goals.Length; i++)
             {
                 goals[i] = new int2(i * 2 - 60, 0);
-                fields.TryAcquireSlot(goals[i], map, out slots[i]).Should().BeTrue();
+                fields.TryAcquireSlot(new FieldKey(goals[i], default), map, out slots[i]).Should().BeTrue();
                 fields.MarkUsed(slots[i]);
             }
 
             // One more destination, same frame. There is nowhere to put its field, and being told so is the
             // only safe answer - taking a slot somebody else is already using is what used to leave a
             // destination pointing at a field built for somewhere else.
-            fields.TryAcquireSlot(new int2(60, 60), map, out int _).Should()
+            fields.TryAcquireSlot(new FieldKey(new int2(60, 60), default), map, out int _).Should()
                   .BeFalse("every field in the cache is being built or read this frame");
 
             // The build job stamps everything that was acquired.

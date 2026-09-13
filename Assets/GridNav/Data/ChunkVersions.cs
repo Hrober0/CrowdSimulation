@@ -18,6 +18,19 @@ namespace GridNav
         /// </summary>
         public uint CostVersion;
 
-        public override string ToString() => $"Versions(passability: {PassabilityVersion}, cost: {CostVersion})";
+        /// <summary>
+        /// Bumped when a structure in the chunk appears, falls, or changes damage band. Consumers: the flow
+        /// field cache and the gate graph, but **only for a traversal that can break things**.
+        ///
+        /// It is separate from <see cref="CostVersion"/> on purpose, and it is the reason a fight is
+        /// affordable. A structure's health changes nothing for a hauler - a wall is a wall at any health -
+        /// so a battle raging across the map must not invalidate the fields the bread economy is steering on.
+        /// Folding this into the cost version would rebuild every civilian field around a building under
+        /// attack, for the length of the fight, to no effect whatever.
+        /// </summary>
+        public uint StructureVersion;
+
+        public override string ToString() =>
+            $"Versions(passability: {PassabilityVersion}, cost: {CostVersion}, structure: {StructureVersion})";
     }
 }

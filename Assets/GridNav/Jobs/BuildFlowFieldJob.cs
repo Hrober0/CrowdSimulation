@@ -44,7 +44,7 @@ namespace GridNav
             Integrate(slot, entry);
             StepDownhill(slot, entry);
 
-            entry.VersionStamp = FlowField.VersionStampOf(Map, entry.WindowMin);
+            entry.VersionStamp = FlowField.VersionStampOf(Map, entry.WindowMin, entry.Traversal);
             entry.Built = true;
             Storage.SetSlot(slot, entry);
         }
@@ -56,7 +56,8 @@ namespace GridNav
                 Storage.WriteIntegration(slot, i, FlowField.UNREACHABLE);
             }
 
-            if (!Map.IsPassable(entry.GoalCell) || !FlowField.Contains(entry.WindowMin, entry.GoalCell))
+            if (!Map.IsPassable(entry.GoalCell, entry.Traversal)
+                || !FlowField.Contains(entry.WindowMin, entry.GoalCell))
             {
                 return;
             }
@@ -76,7 +77,9 @@ namespace GridNav
                 }
 
                 int2 cell = FlowField.CellOf(entry.WindowMin, node.LocalIndex);
-                int stepCost = NavCost.OfCell(Map.GetCost(cell));
+                // The one line that makes a wall a door. Everything else about the search is unchanged -
+                // what differs between an army's field and a hauler's is only what the cells cost them.
+                int stepCost = NavCost.OfCell(Map.GetCost(cell, entry.Traversal));
 
                 for (int d = 0; d < DirectionUtils.DIRECTION_COUNT; d++)
                 {
@@ -89,7 +92,7 @@ namespace GridNav
                     }
 
                     // The real move is neighbour -> cell, so it is the neighbour that must be allowed to leave.
-                    if (!Map.CanTraverseFromNeighbour(cell, direction))
+                    if (!Map.CanTraverseFromNeighbour(cell, direction, entry.Traversal))
                     {
                         continue;
                     }
@@ -135,7 +138,7 @@ namespace GridNav
 
             // The mouth is a cell an agent has to be able to stand on. A blocked one means the bridge has been
             // built over or its bank has been walled in, and the crossing is not available until that changes.
-            if (!Map.IsPassable(link.From))
+            if (!Map.IsPassable(link.From, entry.Traversal))
             {
                 return;
             }
@@ -177,7 +180,8 @@ namespace GridNav
                     var direction = (Direction)d;
                     int2 neighbour = cell + DirectionUtils.Offset(direction);
 
-                    if (!FlowField.Contains(entry.WindowMin, neighbour) || !Map.CanTraverse(cell, direction))
+                    if (!FlowField.Contains(entry.WindowMin, neighbour)
+                        || !Map.CanTraverse(cell, direction, entry.Traversal))
                     {
                         continue;
                     }
@@ -226,7 +230,7 @@ namespace GridNav
                 return false;
             }
 
-            return across + NavCost.OfCell(Map.GetCost(link.To)) + link.Cost == here;
+            return across + NavCost.OfCell(Map.GetCost(link.To, entry.Traversal)) + link.Cost == here;
         }
 
         private struct CellNode : IComparable<CellNode>
