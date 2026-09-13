@@ -35,8 +35,12 @@ namespace Rts
         /// </summary>
         private const byte FIELD_WORK_PRIORITY = 4;
 
+        private ComponentLookup<WorkPriority> _priorities;
+
         public void OnCreate(ref SystemState state)
         {
+            _priorities = state.GetComponentLookup<WorkPriority>(isReadOnly: true);
+
             state.RequireForUpdate<OrderBook>();
             state.RequireForUpdate(SystemAPI.QueryBuilder().WithAny<Reaps, Sows>().Build());
         }
@@ -45,6 +49,8 @@ namespace Rts
         {
             OrderBook book = SystemAPI.GetSingleton<OrderBook>();
             double now = SystemAPI.Time.ElapsedTime;
+
+            _priorities.Update(ref state);
 
             var live = new NativeHashSet<Entity>(16, Allocator.Temp);
 
@@ -58,7 +64,7 @@ namespace Rts
                     continue;
                 }
 
-                Post(book, building, now);
+                Post(book, building, PriorityOf(building), now);
                 live.Add(building);
             }
 
@@ -73,7 +79,7 @@ namespace Rts
                     continue;
                 }
 
-                Post(book, building, now);
+                Post(book, building, PriorityOf(building), now);
                 live.Add(building);
             }
 
@@ -89,7 +95,16 @@ namespace Rts
         private static bool HasRoomFor(in DynamicBuffer<StorageSlot> slots, ItemId item) =>
             StorageSlotUtils.TryGetSlotIndex(slots, item, out int index) && slots[index].FreeCapacity > 0;
 
-        private static void Post(OrderBook book, Entity building, double now)
+        /// <summary>
+        /// What this building is asking with. The player's number if it has one, otherwise the old constant -
+        /// which is what keeps a building baked before work priorities existed asking exactly as it did.
+        /// </summary>
+        private byte PriorityOf(Entity building) =>
+            _priorities.TryGetComponent(building, out WorkPriority priority)
+                ? priority.Value
+                : FIELD_WORK_PRIORITY;
+
+        private static void Post(OrderBook book, Entity building, byte priority, double now)
         {
             // Keyed on (building, no item), exactly as a crafter's work order is - and for the same reason it
             // cannot collide with the haul orders a building posts, which all name a real item.
@@ -97,7 +112,7 @@ namespace Rts
             {
                 Order existing = book[index];
                 existing.Amount = 1;
-                existing.Priority = FIELD_WORK_PRIORITY;
+                existing.Priority = priority;
                 book[index] = existing;
                 return;
             }
@@ -108,12 +123,12 @@ namespace Rts
                 Target = building,
                 Item = ItemId.None,
                 Amount = 1,
-                Priority = FIELD_WORK_PRIORITY,
+                Priority = priority,
                 PostedTime = now,
 
                 // See StorageRequestSystem.Post: zero here would be an order older than the world.
                 LastClaimedTime = now,
-                Effective = FIELD_WORK_PRIORITY,
+                Effective = priority,
             });
         }
 

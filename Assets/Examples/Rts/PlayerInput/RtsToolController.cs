@@ -62,10 +62,18 @@ namespace Examples.Rts
         private bool _worldReady;
 
         private uint _spawnSeed = 1;
+        /// <summary>Shorter than this and the drag was a click. Roughly a fingertip's wobble.</summary>
+        private const float MIN_DRAG_PIXELS = 8f;
+
+        private const float DRAG_BORDER_PIXELS = 2f;
+
         private int2 _hoverCell;
 
-        /// <summary>The unit the Command tool last picked up. Instance state - it belongs to this cursor.</summary>
-        private Entity _commanded;
+        /// <summary>The units the Command tool last picked up. Instance state - it belongs to this cursor.</summary>
+        private readonly List<Entity> _commanded = new();
+
+        /// <summary>Where a drag box started, in screen pixels, or null when nothing is being dragged.</summary>
+        private Vector2? _dragStart;
         private int2 _lastPaintCell;
         private int2 _firstPaintCell;
         private bool _hovering;
@@ -150,11 +158,113 @@ namespace Examples.Rts
 
             _painting = false;
 
+            if (Tool == RtsTool.Command)
+            {
+                UpdateCommandDrag(grid);
+                return;
+            }
+
             if (Input.GetMouseButtonDown(0))
             {
                 Act(grid, _hoverCell);
             }
         }
+
+        /// <summary>
+        /// The Move tool's mouse: a drag picks units up, a click puts them down.
+        ///
+        /// Both gestures start the same way, so which one it was is only known on release - a drag that never
+        /// moved is a click. That is the standard RTS contract and it is worth matching exactly, because the
+        /// player's hand already knows it.
+        /// </summary>
+        private void UpdateCommandDrag(in GridWorld grid)
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                _dragStart = Input.mousePosition;
+                return;
+            }
+
+            if (!Input.GetMouseButtonUp(0) || _dragStart == null)
+            {
+                return;
+            }
+
+            Vector2 start = _dragStart.Value;
+            Vector2 end = Input.mousePosition;
+            _dragStart = null;
+
+            if (Vector2.Distance(start, end) < MIN_DRAG_PIXELS)
+            {
+                Command(_hoverCell);
+                return;
+            }
+
+            SelectInBox(start, end);
+        }
+
+        /// <summary>
+        /// Picks up every unit inside the box the player dragged.
+        ///
+        /// Screen space rather than world space, because the box the player drew is a screen rectangle and
+        /// anything else would select units they cannot see it touching.
+        /// </summary>
+        private void SelectInBox(Vector2 start, Vector2 end)
+        {
+            var box = Rect.MinMaxRect(
+                Mathf.Min(start.x, end.x), Mathf.Min(start.y, end.y),
+                Mathf.Max(start.x, end.x), Mathf.Max(start.y, end.y));
+
+            _commanded.Clear();
+
+            using EntityQuery query = _entities.CreateEntityQuery(ComponentType.ReadOnly<AgentMove>());
+            using NativeArray<AgentMove> agents = query.ToComponentDataArray<AgentMove>(Allocator.Temp);
+
+            foreach (AgentMove move in agents)
+            {
+                Vector3 screen = _resolved.WorldToScreenPoint(SimToWorld.Position(move.Position));
+                if (screen.z > 0f && box.Contains(new Vector2(screen.x, screen.y)) && MayCommand(move.Entity))
+                {
+                    _commanded.Add(move.Entity);
+                }
+            }
+
+            EventBus.Invoke<IGroupSelectionHandler>(h => h.OnGroupSelected(_commanded));
+        }
+
+        /// <summary>The box being dragged right now, drawn in screen space over everything.</summary>
+        private void OnGUI()
+        {
+            if (_dragStart == null || Tool != RtsTool.Command)
+            {
+                return;
+            }
+
+            Vector2 start = _dragStart.Value;
+            Vector2 end = Input.mousePosition;
+
+            // Screen space is bottom-left and IMGUI is top-left, so the y of both corners is flipped before
+            // the rectangle is built rather than after - flipping the finished rect gives a negative height.
+            var box = Rect.MinMaxRect(
+                Mathf.Min(start.x, end.x), Screen.height - Mathf.Max(start.y, end.y),
+                Mathf.Max(start.x, end.x), Screen.height - Mathf.Min(start.y, end.y));
+
+            Color previous = GUI.color;
+
+            GUI.color = new Color(0.3f, 0.9f, 0.4f, 0.15f);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+
+            GUI.color = new Color(0.3f, 0.9f, 0.4f, 0.9f);
+            DrawEdge(box.xMin, box.yMin, box.width, DRAG_BORDER_PIXELS);
+            DrawEdge(box.xMin, box.yMax - DRAG_BORDER_PIXELS, box.width, DRAG_BORDER_PIXELS);
+            DrawEdge(box.xMin, box.yMin, DRAG_BORDER_PIXELS, box.height);
+            DrawEdge(box.xMax - DRAG_BORDER_PIXELS, box.yMin, DRAG_BORDER_PIXELS, box.height);
+
+            GUI.color = previous;
+        }
+
+        private static void DrawEdge(float x, float y, float width, float height) =>
+            GUI.DrawTexture(new Rect(x, y, width, height), Texture2D.whiteTexture);
 
         private void Act(in GridWorld grid, int2 cell)
         {
@@ -291,20 +401,76 @@ namespace Examples.Rts
         {
             if (TryFindAgentAt(cell, out Entity agent) && MayCommand(agent))
             {
-                _commanded = agent;
+                _commanded.Clear();
+                _commanded.Add(agent);
+                EventBus.Invoke<IGroupSelectionHandler>(h => h.OnGroupSelected(_commanded));
                 EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Agent(agent, cell)));
                 return;
             }
 
-            if (!_entities.Exists(_commanded) || !_entities.HasBuffer<TaskStep>(_commanded))
+            if (_commanded.Count == 0)
             {
-                _commanded = Entity.Null;
                 Select(cell);
                 return;
             }
 
-            SendTo(_commanded, cell);
-            EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Agent(_commanded, cell)));
+            SendGroupTo(cell);
+        }
+
+        /// <summary>
+        /// Sends everyone picked up to one place, spread over the ground around it.
+        ///
+        /// Spread rather than stacked, because twenty agents handed the same cell is twenty agents that
+        /// cannot all reach it - each gives way to the others and none arrives, which is the converging-crowd
+        /// failure the idle rule's parking spacing exists to avoid. Ringing out from the cell costs nothing
+        /// and turns one impossible destination into twenty possible ones.
+        /// </summary>
+        private void SendGroupTo(int2 cell)
+        {
+            int placed = 0;
+
+            foreach (Entity agent in _commanded)
+            {
+                if (!_entities.Exists(agent) || !_entities.HasBuffer<TaskStep>(agent))
+                {
+                    continue;
+                }
+
+                SendTo(agent, SpreadCell(cell, placed));
+                placed++;
+            }
+
+            EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Ground(cell)));
+        }
+
+        /// <summary>
+        /// The nth spot of a square spiral out from a cell. Not checked against the map - an unreachable one
+        /// is the ordinary "no route" case, which the watchdog already answers by dropping the walk.
+        /// </summary>
+        private static int2 SpreadCell(int2 centre, int index)
+        {
+            if (index == 0)
+            {
+                return centre;
+            }
+
+            int ring = (int)math.ceil((math.sqrt(index + 1f) - 1f) * 0.5f);
+            int side = ring * 2 + 1;
+            int offset = index - (side - 2) * (side - 2);
+
+            int2 corner = centre - ring;
+            int perimeter = math.max(side - 1, 1);
+
+            int leg = offset / perimeter;
+            int along = offset % perimeter;
+
+            return leg switch
+            {
+                0 => corner + new int2(along, 0),
+                1 => corner + new int2(side - 1, along),
+                2 => corner + new int2(side - 1 - along, side - 1),
+                _ => corner + new int2(0, side - 1 - along),
+            };
         }
 
         /// <summary>

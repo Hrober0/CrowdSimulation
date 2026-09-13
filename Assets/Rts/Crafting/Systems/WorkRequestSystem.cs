@@ -42,7 +42,7 @@ namespace Rts
                     continue;
                 }
 
-                Post(book, crafter, recipe.ValueRO, now);
+                Post(book, crafter, PriorityOf(ref state, crafter, recipe.ValueRO), now);
                 live.Add(crafter);
             }
 
@@ -50,7 +50,16 @@ namespace Rts
             live.Dispose();
         }
 
-        private static void Post(OrderBook book, Entity crafter, in Recipe recipe, double now)
+        /// <summary>
+        /// The player's priority for this building if it has been given one, otherwise the recipe's. A
+        /// crafter without a <see cref="WorkPriority"/> asks exactly as it always did.
+        /// </summary>
+        private static byte PriorityOf(ref SystemState state, Entity crafter, in Recipe recipe) =>
+            state.EntityManager.HasComponent<WorkPriority>(crafter)
+                ? state.EntityManager.GetComponentData<WorkPriority>(crafter).Value
+                : recipe.Priority;
+
+        private static void Post(OrderBook book, Entity crafter, byte priority, double now)
         {
             // Work orders carry no item, so (crafter, none) is their key and cannot collide with the haul
             // orders the same building posts for its inputs - those all name a real item.
@@ -58,7 +67,7 @@ namespace Rts
             {
                 Order existing = book[index];
                 existing.Amount = 1;
-                existing.Priority = recipe.Priority;
+                existing.Priority = priority;
                 book[index] = existing;
                 return;
             }
@@ -69,12 +78,12 @@ namespace Rts
                 Target = crafter,
                 Item = ItemId.None,
                 Amount = 1,
-                Priority = recipe.Priority,
+                Priority = priority,
                 PostedTime = now,
 
                 // See StorageRequestSystem.Post: zero here would be an order older than the world.
                 LastClaimedTime = now,
-                Effective = recipe.Priority,
+                Effective = priority,
             });
         }
 

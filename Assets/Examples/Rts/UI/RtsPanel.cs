@@ -5,6 +5,7 @@ using GridNav;
 using HCore;
 using HCore.UI;
 using Rts;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -24,9 +25,13 @@ namespace Examples.Rts.UI
     /// input side needs no knowledge that a UI exists.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
-    public class RtsPanel : MonoBehaviour, ISelectionHandler, IPointerOverUiQuery, IUiScreenRectQuery
+    public class RtsPanel : MonoBehaviour, ISelectionHandler, IGroupSelectionHandler,
+                            IPointerOverUiQuery, IUiScreenRectQuery
     {
         [SerializeField] private RtsToolController _tools;
+
+        [SerializeField, Tooltip("Moved when a worker is picked out of a list. Found in the scene if unset.")]
+        private RtsCameraController _camera;
 
         private readonly List<(RtsTool tool, Button button)> _toolButtons = new();
         /// <summary>
@@ -40,6 +45,12 @@ namespace Examples.Rts.UI
         private readonly StringBuilder _text = new();
 
         private UIElementList<RtsSlotRow> _slots;
+        private VisualElement _workRow;
+        private Label _workLabel;
+        private VisualElement _occupantRow;
+
+        /// <summary>The units a drag box picked up. Empty unless a group is what is selected.</summary>
+        private readonly List<Entity> _group = new();
 
         // Held as fields so the per-frame refresh below hands the same two delegates over every time rather
         // than building a closure a frame for a panel somebody has left open.
@@ -66,7 +77,23 @@ namespace Examples.Rts.UI
         public Rect UiScreenRect() =>
             UIPanelScale.TryGetScreenRect(_panel, out Rect rect) ? rect : Rect.zero;
 
-        public void OnSelectionChanged(RtsSelection selection) => _selection = selection;
+        public void OnSelectionChanged(RtsSelection selection)
+        {
+            _selection = selection;
+            _group.Clear();
+        }
+
+        /// <summary>
+        /// A boxful of units. Copied rather than held, because the sender's list is valid for the call only.
+        /// </summary>
+        public void OnGroupSelected(IReadOnlyList<Entity> agents)
+        {
+            _group.Clear();
+            foreach (Entity agent in agents)
+            {
+                _group.Add(agent);
+            }
+        }
 
         private void OnEnable()
         {
@@ -77,7 +104,15 @@ namespace Examples.Rts.UI
                 _entities = world.EntityManager;
             }
 
+            // Looked up rather than wired, so a hand-built scene gets the behaviour without anybody having
+            // to know the panel wanted a camera. Null stays a valid answer: focusing is then a no-op.
+            if (_camera == null)
+            {
+                _camera = FindFirstObjectByType<RtsCameraController>();
+            }
+
             EventBus.RegisterHandler<ISelectionHandler>(this);
+            EventBus.RegisterHandler<IGroupSelectionHandler>(this);
             EventBus.RegisterSingleHandler<IPointerOverUiQuery>(this);
             EventBus.RegisterSingleHandler<IUiScreenRectQuery>(this);
 
@@ -89,6 +124,7 @@ namespace Examples.Rts.UI
         private void OnDisable()
         {
             EventBus.UnregisterHandler<ISelectionHandler>(this);
+            EventBus.UnregisterHandler<IGroupSelectionHandler>(this);
             EventBus.UnregisterSingleHandler<IPointerOverUiQuery>(this);
             EventBus.UnregisterSingleHandler<IUiScreenRectQuery>(this);
             _pointerOverUi = false;
@@ -125,8 +161,26 @@ namespace Examples.Rts.UI
 
             UIStyledElements.NewDivider(panel);
 
-            _selectionTitle = UIStyledElements.NewSubHeader(panel, "Nothing selected");
+            // Not NewSubHeader: that is muted grey on a near-black panel, which is the right weight for the
+            // word "WORLD" above a list and the wrong one for the name of the thing you just clicked. Styled
+            // here rather than by changing the shared helper, which every other panel in the project uses.
+            _selectionTitle = UIStyledElements.NewLabel(panel, "Nothing selected");
+            _selectionTitle.style.color = UIColors.TextPrimary;
+            _selectionTitle.style.fontSize = UIColors.FontSizeL;
+            _selectionTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _selectionTitle.style.marginTop = 12;
+
             _selectionBody = UIStyledElements.NewLabel(panel, "Click the world with the Inspect tool.");
+
+            _workRow = UIStyledElements.NewHorizontalGroup(panel);
+            _workRow.style.alignItems = Align.Center;
+            _workLabel = UIStyledElements.NewLabel(_workRow, "");
+            _workLabel.style.minWidth = 200;
+            UIStyledElements.NewButton(_workRow, "-", () => AdjustWorkPriority(-1)).style.minWidth = 26;
+            UIStyledElements.NewButton(_workRow, "+", () => AdjustWorkPriority(1)).style.minWidth = 26;
+
+            _occupantRow = UIStyledElements.NewHorizontalGroup(panel);
+            _occupantRow.style.flexWrap = Wrap.Wrap;
 
             ScrollView slotScroll = UIStyledElements.NewScrollView(panel);
             slotScroll.style.maxHeight = 440;
@@ -325,6 +379,12 @@ namespace Examples.Rts.UI
 
         private void RefreshSelection()
         {
+            if (_group.Count > 1)
+            {
+                ShowGroup();
+                return;
+            }
+
             switch (_selection.Kind)
             {
                 case SelectionKind.Building when _entities.Exists(_selection.Entity):
@@ -342,8 +402,66 @@ namespace Examples.Rts.UI
                 default:
                     _selectionTitle.text = "Nothing selected";
                     _selectionBody.text = "Click the world with the Inspect tool.";
+                    _workRow.SetActive(false);
+                    _occupantRow.SetActive(false);
                     _slots.Clear();
                     return;
+            }
+        }
+
+        /// <summary>
+        /// A boxful of units: where each of them is, and nothing else.
+        ///
+        /// Deliberately no stats. Twenty stat blocks is a wall of text nobody reads, and the question a group
+        /// selection is asking is "where are these and where shall they send them" - so the answer is a
+        /// position each, and a count. Clicking one drops to the ordinary single inspector, which is where
+        /// the stats live.
+        /// </summary>
+        private void ShowGroup()
+        {
+            Prune();
+
+            _selectionTitle.text = $"{_group.Count} units selected";
+            _workRow.SetActive(false);
+            _slots.Clear();
+
+            _text.Clear();
+            _text.AppendLine("Click the ground with the Move tool to send them.");
+
+            _occupantRow.SetActive(true);
+            _occupantRow.Clear();
+
+            foreach (Entity agent in _group)
+            {
+                if (!_entities.HasComponent<AgentMove>(agent))
+                {
+                    continue;
+                }
+
+                float2 position = _entities.GetComponentData<AgentMove>(agent).Position;
+                Vector3 world = SimToWorld.Position(position);
+
+                Entity captured = agent;
+                Button button = UIStyledElements.NewButton(
+                    _occupantRow,
+                    $"#{agent.Index}  {world.x:0.0}, {world.y:0.0}, {world.z:0.0}",
+                    () => ShowWorker(captured));
+
+                button.style.minWidth = 190;
+            }
+
+            _selectionBody.text = _text.ToString().TrimEnd();
+        }
+
+        /// <summary>Drops the units that have died or been taken off the map since the box was drawn.</summary>
+        private void Prune()
+        {
+            for (int i = _group.Count - 1; i >= 0; i--)
+            {
+                if (!_entities.Exists(_group[i]) || !_entities.HasComponent<AgentMove>(_group[i]))
+                {
+                    _group.RemoveAt(i);
+                }
             }
         }
 
@@ -390,6 +508,9 @@ namespace Examples.Rts.UI
             }
 
             _selectionBody.text = _text.ToString().TrimEnd();
+
+            RefreshWorkPriority(building);
+            RefreshOccupants(building);
 
             if (_entities.HasBuffer<StorageSlot>(building))
             {
@@ -451,6 +572,122 @@ namespace Examples.Rts.UI
             _text.AppendLine($"Health {health.Current} / {health.Max}");
         }
 
+        /// <summary>
+        /// How badly this building wants a worker, and the buttons to change it.
+        ///
+        /// Storage has had a priority the player can move since §7; labour had none, so a building standing
+        /// idle while its neighbour was staffed was something you could see and not something you could do
+        /// anything about. Shown only for buildings that actually ask for workers.
+        /// </summary>
+        private void RefreshWorkPriority(Entity building)
+        {
+            bool works = _entities.HasComponent<WorkPriority>(building);
+            _workRow.SetActive(works);
+
+            if (works)
+            {
+                _workLabel.text = $"Wants a worker: priority {_entities.GetComponentData<WorkPriority>(building).Value}";
+            }
+        }
+
+        private void AdjustWorkPriority(int delta)
+        {
+            if (_selection.Kind != SelectionKind.Building
+                || !_entities.Exists(_selection.Entity)
+                || !_entities.HasComponent<WorkPriority>(_selection.Entity))
+            {
+                return;
+            }
+
+            var priority = _entities.GetComponentData<WorkPriority>(_selection.Entity);
+            priority.Value = (byte)math.clamp(priority.Value + delta, 0, WorkPriority.MAX);
+            _entities.SetComponentData(_selection.Entity, priority);
+        }
+
+        /// <summary>
+        /// Who is working here, one button each rather than a count.
+        ///
+        /// "2 of 3 claimed" tells you the building is short-handed and nothing about *which* hands, which is
+        /// the question you actually have when a building is not producing - is somebody walking here from
+        /// the far side of the map, or is the third bench simply empty? Clicking one selects it and puts the
+        /// camera on it, which answers that in one click.
+        /// </summary>
+        private void RefreshOccupants(Entity building)
+        {
+            _occupantRow.Clear();
+
+            if (!_entities.HasComponent<Interior>(building))
+            {
+                _occupantRow.SetActive(false);
+                return;
+            }
+
+            _occupantRow.SetActive(true);
+
+            var interior = _entities.GetComponentData<Interior>(building);
+            Label caption = UIStyledElements.NewLabel(_occupantRow, $"Workers {interior.Occupied} in, {interior.Claimed} of {interior.Capacity} claimed");
+            caption.style.color = UIColors.TextPrimary;
+            caption.style.minWidth = 260;
+
+            foreach ((Entity agent, bool inside) in WorkersOf(building))
+            {
+                Entity captured = agent;
+                Button button = UIStyledElements.NewButton(
+                    _occupantRow, inside ? $"#{agent.Index} in" : $"#{agent.Index} →", () => ShowWorker(captured));
+
+                button.style.minWidth = 70;
+            }
+        }
+
+        /// <summary>
+        /// Everyone this building counts against its interior: inside it, or on the way with a claim held.
+        /// Both matter, and the difference between them is the whole of "why is nothing being made".
+        /// </summary>
+        private List<(Entity Agent, bool Inside)> WorkersOf(Entity building)
+        {
+            var workers = new List<(Entity, bool)>();
+
+            using EntityQuery query = _entities.CreateEntityQuery(
+                ComponentType.ReadOnly<InteriorClaim>(), ComponentType.ReadOnly<InsideBuilding>());
+
+            using NativeArray<Entity> agents = query.ToEntityArray(Allocator.Temp);
+
+            foreach (Entity agent in agents)
+            {
+                bool inside = _entities.IsComponentEnabled<InsideBuilding>(agent)
+                              && _entities.GetComponentData<InsideBuilding>(agent).Building == building;
+
+                bool claimed = _entities.IsComponentEnabled<InteriorClaim>(agent)
+                               && _entities.GetComponentData<InteriorClaim>(agent).Building == building;
+
+                if (inside || claimed)
+                {
+                    workers.Add((agent, inside));
+                }
+            }
+
+            return workers;
+        }
+
+        /// <summary>Selects a worker and puts the camera on it.</summary>
+        private void ShowWorker(Entity agent)
+        {
+            if (!_entities.HasComponent<AgentMove>(agent))
+            {
+                return;
+            }
+
+            float2 position = _entities.GetComponentData<AgentMove>(agent).Position;
+
+            if (_camera != null)
+            {
+                _camera.Focus(position);
+            }
+
+            EventBus.Invoke<ISelectionHandler>(
+                h => h.OnSelectionChanged(RtsSelection.Agent(agent, GridCoords.CellOf(position))));
+        }
+
         private void RefreshSlot(RtsSlotRow row, StorageSlot slot) => row.Refresh(slot, _adjustPriority);
 
         /// <summary>
@@ -498,6 +735,9 @@ namespace Examples.Rts.UI
 
         private void ShowAgent(Entity agent)
         {
+            _workRow.SetActive(false);
+            _occupantRow.SetActive(false);
+
             bool armed = _entities.HasComponent<Weapon>(agent)
                          && _entities.IsComponentEnabled<Weapon>(agent);
 
@@ -696,6 +936,9 @@ namespace Examples.Rts.UI
 
         private void ShowCell(int2 cell)
         {
+            _workRow.SetActive(false);
+            _occupantRow.SetActive(false);
+
             _selectionTitle.text = $"Cell {cell.x}, {cell.y}";
             _slots.Clear();
 

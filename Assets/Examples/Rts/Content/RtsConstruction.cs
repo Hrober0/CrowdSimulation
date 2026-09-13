@@ -175,6 +175,13 @@ namespace Examples.Rts
                 entities.AddComponent<IdleShelter>(building);
             }
 
+            // Anything that can ask for a worker gets a priority the player may move - a crafter, a mine, a
+            // lumber camp and a planter all post the same kind of order and should rank on the same scale.
+            if (blueprint.Crafts || blueprint.IsGatherer || blueprint.IsPlanter)
+            {
+                entities.AddComponentData(building, new WorkPriority { Value = WorkPriority.DEFAULT });
+            }
+
             if (blueprint.IsGatherer)
             {
                 entities.AddComponentData(building, new Reaps

@@ -86,7 +86,24 @@ namespace Examples.Rts.UI
             string incoming = slot.ReservedIn > 0 ? $"↓{slot.ReservedIn}" : "";
             _reserved.text = $"{outgoing} {incoming}".Trim();
 
-            _thresholds.text = $"in≤{slot.DeliverInUpTo}  out≥{slot.DeliverOutDownTo}  prio {slot.Priority}";
+            // Spelled out rather than notated. "in<=20 out>=20 prio 6" is four facts in nine characters and
+            // unreadable unless you already know §7 by heart - which is the opposite of what an inspector is
+            // for. The thresholds are also *rules*, so they read better as sentences than as inequalities.
+            _thresholds.text = $"{Accepts(slot)} · {Gives(slot)} · priority {slot.Priority}";
         }
+
+        /// <summary>What the slot will still take in, in words.</summary>
+        private static string Accepts(in StorageSlot slot) =>
+            slot.DeliverInUpTo <= 0
+                ? "asks for none"
+                : $"asks up to {slot.DeliverInUpTo}";
+
+        /// <summary>What it will let go of, in words.</summary>
+        private static string Gives(in StorageSlot slot) =>
+            slot.DeliverOutDownTo >= slot.Capacity
+                ? "gives none"
+                : slot.DeliverOutDownTo <= 0
+                    ? "gives all"
+                    : $"keeps {slot.DeliverOutDownTo}";
     }
 }

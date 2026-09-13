@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Examples.Rts
@@ -26,6 +27,19 @@ namespace Examples.Rts
         private bool _dragging;
 
         private void Awake() => _camera = GetComponent<Camera>();
+
+        /// <summary>
+        /// Puts a point in the middle of the view, keeping the height the camera is at.
+        ///
+        /// Snaps rather than slides. A pan that takes time is nicer to watch and worse to use when the whole
+        /// reason you asked was to see where something is, and there is nothing here to keep a slide in step
+        /// with a target that is walking away.
+        /// </summary>
+        public void Focus(float2 simPosition)
+        {
+            Vector3 world = SimToWorld.Position(simPosition);
+            transform.position = new Vector3(world.x, world.y, transform.position.z);
+        }
 
         private void LateUpdate()
         {
