@@ -73,7 +73,14 @@ namespace Examples.Rts.EditorTools
             BuildQuadPrefab(AGENT_PREFAB, AGENT_MATERIAL, "RtsAgentView", new Color(0.95f, 0.85f, 0.35f), 0.7f);
             BuildQuadPrefab(BUILDING_PREFAB, BUILDING_MATERIAL, "RtsBuildingView", Color.white, 1f);
             BuildCirclePrefab(OBJECT_PREFAB, OBJECT_MATERIAL, "RtsObjectView", new Color(0.28f, 0.62f, 0.32f));
-            BuildPanelSettings();
+
+            // Only if missing: the battle scenes point at it too, and re-creating it gives it a new GUID.
+            if (!File.Exists(PANEL_SETTINGS))
+            {
+                BuildPanelSettings();
+            }
+
+            BuildCombatPrefabs();
 
             // Flushed to disk before anything in the scene points at them. A scene can only serialise a
             // reference to an asset that has a file to have a GUID for; referencing one that exists only in
@@ -93,6 +100,7 @@ namespace Examples.Rts.EditorTools
 
             BuildCamera();
             GameObject sandbox = BuildSandbox(agentPrefab, buildingPrefab, objectPrefab);
+            BuildCombatView();
             BuildUi(panel, sandbox.GetComponent<RtsToolController>());
 
             EditorSceneManager.SaveScene(scene, SCENE_PATH);
@@ -155,16 +163,8 @@ namespace Examples.Rts.EditorTools
                 BuildPanelSettings();
             }
 
-            Mesh circle = LoadOrCreateCircleMesh(CIRCLE_MESH);
-
-            // One body material for both soldier prefabs. Creating it once per prefab replaces the first
-            // asset with the second, and the prefab saved in between is left holding the one that was lost.
-            Material body = CreateUnlitMaterial(SOLDIER_BODY_MATERIAL, Color.white, twoSided: true);
-
-            BuildBattleAgentPrefab(circle);
-            BuildSwordPrefab(circle, body);
-            BuildGunPrefab(circle, body);
-            BuildBulletPrefab();
+            BuildBattleAgentPrefab(LoadOrCreateCircleMesh(CIRCLE_MESH));
+            BuildCombatPrefabs();
 
             // Flushed before the scene points at them, for the reason Build gives.
             AssetDatabase.SaveAssets();
@@ -194,14 +194,9 @@ namespace Examples.Rts.EditorTools
             SetPrivate(agents, "_agentPrefab", Load<GameObject>(BATTLE_AGENT_PREFAB));
             SetPrivate(buildings, "_buildingPrefab", Load<GameObject>(BUILDING_PREFAB));
             SetPrivate(objects, "_objectPrefab", Load<GameObject>(OBJECT_PREFAB));
+            SetValue(agents, "_hideArmed", p => p.boolValue = true);
 
-            // Its own object, because its instances are parented under it and would bury the battle object's
-            // components in the hierarchy.
-            var combatObject = new GameObject("Combat View");
-            CombatViewSettings combat = combatObject.AddComponent<CombatViewSettings>();
-            SetPrivate(combat, "_prefabs.Sword", Load<GameObject>(SWORD_PREFAB));
-            SetPrivate(combat, "_prefabs.Gun", Load<GameObject>(GUN_PREFAB));
-            SetPrivate(combat, "_prefabs.Bullet", Load<GameObject>(BULLET_PREFAB));
+            BuildCombatView();
 
             BuildUi(Load<PanelSettings>(PANEL_SETTINGS), tools);
 
@@ -210,6 +205,36 @@ namespace Examples.Rts.EditorTools
             AssetDatabase.Refresh();
 
             Debug.Log($"RTS battle scene written to {scenePath}");
+        }
+
+        /// <summary>
+        /// The soldier, weapon and bullet prefabs every scene's combat view draws from, so a soldier looks the
+        /// same in the sandbox as on a battlefield.
+        /// </summary>
+        private static void BuildCombatPrefabs()
+        {
+            Mesh circle = LoadOrCreateCircleMesh(CIRCLE_MESH);
+
+            // One body material for both soldier prefabs. Creating it once per prefab replaces the first
+            // asset with the second, and the prefab saved in between is left holding the one that was lost.
+            Material body = CreateUnlitMaterial(SOLDIER_BODY_MATERIAL, Color.white, twoSided: true);
+
+            BuildSwordPrefab(circle, body);
+            BuildGunPrefab(circle, body);
+            BuildBulletPrefab();
+        }
+
+        /// <summary>
+        /// Its own object, because its instances are parented under it and would bury the scene object's
+        /// components in the hierarchy.
+        /// </summary>
+        private static void BuildCombatView()
+        {
+            var combatObject = new GameObject("Combat View");
+            CombatViewSettings combat = combatObject.AddComponent<CombatViewSettings>();
+            SetPrivate(combat, "_prefabs.Sword", Load<GameObject>(SWORD_PREFAB));
+            SetPrivate(combat, "_prefabs.Gun", Load<GameObject>(GUN_PREFAB));
+            SetPrivate(combat, "_prefabs.Bullet", Load<GameObject>(BULLET_PREFAB));
         }
 
         private static Camera BuildCamera()
@@ -248,6 +273,7 @@ namespace Examples.Rts.EditorTools
             SetPrivate(agents, "_agentPrefab", agentPrefab);
             SetPrivate(buildings, "_buildingPrefab", buildingPrefab);
             SetPrivate(objects, "_objectPrefab", objectPrefab);
+            SetValue(agents, "_hideArmed", p => p.boolValue = true);
 
             // Nothing to set on the tool controller here: the panel drives it, and the camera resolves to
             // Camera.main when its own field is empty.

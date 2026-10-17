@@ -60,6 +60,8 @@ namespace Examples.Rts.UI
         private VisualElement _buildRow;
         private VisualElement _roadRow;
         private Button _rotateButton;
+        private Button _sideButton;
+        private byte _shownSide = byte.MaxValue;
         private BuildingKind _shownRotateKind;
         private GridRotation _shownRotation;
         private bool _rotateLabelShown;
@@ -140,6 +142,7 @@ namespace Examples.Rts.UI
             RefreshSelection();
             RefreshWorldCounts();
             RefreshRotateLabel();
+            RefreshSideLabel();
         }
 
         // ---- layout ------------------------------------------------------------------------------------
@@ -234,7 +237,37 @@ namespace Examples.Rts.UI
             // rather than the turn count, because which way the door faces is the thing being chosen - the
             // quarter turns are only how you get there.
             _rotateButton = UIStyledElements.NewButton(_buildRow, RotateLabel(), RotateBuilding);
+
+            // Which side the next building is for. A sandbox control: without it nothing on the map is ever
+            // an enemy structure for the player's soldiers to attack.
+            _sideButton = UIStyledElements.NewButton(_buildRow, SideLabel(), ToggleBuildSide);
         }
+
+        private void ToggleBuildSide()
+        {
+            if (_tools != null)
+            {
+                _tools.ToggleBuildSide();
+            }
+
+            RefreshSideLabel();
+        }
+
+        /// <summary>Read from the controller, and rewritten only when it changes - see RefreshRotateLabel.</summary>
+        private void RefreshSideLabel()
+        {
+            if (_sideButton == null || _tools == null || _tools.BuildFaction == _shownSide)
+            {
+                return;
+            }
+
+            _shownSide = _tools.BuildFaction;
+            _sideButton.text = SideLabel();
+            _sideButton.style.color = RtsFactions.Colour(_shownSide);
+        }
+
+        private string SideLabel() =>
+            _tools == null ? "Side (T)" : $"Side: {RtsFactions.Name(_tools.BuildFaction)} (T)";
 
         private void RotateBuilding()
         {
@@ -371,7 +404,7 @@ namespace Examples.Rts.UI
             RtsTool.Road => "Road",
             RtsTool.Demolish => "Demolish",
             RtsTool.SpawnAgent => "Agents",
-            RtsTool.Command => "Move",
+            RtsTool.Command => "Move / Attack",
             _ => tool.ToString(),
         };
 

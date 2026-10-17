@@ -21,6 +21,7 @@ namespace Examples.Rts
         private JobHandle _sync;
         private ComponentLookup<DoorUse> _doors;
         private ComponentLookup<OnBridge> _bridges;
+        private ComponentLookup<Weapon> _weapons;
 
         /// <summary>Sorting offset towards the camera, in world units. Presentation only.</summary>
         public float Depth { get; set; }
@@ -39,6 +40,13 @@ namespace Examples.Rts
 
         /// <summary>How far from the camera a view is still worth having. Default is "no culling".</summary>
         public ViewCulling Culling { get; set; }
+
+        /// <summary>
+        /// Leave armed agents to somebody else. Set when the scene has a <see cref="CombatViewSettings"/>,
+        /// which draws every soldier with its side's colour and its weapon - a second, plain view underneath
+        /// it would only show round the edges.
+        /// </summary>
+        public bool HideArmed { get; set; }
 
         public void Bind(AgentViewPool pool)
         {
@@ -66,6 +74,7 @@ namespace Examples.Rts
         {
             _doors = GetComponentLookup<DoorUse>(isReadOnly: true);
             _bridges = GetComponentLookup<OnBridge>(isReadOnly: true);
+            _weapons = GetComponentLookup<Weapon>(isReadOnly: true);
         }
 
         protected override void OnUpdate()
@@ -81,12 +90,18 @@ namespace Examples.Rts
             ViewCulling culling = Culling;
             _doors.Update(this);
             _bridges.Update(this);
+            _weapons.Update(this);
 
             _pool.BeginFrame();
 
             foreach ((RefRO<AgentMove> agent, Entity entity)
                      in SystemAPI.Query<RefRO<AgentMove>>().WithAll<ViewVisible>().WithEntityAccess())
             {
+                if (HideArmed && _weapons.HasComponent(entity) && _weapons.IsComponentEnabled(entity))
+                {
+                    continue;
+                }
+
                 if (culling.IsVisible(agent.ValueRO.Position))
                 {
                     _pool.Show(entity, FrameOf(entity, agent.ValueRO));

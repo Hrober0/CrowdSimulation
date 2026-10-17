@@ -96,12 +96,16 @@ namespace Examples.Rts
         /// <summary>
         /// How much of a beating it takes, or zero for a building nothing can hurt.
         ///
-        /// Only a turret has one today, and that is not an assertion that a bakery is indestructible - it is
-        /// that nothing yet attacks one. Step 13 fills this column in, and the cost model there reads the
-        /// fraction remaining, which is why the number lives on the blueprint rather than being a constant
-        /// in the combat code.
+        /// Every building has some except a bridge. It used to be only the turret and the camp, and the rest
+        /// were not just tough but untouchable: a building with no health is never a target, so raiders sent
+        /// at a farm walked up to it and stood there. A blueprint that does not say gets
+        /// <see cref="HEALTH_PER_CELL"/> for every cell it covers, so a big building takes longer to knock
+        /// down than a small one without anybody having to tune each row.
         /// </summary>
         public readonly int Health;
+
+        /// <summary>What a building is worth per cell of footprint when its blueprint does not say.</summary>
+        public const int HEALTH_PER_CELL = 60;
 
         /// <summary>What it shoots with, or an unarmed <see cref="Rts.Weapon"/> for a building that does not.</summary>
         public readonly Weapon Weapon;
@@ -143,7 +147,9 @@ namespace Examples.Rts
             Harvests = harvests;
             HarvestRange = harvestRange;
             Plants = plants;
-            Health = health;
+
+            // A bridge is nobody's and is never fought over; everything else can be knocked down.
+            Health = health > 0 || bridgeCells > 0 ? health : HEALTH_PER_CELL * size.x * size.y;
             Weapon = weapon;
             Trains = trains;
         }

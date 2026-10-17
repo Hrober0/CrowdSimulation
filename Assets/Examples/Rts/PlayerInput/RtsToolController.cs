@@ -19,7 +19,10 @@ namespace Examples.Rts
         Road,
         SpawnAgent,
 
-        /// <summary>Click a unit to pick it up, click the ground to send it there.</summary>
+        /// <summary>
+        /// Click a unit to pick it up, click the ground to send it there, click an enemy - a unit or a
+        /// building - to send it to fight.
+        /// </summary>
         Command,
     }
 
@@ -41,6 +44,9 @@ namespace Examples.Rts
 
         [SerializeField, Tooltip("Turns the building under the cursor a quarter turn clockwise.")]
         private KeyCode _rotateKey = KeyCode.R;
+
+        [SerializeField, Tooltip("Switches which side the next building is placed for.")]
+        private KeyCode _sideKey = KeyCode.T;
 
         /// <summary>Smaller than a cell, so the doorstep marker reads as a marker and not as another wall.</summary>
         private const float DOORSTEP_GIZMO_SCALE = 0.55f;
@@ -109,6 +115,17 @@ namespace Examples.Rts
         /// <summary>Turns the building a quarter turn clockwise. Also the panel's button.</summary>
         public void RotateBuild() => BuildRotation = BuildingGeometry.NextClockwise(BuildRotation);
 
+        /// <summary>
+        /// Which side the next building is placed for. A sandbox affordance, like commanding either side's
+        /// units: without it every building on the map is the player's, and nothing ever has an enemy
+        /// structure to attack.
+        /// </summary>
+        public byte BuildFaction { get; private set; } = RtsFactions.PLAYER;
+
+        /// <summary>Swaps the side the next building is placed for. Also the panel's button.</summary>
+        public void ToggleBuildSide() =>
+            BuildFaction = BuildFaction == RtsFactions.PLAYER ? RtsFactions.RAIDERS : RtsFactions.PLAYER;
+
         private void OnEnable()
         {
             _resolved = _camera != null ? _camera : Camera.main;
@@ -138,6 +155,11 @@ namespace Examples.Rts
             if (Tool == RtsTool.Build && Input.GetKeyDown(_rotateKey))
             {
                 RotateBuild();
+            }
+
+            if (Tool == RtsTool.Build && Input.GetKeyDown(_sideKey))
+            {
+                ToggleBuildSide();
             }
 
             CanPlaceHere = Tool == RtsTool.Build
@@ -302,7 +324,7 @@ namespace Examples.Rts
                 return;
             }
 
-            Entity building = RtsConstruction.Place(_entities, blueprint, cell, BuildRotation);
+            Entity building = RtsConstruction.Place(_entities, blueprint, cell, BuildRotation, BuildFaction);
             EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Of(building, cell)));
         }
 
@@ -399,6 +421,13 @@ namespace Examples.Rts
         /// </summary>
         private void Command(int2 cell)
         {
+            // An enemy under the cursor is a target before it is a unit to pick up: with soldiers in hand,
+            // clicking something they are at war with means "fight that".
+            if (_commanded.Count > 0 && TryFindTargetAt(cell, out Entity target) && Attack(target, cell))
+            {
+                return;
+            }
+
             if (TryFindAgentAt(cell, out Entity agent) && MayCommand(agent))
             {
                 _commanded.Clear();
@@ -441,6 +470,118 @@ namespace Examples.Rts
             }
 
             EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(RtsSelection.Ground(cell)));
+        }
+
+        /// <summary>
+        /// Sends every soldier in hand that is at war with the target to fight it, and walks the rest to the
+        /// spot. False when nobody in hand can fight it - an own-side building, or a group of workers - so the
+        /// click falls through to an ordinary pick-up or move.
+        ///
+        /// The fight is the same <see cref="TaskStep.Engage"/> the order market hands out, under the same
+        /// <see cref="AssignedOrder"/>, so the threat system sees the target as being dealt with and the order
+        /// is released the usual way when the step ends. The soldier is re-posted at the target, because a
+        /// leash measured from where it used to stand would end a chase the player has just asked for.
+        /// </summary>
+        private bool Attack(Entity target, int2 cell)
+        {
+            if (!TryLocate(target, out float2 at))
+            {
+                return false;
+            }
+
+            Faction theirs = _entities.HasComponent<Faction>(target)
+                ? _entities.GetComponentData<Faction>(target)
+                : default;
+            int moved = 0;
+            bool anyone = false;
+
+            foreach (Entity agent in _commanded)
+            {
+                if (!_entities.Exists(agent) || !_entities.HasBuffer<TaskStep>(agent))
+                {
+                    continue;
+                }
+
+                if (!CanFight(agent, theirs))
+                {
+                    continue;
+                }
+
+                anyone = true;
+                Weapon weapon = _entities.GetComponentData<Weapon>(agent);
+
+                DynamicBuffer<TaskStep> steps = Interrupt(agent);
+                steps.Add(TaskStep.Engage(target, weapon.Range));
+
+                _entities.SetComponentData(agent, new AssignedOrder { Kind = OrderKind.Fight, Target = target });
+                _entities.SetComponentEnabled<AssignedOrder>(agent, true);
+
+                Post post = _entities.GetComponentData<Post>(agent);
+                post.Home = at;
+                _entities.SetComponentData(agent, post);
+            }
+
+            if (!anyone)
+            {
+                return false;
+            }
+
+            // Workers in the same group go with them rather than standing where they were picked up.
+            foreach (Entity agent in _commanded)
+            {
+                if (_entities.Exists(agent) && _entities.HasBuffer<TaskStep>(agent)
+                    && !CanFight(agent, theirs))
+                {
+                    SendTo(agent, SpreadCell(cell, ++moved));
+                }
+            }
+
+            EventBus.Invoke<ISelectionHandler>(h => h.OnSelectionChanged(
+                _entities.HasComponent<AgentMove>(target)
+                    ? RtsSelection.Agent(target, cell)
+                    : RtsSelection.Of(target, cell)));
+            return true;
+        }
+
+        /// <summary>Armed, and on a side the target is at war with.</summary>
+        private bool CanFight(Entity agent, Faction theirs) =>
+            _entities.HasComponent<Weapon>(agent)
+            && _entities.IsComponentEnabled<Weapon>(agent)
+            && _entities.HasComponent<Faction>(agent)
+            && Faction.AreEnemies(_entities.GetComponentData<Faction>(agent), theirs);
+
+        /// <summary>A unit standing on the cell, or a building covering it - whatever a click there means.</summary>
+        private bool TryFindTargetAt(int2 cell, out Entity target)
+        {
+            if (TryFindAgentAt(cell, out target))
+            {
+                return true;
+            }
+
+            return TryFindBuildingAt(cell, out target)
+                   && _entities.HasComponent<Health>(target)
+                   && _entities.HasComponent<Faction>(target);
+        }
+
+        /// <summary>Where a target is: a body on the map, or the middle of a building that has been laid.</summary>
+        private bool TryLocate(Entity target, out float2 at)
+        {
+            if (_entities.HasComponent<AgentMove>(target))
+            {
+                at = _entities.GetComponentData<AgentMove>(target).Position;
+                return _entities.IsComponentEnabled<AgentMove>(target);
+            }
+
+            if (_entities.HasBuffer<BuildingFootprintCell>(target)
+                && FootprintBounds.TryOf(_entities.GetBuffer<BuildingFootprintCell>(target),
+                                         out FootprintBounds bounds))
+            {
+                at = bounds.Centre;
+                return true;
+            }
+
+            at = default;
+            return false;
         }
 
         /// <summary>
@@ -493,6 +634,26 @@ namespace Examples.Rts
         /// </summary>
         private void SendTo(Entity agent, int2 cell)
         {
+            DynamicBuffer<TaskStep> steps = Interrupt(agent);
+            steps.Add(TaskStep.GoTo(cell));
+
+            // Moving a soldier *is* re-posting it: where you last told it to stand is what it guards, and
+            // what its leash is measured from. That makes "move the garrison" and "change what the garrison
+            // covers" one gesture rather than two (see Post).
+            if (_entities.HasComponent<Post>(agent))
+            {
+                Post post = _entities.GetComponentData<Post>(agent);
+                post.Home = GridCoords.CellCenter(cell);
+                _entities.SetComponentData(agent, post);
+            }
+        }
+
+        /// <summary>
+        /// Drops whatever the agent was doing, walks it out first if it is indoors, and hands back its emptied
+        /// step list for the new order. Shared by moving and attacking, which differ only in what goes next.
+        /// </summary>
+        private DynamicBuffer<TaskStep> Interrupt(Entity agent)
+        {
             DynamicBuffer<TaskStep> steps = _entities.GetBuffer<TaskStep>(agent);
             steps.Clear();
 
@@ -509,17 +670,7 @@ namespace Examples.Rts
                 steps.Add(TaskStep.Exit(building, doorstep));
             }
 
-            steps.Add(TaskStep.GoTo(cell));
-
-            // Moving a soldier *is* re-posting it: where you last told it to stand is what it guards, and
-            // what its leash is measured from. That makes "move the garrison" and "change what the garrison
-            // covers" one gesture rather than two (see Post).
-            if (_entities.HasComponent<Post>(agent))
-            {
-                Post post = _entities.GetComponentData<Post>(agent);
-                post.Home = GridCoords.CellCenter(cell);
-                _entities.SetComponentData(agent, post);
-            }
+            return steps;
         }
 
         private void Select(int2 cell)

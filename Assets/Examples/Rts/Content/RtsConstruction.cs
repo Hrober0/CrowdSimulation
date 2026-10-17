@@ -224,9 +224,15 @@ namespace Examples.Rts
             AddStorage(entities, building, blueprint);
             AddRecipe(entities, building, blueprint);
 
+            // Another side's building is its kind's colour pulled halfway to that side's, so an enemy farm still
+            // reads as a farm and is still plainly not yours.
+            UnityEngine.Color tint = faction == RtsFactions.PLAYER
+                ? blueprint.Tint
+                : UnityEngine.Color.Lerp(blueprint.Tint, RtsFactions.Colour(faction), 0.5f);
+
             entities.AddComponentData(building, new BuildingVisual
             {
-                Tint = new float4(blueprint.Tint.r, blueprint.Tint.g, blueprint.Tint.b, blueprint.Tint.a),
+                Tint = new float4(tint.r, tint.g, tint.b, tint.a),
             });
 
             entities.AddComponentData(building, new BuildingLabel { Kind = blueprint.Kind });

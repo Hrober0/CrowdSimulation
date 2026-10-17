@@ -37,6 +37,11 @@ namespace Examples.Rts
         [SerializeField, Tooltip("What the cull radius is measured from. Falls back to the main camera.")]
         private Transform _focus;
 
+        [SerializeField]
+        [Tooltip("Give armed agents no view here. Set when a Combat View draws soldiers, so every soldier looks "
+                 + "the same whichever scene it is in.")]
+        private bool _hideArmed;
+
         private AgentViewPool _pool;
         private ViewSyncSystem _system;
         private Transform _resolvedFocus;
@@ -80,6 +85,7 @@ namespace Examples.Rts
             _system.Depth = _depth;
             _system.BridgeLift = _bridgeLift;
             _system.TurnDegreesPerSecond = _turnDegreesPerSecond;
+            _system.HideArmed = _hideArmed;
             _system.Culling = _resolvedFocus != null
                 ? new ViewCulling(SimToWorld.ToSim(_resolvedFocus.position), _cullRadius)
                 : default;
