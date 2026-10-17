@@ -30,6 +30,12 @@ namespace Rts
     /// leash long enough to see across a battlefield made it 450 ms a tick at 300 a side. Turned round, every
     /// agent looks at the posts near it, bucketed by side, and stops at the first one whose leash it is in -
     /// in a fight that is almost always the first bucket it looks at.
+    ///
+    /// **Buildings are threats too.** An enemy structure inside a leash is posted the same way, a step below
+    /// an enemy body and for a few attackers rather than one: a body shoots back and a wall does not, so the
+    /// body comes first, but a lone raider chipping at a 300-health hut is a siege nobody would watch. Its
+    /// distance is to the nearest edge of the footprint, like everything that reaches for a building
+    /// (<see cref="FootprintBounds"/>).
     /// </summary>
     [UpdateInGroup(typeof(RtsEconomyGroup))]
     [UpdateAfter(typeof(WorkRequestSystem))]
@@ -42,6 +48,15 @@ namespace Rts
         /// warehouse waiting another ten seconds for its delivery.
         /// </summary>
         private const byte FIGHT_PRIORITY = 12;
+
+        /// <summary>Under a body, over every economic job: see the summary.</summary>
+        private const byte SIEGE_PRIORITY = 11;
+
+        /// <summary>
+        /// How many soldiers one building is handed out to. More than one, because a building is slow to
+        /// knock down alone; few enough that a camp next door is not emptied of its whole garrison for it.
+        /// </summary>
+        private const int SIEGE_ATTACKERS = 4;
 
         /// <summary>
         /// Cells per side of a post bucket. Large against a body and small against a leash: a leash of ten
@@ -87,10 +102,30 @@ namespace Rts
                         continue;
                     }
 
-                    if (posts.IsInsideEnemyLeash(move.ValueRO.Position, faction.ValueRO))
+                    var body = new FootprintBounds(move.ValueRO.Position, move.ValueRO.Position);
+                    if (posts.IsInsideEnemyLeash(body, faction.ValueRO))
                     {
                         threats.Add(entity);
-                        PostThreat(book, entity, now);
+                        PostThreat(book, entity, FIGHT_PRIORITY, amount: 1, now);
+                    }
+                }
+
+                // Buildings: anything with a side and something to lose. A bridge has neither.
+                foreach ((RefRO<Faction> faction, RefRO<Health> health,
+                          DynamicBuffer<BuildingFootprintCell> footprint, Entity entity)
+                         in SystemAPI.Query<RefRO<Faction>, RefRO<Health>, DynamicBuffer<BuildingFootprintCell>>()
+                                     .WithEntityAccess())
+                {
+                    if (threats.Contains(entity) || !health.ValueRO.IsAlive
+                        || !FootprintBounds.TryOf(footprint, out FootprintBounds bounds))
+                    {
+                        continue;
+                    }
+
+                    if (posts.IsInsideEnemyLeash(bounds, faction.ValueRO))
+                    {
+                        threats.Add(entity);
+                        PostThreat(book, entity, SIEGE_PRIORITY, SIEGE_ATTACKERS, now);
                     }
                 }
             }
@@ -157,15 +192,16 @@ namespace Rts
 
         /// <summary>
         /// One order per threat. <see cref="ItemId.None"/> keys it beside the work orders, which cannot
-        /// collide: a work order's target is a building and a fight order's is a body.
+        /// collide: a work order always names the item it wants, and a fight order never does - even when its
+        /// target is a building.
         /// </summary>
-        private static void PostThreat(OrderBook book, Entity threat, double now)
+        private static void PostThreat(OrderBook book, Entity threat, byte priority, int amount, double now)
         {
-            if (book.TryFind(threat, ItemId.None, out int index))
+            if (book.TryFind(threat, ItemId.None, OrderKind.Fight, out int index))
             {
                 Order existing = book[index];
-                existing.Amount = 1;
-                existing.Priority = FIGHT_PRIORITY;
+                existing.Amount = amount;
+                existing.Priority = priority;
                 book[index] = existing;
                 return;
             }
@@ -176,13 +212,14 @@ namespace Rts
                 Target = threat,
                 Item = ItemId.None,
 
-                // One at a time. A second soldier on the same raider is not forbidden - it is simply not
-                // *asked for*, and what stops the pile-on is that the order goes away once it is claimed.
-                Amount = 1,
-                Priority = FIGHT_PRIORITY,
+                // One at a time for a body. A second soldier on the same raider is not forbidden - it is
+                // simply not *asked for*, and what stops the pile-on is that the order goes away once it is
+                // claimed. A building asks for a few (see SIEGE_ATTACKERS).
+                Amount = amount,
+                Priority = priority,
                 PostedTime = now,
                 LastClaimedTime = now,
-                Effective = FIGHT_PRIORITY,
+                Effective = priority,
             });
         }
 
@@ -238,13 +275,14 @@ namespace Rts
             }
 
             /// <summary>
-            /// Whether any post of a side this one is at war with has <paramref name="position"/> inside its
-            /// leash. Stops at the first one found: one is enough to make it a threat.
+            /// Whether any post of a side this one is at war with has some of <paramref name="area"/> inside
+            /// its leash - a body is an area with no size. Stops at the first one found: one is enough to make
+            /// it a threat.
             /// </summary>
-            public readonly bool IsInsideEnemyLeash(float2 position, Faction mine)
+            public readonly bool IsInsideEnemyLeash(in FootprintBounds area, Faction mine)
             {
-                int2 min = BucketOf(position - _longestLeash);
-                int2 max = BucketOf(position + _longestLeash);
+                int2 min = BucketOf(area.Min - _longestLeash);
+                int2 max = BucketOf(area.Max + _longestLeash);
 
                 foreach (Faction side in _sides)
                 {
@@ -264,7 +302,7 @@ namespace Rts
 
                         do
                         {
-                            if (math.distancesq(position, watch.Home) <= watch.LeashSq)
+                            if (area.DistanceSq(watch.Home) <= watch.LeashSq)
                             {
                                 return true;
                             }

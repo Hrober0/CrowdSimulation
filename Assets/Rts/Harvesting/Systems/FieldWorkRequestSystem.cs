@@ -108,7 +108,7 @@ namespace Rts
         {
             // Keyed on (building, no item), exactly as a crafter's work order is - and for the same reason it
             // cannot collide with the haul orders a building posts, which all name a real item.
-            if (book.TryFind(building, ItemId.None, out int index))
+            if (book.TryFind(building, ItemId.None, OrderKind.Work, out int index))
             {
                 Order existing = book[index];
                 existing.Amount = 1;

@@ -65,7 +65,7 @@ namespace Rts
 
         private static void Post(OrderBook book, Entity building, in StorageSlot slot, double now)
         {
-            if (book.TryFind(building, slot.Item, out int index))
+            if (book.TryFind(building, slot.Item, OrderKind.Haul, out int index))
             {
                 Order existing = book[index];
                 existing.Amount = slot.WantedIn;

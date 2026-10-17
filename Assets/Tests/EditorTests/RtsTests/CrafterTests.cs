@@ -30,7 +30,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(bakery, ItemId.None, out int index).Should().BeTrue();
+            _world.Orders.TryFind(bakery, ItemId.None, OrderKind.Work, out int index).Should().BeTrue();
             _world.Orders[index].Kind.Should().Be(OrderKind.Work);
         }
 
@@ -41,7 +41,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(bakery, ItemId.None, out int _).Should()
+            _world.Orders.TryFind(bakery, ItemId.None, OrderKind.Work, out int _).Should()
                   .BeFalse("pull means a building with nothing to do asks for nothing");
         }
 
@@ -52,7 +52,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(bakery, Grain, out int index).Should()
+            _world.Orders.TryFind(bakery, Grain, OrderKind.Haul, out int index).Should()
                   .BeTrue("its input slot is an ordinary requesting slot");
             _world.Orders[index].Kind.Should().Be(OrderKind.Haul);
         }

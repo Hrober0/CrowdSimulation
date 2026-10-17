@@ -42,7 +42,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(camp, ItemId.None, out int index).Should()
+            _world.Orders.TryFind(camp, ItemId.None, OrderKind.Work, out int index).Should()
                   .BeTrue("a recipe with no output item is still a recipe");
             _world.Orders[index].Kind.Should().Be(OrderKind.Work);
         }

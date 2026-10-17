@@ -49,9 +49,16 @@ namespace Rts
         /// </summary>
         private const int FAR_GOAL_BLOCK = 4;
 
+        /// <summary>
+        /// How far outside a building's edge a soldier walking up to it aims, in cells: past a body's radius,
+        /// so the point is somewhere a body can actually stand.
+        /// </summary>
+        private const float SIEGE_STAND_OFF = 0.6f;
+
         private ComponentLookup<AgentMove> _agents;
         private ComponentLookup<Health> _health;
         private ComponentLookup<Post> _posts;
+        private BufferLookup<BuildingFootprintCell> _footprints;
 
         public void OnCreate(ref SystemState state)
         {
@@ -60,6 +67,7 @@ namespace Rts
             _agents = state.GetComponentLookup<AgentMove>(isReadOnly: true);
             _health = state.GetComponentLookup<Health>(isReadOnly: true);
             _posts = state.GetComponentLookup<Post>(isReadOnly: true);
+            _footprints = state.GetBufferLookup<BuildingFootprintCell>(isReadOnly: true);
         }
 
         [BurstCompile]
@@ -75,6 +83,7 @@ namespace Rts
             _agents.Update(ref state);
             _health.Update(ref state);
             _posts.Update(ref state);
+            _footprints.Update(ref state);
 
             // WithPresent on both, because an agent inside a building has PathFollow disabled and is exactly
             // the agent whose Interact steps - a whole shift of them - still have to run.
@@ -198,13 +207,16 @@ namespace Rts
         /// on where the fight may happen rather than on how far a soldier may walk in one go - a soldier
         /// dragged out and released comes back because the order stops being handed to it, not because it
         /// hit an invisible wall.
+        ///
+        /// The target is a body or a building. A building is chased to a standing place outside its wall and
+        /// fought from weapon range of its nearest edge (<see cref="TryBesiege"/>).
         /// </summary>
         private bool TryChase(Entity chaser, in TaskStep step, in GridMap map, ref PathFollow follow,
                               out bool closeEnough)
         {
             closeEnough = false;
 
-            if (!_agents.HasComponent(chaser) || !_agents.HasComponent(step.Target))
+            if (!_agents.HasComponent(chaser))
             {
                 return false;
             }
@@ -213,6 +225,24 @@ namespace Rts
             {
                 return false;
             }
+
+            float2 here = _agents[chaser].Position;
+
+            if (_agents.HasComponent(step.Target))
+            {
+                return TryChaseBody(chaser, step, map, here, ref follow, out closeEnough);
+            }
+
+            // A building: gone once demolished, and not yet anywhere until its footprint has been laid.
+            return _footprints.HasBuffer(step.Target)
+                   && FootprintBounds.TryOf(_footprints[step.Target], out FootprintBounds bounds)
+                   && TryBesiege(chaser, step, map, here, bounds, ref follow, out closeEnough);
+        }
+
+        private bool TryChaseBody(Entity chaser, in TaskStep step, in GridMap map, float2 here,
+                                  ref PathFollow follow, out bool closeEnough)
+        {
+            closeEnough = false;
 
             // Out of the world rather than out of range: a target that has stepped inside a building has
             // AgentMove disabled, cannot be shot, and is not worth standing outside for.
@@ -232,39 +262,131 @@ namespace Rts
                 }
             }
 
-            float2 here = _agents[chaser].Position;
             if (math.lengthsq(target - here) <= step.ArriveDistance * step.ArriveDistance)
             {
                 closeEnough = true;
                 return true;
             }
 
-            int2 cell = GridCoords.CellOf(target);
+            Pursue(step, map, here, target, GridCoords.CellOf(target), shareFarGoal: true, ref follow);
+            return true;
+        }
 
+        /// <summary>
+        /// Walks up to a building and stops at weapon range from its nearest edge (see
+        /// <see cref="FootprintBounds"/>). The cell walked to is a standing place just outside the wall on the
+        /// side the soldier is coming from, because the building's own cells are the one place nobody can stand.
+        /// </summary>
+        private bool TryBesiege(Entity chaser, in TaskStep step, in GridMap map, float2 here,
+                                in FootprintBounds bounds, ref PathFollow follow, out bool closeEnough)
+        {
+            closeEnough = false;
+
+            // The same leash rule as for a body, measured to the nearest part of the building.
+            if (_posts.HasComponent(chaser))
+            {
+                Post post = _posts[chaser];
+                if (post.Leash > 0f && bounds.DistanceSq(post.Home) > post.Leash * post.Leash)
+                {
+                    return false;
+                }
+            }
+
+            if (bounds.DistanceSq(here) <= step.ArriveDistance * step.ArriveDistance)
+            {
+                closeEnough = true;
+                return true;
+            }
+
+            float2 edge = bounds.ClosestPoint(here);
+            float2 outward = here - edge;
+            if (math.lengthsq(outward) < math.EPSILON)
+            {
+                outward = here - bounds.Centre;
+            }
+
+            float2 standOff = edge + math.normalizesafe(outward, new float2(0f, -1f)) * SIEGE_STAND_OFF;
+            int2 cell = StandingCell(map, bounds, here, GridCoords.CellOf(standOff));
+
+            // A building does not move, so its approach cell is already shared by everyone coming from that
+            // side; a far block would only walk them somewhere beside it.
+            Pursue(step, map, here, GridCoords.CellCenter(cell), cell, shareFarGoal: false, ref follow);
+            return true;
+        }
+
+        /// <summary>
+        /// The cell to walk to: <paramref name="preferred"/> if a body can stand there, otherwise the free cell
+        /// in the ring round the footprint nearest the soldier. Without a grid, the preferred cell regardless.
+        /// </summary>
+        private static int2 StandingCell(in GridMap map, in FootprintBounds bounds, float2 here, int2 preferred)
+        {
+            if (!map.IsCreated || map.IsPassable(preferred))
+            {
+                return preferred;
+            }
+
+            // The footprint's own cells, grown by one on every side; only the outer ring is looked at.
+            int2 min = GridCoords.CellOf(bounds.Min) - 1;
+            int2 max = GridCoords.CellOf(bounds.Max - 0.5f) + 1;
+
+            int2 best = preferred;
+            float bestSq = float.MaxValue;
+
+            for (int y = min.y; y <= max.y; y++)
+            {
+                for (int x = min.x; x <= max.x; x++)
+                {
+                    bool ring = x == min.x || x == max.x || y == min.y || y == max.y;
+                    var cell = new int2(x, y);
+
+                    if (!ring || !map.IsPassable(cell))
+                    {
+                        continue;
+                    }
+
+                    float distanceSq = math.distancesq(GridCoords.CellCenter(cell), here);
+                    if (distanceSq < bestSq)
+                    {
+                        bestSq = distanceSq;
+                        best = cell;
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Points a chase at <paramref name="aim"/>: straight there when it is close and in plain sight,
+        /// otherwise along a field to <paramref name="goalCell"/> - or, for a far body, to the middle of the
+        /// block it stands in, so soldiers closing on the same part of a line share one field.
+        /// </summary>
+        private static void Pursue(in TaskStep step, in GridMap map, float2 here, float2 aim, int2 goalCell,
+                                   bool shareFarGoal, ref PathFollow follow)
+        {
             // Close and in plain sight: straight at it, no field. The goal cell is still kept on the target, so
             // anything reading where this agent is going gets an honest answer.
-            if (map.IsCreated && HasClearWalk(map, here, target))
+            if (map.IsCreated && HasClearWalk(map, here, aim))
             {
-                if (!follow.GoalCell.Equals(cell))
+                if (!follow.GoalCell.Equals(goalCell))
                 {
-                    follow = Walk(follow, Aimed(step, cell));
+                    follow = Walk(follow, Aimed(step, goalCell));
                 }
 
                 follow.Direct = true;
-                follow.DirectPoint = target;
-                return true;
+                follow.DirectPoint = aim;
+                return;
             }
 
             // Only far chases share a block. One that is close but blocked - a tree in the way - needs the field
             // to lead it round to the target itself, not to the middle of a block beside it.
-            bool far = math.distancesq(here, target) > DIRECT_CHASE_DISTANCE * DIRECT_CHASE_DISTANCE;
-            int2 goal = map.IsCreated && far ? FarGoal(map, cell) : cell;
+            bool far = math.distancesq(here, aim) > DIRECT_CHASE_DISTANCE * DIRECT_CHASE_DISTANCE;
+            int2 goal = map.IsCreated && far && shareFarGoal ? FarGoal(map, goalCell) : goalCell;
+
             if (!follow.GoalCell.Equals(goal) || follow.Direct)
             {
                 follow = Walk(follow, Aimed(step, goal));
             }
-
-            return true;
         }
 
         private static TaskStep Aimed(in TaskStep step, int2 cell)

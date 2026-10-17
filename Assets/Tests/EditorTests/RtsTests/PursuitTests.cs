@@ -66,7 +66,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrames(5);
 
-            _world.Orders.TryFind(raider, ItemId.None, out int _).Should().BeFalse();
+            _world.Orders.TryFind(raider, ItemId.None, OrderKind.Fight, out int _).Should().BeFalse();
         }
 
         /// <summary>The headline: a soldier that spots something walks at it rather than watching it pass.</summary>

@@ -31,11 +31,16 @@ namespace Rts
             set => _orders[index] = value;
         }
 
-        public bool TryFind(Entity target, ItemId item, out int index)
+        /// <summary>
+        /// The order of that kind for that target and item, if there is one. The kind is part of the key since
+        /// buildings became something to fight: a crafter's work order and a siege on the same crafter are both
+        /// (building, no item), and without the kind each system's "post or refresh" would rewrite the other's.
+        /// </summary>
+        public bool TryFind(Entity target, ItemId item, OrderKind kind, out int index)
         {
             for (int i = 0; i < _orders.Length; i++)
             {
-                if (_orders[i].Target == target && _orders[i].Item == item)
+                if (_orders[i].Target == target && _orders[i].Item == item && _orders[i].Kind == kind)
                 {
                     index = i;
                     return true;

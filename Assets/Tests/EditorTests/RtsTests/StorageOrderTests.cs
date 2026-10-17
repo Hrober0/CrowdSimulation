@@ -31,7 +31,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(warehouse, Bread, out int index).Should().BeTrue();
+            _world.Orders.TryFind(warehouse, Bread, OrderKind.Haul, out int index).Should().BeTrue();
             _world.Orders[index].Amount.Should().Be(50);
             _world.Orders[index].Kind.Should().Be(OrderKind.Haul);
         }
@@ -43,7 +43,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(mine, Bread, out int _).Should()
+            _world.Orders.TryFind(mine, Bread, OrderKind.Haul, out int _).Should()
                   .BeFalse("priority 0 is reserved for pure sources, and they never request");
         }
 
@@ -52,7 +52,7 @@ namespace Tests.EditorTests.RtsTests
         {
             Entity warehouse = _world.CreateWarehouse(new int2(10, 10), Bread, capacity: 10);
             _world.TickFrame(0.1f);
-            _world.Orders.TryFind(warehouse, Bread, out int _).Should().BeTrue();
+            _world.Orders.TryFind(warehouse, Bread, OrderKind.Haul, out int _).Should().BeTrue();
 
             DynamicBuffer<StorageSlot> slots = _world.SlotsOf(warehouse);
             StorageSlot slot = slots[0];
@@ -61,7 +61,7 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f);
 
-            _world.Orders.TryFind(warehouse, Bread, out int _).Should()
+            _world.Orders.TryFind(warehouse, Bread, OrderKind.Haul, out int _).Should()
                   .BeFalse("pull means an order exists only while somebody is still asking");
         }
 
@@ -232,8 +232,8 @@ namespace Tests.EditorTests.RtsTests
 
             _world.TickFrame(0.1f); // aging runs before assignment, so the new claim time lands next tick
 
-            _world.Orders.TryFind(served, Bread, out int servedIndex).Should().BeTrue();
-            _world.Orders.TryFind(waiting, Bread, out int waitingIndex).Should().BeTrue();
+            _world.Orders.TryFind(served, Bread, OrderKind.Haul, out int servedIndex).Should().BeTrue();
+            _world.Orders.TryFind(waiting, Bread, OrderKind.Haul, out int waitingIndex).Should().BeTrue();
 
             _world.Orders[servedIndex].Effective.Should().BeLessThan(
                 _world.Orders[waitingIndex].Effective,
@@ -293,12 +293,12 @@ namespace Tests.EditorTests.RtsTests
             Entity warehouse = _world.CreateWarehouse(new int2(10, 10), Bread, capacity: 50);
 
             _world.TickFrame(0.1f);
-            _world.Orders.TryFind(warehouse, Bread, out int index).Should().BeTrue();
+            _world.Orders.TryFind(warehouse, Bread, OrderKind.Haul, out int index).Should().BeTrue();
             float first = _world.Orders[index].Effective;
 
             _world.TickFrames(20, 1f);
 
-            _world.Orders.TryFind(warehouse, Bread, out index).Should().BeTrue();
+            _world.Orders.TryFind(warehouse, Bread, OrderKind.Haul, out index).Should().BeTrue();
             _world.Orders[index].Effective.Should()
                   .BeGreaterThan(first, "waiting is itself a claim on attention");
         }

@@ -63,7 +63,7 @@ namespace Rts
         {
             // Work orders carry no item, so (crafter, none) is their key and cannot collide with the haul
             // orders the same building posts for its inputs - those all name a real item.
-            if (book.TryFind(crafter, ItemId.None, out int index))
+            if (book.TryFind(crafter, ItemId.None, OrderKind.Work, out int index))
             {
                 Order existing = book[index];
                 existing.Amount = 1;

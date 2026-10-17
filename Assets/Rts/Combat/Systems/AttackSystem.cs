@@ -143,6 +143,9 @@ namespace Rts
 
             // Buildings second, and on the same yardstick, so a soldier standing between a raider and its
             // camp shoots the raider. A structure only wins the tie-break by being strictly nearer.
+            //
+            // Measured to the nearest edge, not the middle (see FootprintBounds): to the middle, a sword could
+            // never reach anything bigger than a turret.
             foreach (StructureTarget structure in structures)
             {
                 if (!Faction.AreEnemies(structure.Faction, mine))
@@ -150,7 +153,7 @@ namespace Rts
                     continue;
                 }
 
-                float distanceSq = math.lengthsq(structure.Centre - muzzle);
+                float distanceSq = structure.Bounds.DistanceSq(muzzle);
                 if (distanceSq > best)
                 {
                     continue;
@@ -191,7 +194,7 @@ namespace Rts
                      in SystemAPI.Query<RefRO<Faction>, RefRO<Health>,
                                         DynamicBuffer<BuildingFootprintCell>>().WithEntityAccess())
             {
-                if (footprint.IsEmpty || !health.ValueRO.IsAlive)
+                if (!health.ValueRO.IsAlive || !FootprintBounds.TryOf(footprint, out FootprintBounds bounds))
                 {
                     continue;
                 }
@@ -199,7 +202,7 @@ namespace Rts
                 structures.Add(new StructureTarget
                 {
                     Entity = entity,
-                    Centre = CentreOf(footprint),
+                    Bounds = bounds,
                     Faction = faction.ValueRO,
                 });
             }
@@ -227,7 +230,7 @@ namespace Rts
         private struct StructureTarget
         {
             public Entity Entity;
-            public float2 Centre;
+            public FootprintBounds Bounds;
             public Faction Faction;
         }
     }

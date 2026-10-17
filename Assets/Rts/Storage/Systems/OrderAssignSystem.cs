@@ -78,6 +78,7 @@ namespace Rts
         private ComponentLookup<Reaps> _reaps;
         private ComponentLookup<Sows> _sows;
         private ComponentLookup<CellObject> _cellObjects;
+        private BufferLookup<BuildingFootprintCell> _footprints;
 
         public void OnCreate(ref SystemState state)
         {
@@ -101,6 +102,7 @@ namespace Rts
             _reaps = state.GetComponentLookup<Reaps>(isReadOnly: true);
             _sows = state.GetComponentLookup<Sows>(isReadOnly: true);
             _cellObjects = state.GetComponentLookup<CellObject>(isReadOnly: true);
+            _footprints = state.GetBufferLookup<BuildingFootprintCell>(isReadOnly: true);
         }
 
         [BurstCompile]
@@ -127,6 +129,7 @@ namespace Rts
             _reaps.Update(ref state);
             _sows.Update(ref state);
             _cellObjects.Update(ref state);
+            _footprints.Update(ref state);
 
             NativeList<FreeAgent> agents = CollectFreeAgents(ref state);
             if (agents.Length == 0)
@@ -250,8 +253,8 @@ namespace Rts
         /// The shortest of the four, because a fight needs none of the machinery the others do: there is
         /// nothing to reserve, no room to hold and no bench to claim - a target is a place on the map, and
         /// two soldiers arriving at one is a fight rather than a fault. What stops the pile-on is that the
-        /// order is claimed once and then gone, which is the same thing that stops six haulers loading one
-        /// crate.
+        /// order is counted down by every claim and gone once it is spent - one claim for a body, a few for a
+        /// building - which is the same thing that stops six haulers loading one crate.
         ///
         /// The order is emptied rather than removed. Every other branch here counts an order down and lets
         /// <c>PruneEmptyOrders</c> sweep at the end of the tick, and that is not a style choice: the loop is
@@ -266,12 +269,11 @@ namespace Rts
         {
             Order order = book[orderIndex];
 
-            if (!_agents.HasComponent(order.Target) || !_agents.IsComponentEnabled(order.Target))
+            if (!TryLocateTarget(order.Target, out float2 at))
             {
                 return false;
             }
 
-            float2 at = _agents[order.Target].Position;
             int2 cell = GridCoords.CellOf(at);
 
             var wanted = new AgentWanted
@@ -308,9 +310,33 @@ namespace Rts
 
             agents.RemoveAtSwapBack(agentIndex);
 
-            order.Amount = 0;
+            // One attacker per claim: a body asks for one, a building for a few (ThreatDetectionSystem).
+            order.Amount -= 1;
             book[orderIndex] = order;
             return true;
+        }
+
+        /// <summary>
+        /// Where a fight is: a body standing on the map, or the middle of a building. A body indoors is not
+        /// there to be fought, and neither is a building whose footprint has not been laid yet.
+        /// </summary>
+        private bool TryLocateTarget(Entity target, out float2 at)
+        {
+            if (_agents.HasComponent(target))
+            {
+                at = _agents[target].Position;
+                return _agents.IsComponentEnabled(target);
+            }
+
+            if (_footprints.HasBuffer(target)
+                && FootprintBounds.TryOf(_footprints[target], out FootprintBounds bounds))
+            {
+                at = bounds.Centre;
+                return true;
+            }
+
+            at = default;
+            return false;
         }
 
         /// <summary>
