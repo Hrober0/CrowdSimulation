@@ -2,6 +2,7 @@ using GridNav;
 using Rts;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Profiling;
 
 namespace Examples.Rts
 {
@@ -17,6 +18,9 @@ namespace Examples.Rts
     [UpdateAfter(typeof(ViewSyncSystem))]
     public partial class CombatViewSystem : SystemBase
     {
+        private readonly ProfilerMarker _readMarker = new("CombatView.Read");
+        private readonly ProfilerMarker _drawMarker = new("CombatView.Draw");
+
         private CombatView _view;
         private ComponentLookup<AgentMove> _moves;
         private BufferLookup<BuildingFootprintCell> _footprints;
@@ -66,6 +70,7 @@ namespace Examples.Rts
             ViewCulling culling = Culling;
 
             _view.BeginFrame();
+            _readMarker.Begin();
 
             // The query takes enabled weapons and enabled moves only: a worker is not drawn armed, and a soldier
             // inside a building is not drawn at all - the same two bits the attack system goes by.
@@ -115,7 +120,11 @@ namespace Examples.Rts
                 }
             }
 
+            _readMarker.End();
+
+            _drawMarker.Begin();
             _view.EndFrame(now, SystemAPI.Time.DeltaTime);
+            _drawMarker.End();
         }
 
         /// <summary>Where a target stands: a body's position, or the middle of a building.</summary>

@@ -33,6 +33,18 @@ namespace Examples.Rts
         [SerializeField, Min(1), Tooltip("Cost that maps to the hottest colour. Anything at or above BLOCKED is drawn solid.")]
         private int _hottestCost = 32;
 
+        /// <summary>
+        /// The whole window in a few calls rather than one per cell. See <see cref="GizmoBatch"/>: a 64-cell
+        /// window is four thousand cells, and drawn one cube each it cost more than the simulation.
+        /// </summary>
+        private GizmoBatch _batch;
+
+        private void OnDisable()
+        {
+            _batch?.Dispose();
+            _batch = null;
+        }
+
         private void OnDrawGizmos()
         {
             World world = World.DefaultGameObjectInjectionWorld;
@@ -51,6 +63,7 @@ namespace Examples.Rts
             }
 
             GridMap map = gridWorld.Map;
+            _batch ??= new GizmoBatch();
 
             if (_drawBounds)
             {
@@ -93,23 +106,24 @@ namespace Examples.Rts
                     }
                 }
             }
+
+            _batch.Flush();
         }
 
-        private static void DrawBounds(GridMap map)
+        private void DrawBounds(GridMap map)
         {
             float2 min = GridCoords.CellMin(map.MinCell);
             float2 max = GridCoords.CellMax(map.MaxCell);
 
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireCube(SimToWorld.Position((min + max) * 0.5f), SimToWorld.Direction(max - min));
+            _batch.WireRect(Color.cyan, SimToWorld.Position((min + max) * 0.5f), (Vector2)(max - min));
         }
 
-        private static void DrawChunks(GridMap map, int2 min, int2 max, in Rect clear)
+        private void DrawChunks(GridMap map, int2 min, int2 max, in Rect clear)
         {
             int2 firstChunk = map.ChunkCoordOf(min);
             int2 lastChunk = map.ChunkCoordOf(max);
 
-            Gizmos.color = new Color(0.4f, 0.4f, 0.4f, 0.5f);
+            var grey = new Color(0.4f, 0.4f, 0.4f, 0.5f);
             for (int y = firstChunk.y; y <= lastChunk.y; y++)
             {
                 for (int x = firstChunk.x; x <= lastChunk.x; x++)
@@ -122,7 +136,7 @@ namespace Examples.Rts
                         continue;
                     }
 
-                    Gizmos.DrawWireCube(chunkCenter, SimToWorld.Direction(chunkMax - chunkMin));
+                    _batch.WireRect(grey, chunkCenter, (Vector2)(chunkMax - chunkMin));
                 }
             }
         }
@@ -134,16 +148,17 @@ namespace Examples.Rts
                 return;
             }
 
+            var size = new Vector2(0.9f, 0.9f);
+
             if (!data.IsPassable)
             {
-                Gizmos.color = new Color(0.8f, 0.1f, 0.1f, 0.5f);
-                Gizmos.DrawCube(center, SimToWorld.Direction(new float2(0.9f, 0.9f)));
+                _batch.FillRect(new Color(0.8f, 0.1f, 0.1f, 0.5f), center, size);
                 return;
             }
 
-            float heat = math.saturate(data.CostSum / (float)_hottestCost);
-            Gizmos.color = new Color(1f, 1f - heat, 0f, 0.15f + 0.35f * heat);
-            Gizmos.DrawCube(center, SimToWorld.Direction(new float2(0.9f, 0.9f)));
+            // Eight steps of heat rather than a continuous ramp, so the window is eight batches.
+            float heat = GizmoBatch.Step(data.CostSum / (float)_hottestCost, 8);
+            _batch.FillRect(new Color(1f, 1f - heat, 0f, 0.15f + 0.35f * heat), center, size);
         }
 
         /// <summary>
@@ -156,11 +171,10 @@ namespace Examples.Rts
         /// road running the other way - and did. A shape with no direction in it cannot be read backwards: the
         /// closed side is the side with the wedge on it.
         /// </summary>
-        private static void DrawBlockedExits(int2 cell, CellData data)
+        private void DrawBlockedExits(int2 cell, CellData data)
         {
             float2 center = GridCoords.CellCenter(cell);
-
-            Gizmos.color = new Color(1f, 0.25f, 0.2f, 0.9f);
+            var red = new Color(1f, 0.25f, 0.2f, 0.9f);
             for (int i = 0; i < DirectionUtils.DIRECTION_COUNT; i++)
             {
                 var direction = (Direction)i;
@@ -179,16 +193,17 @@ namespace Examples.Rts
                 float2 left = edge + along;
                 float2 right = edge - along;
 
-                Gizmos.DrawLine(SimToWorld.Position(left), SimToWorld.Position(right));
-                Gizmos.DrawLine(SimToWorld.Position(right), SimToWorld.Position(center));
-                Gizmos.DrawLine(SimToWorld.Position(center), SimToWorld.Position(left));
+                _batch.Line(red, SimToWorld.Position(left), SimToWorld.Position(right));
+                _batch.Line(red, SimToWorld.Position(right), SimToWorld.Position(center));
+                _batch.Line(red, SimToWorld.Position(center), SimToWorld.Position(left));
 
                 // Gizmos has no filled triangle. Hatching it with a few lines shrinking towards the point
-                // reads as solid at any zoom worth looking at, and costs three calls rather than a mesh.
+                // reads as solid at any zoom worth looking at, and is a few more lines in the batch rather than a mesh.
                 for (int line = 1; line < BLOCKED_EDGE_HATCHING; line++)
                 {
                     float t = line / (float)BLOCKED_EDGE_HATCHING;
-                    Gizmos.DrawLine(
+                    _batch.Line(
+                        red,
                         SimToWorld.Position(math.lerp(left, center, t)),
                         SimToWorld.Position(math.lerp(right, center, t))
                     );

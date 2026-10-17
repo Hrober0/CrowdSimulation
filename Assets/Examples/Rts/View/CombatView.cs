@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Jobs;
 
 namespace Examples.Rts
 {
@@ -55,8 +58,10 @@ namespace Examples.Rts
     /// change in it since the last frame *is* a shot, and the view needs no event or extra component from the
     /// simulation to see one.
     ///
-    /// Main-thread transforms, unlike the agent pool: soldiers are a fraction of the crowd, each view is several
-    /// transforms with an animation on them, and parenting the instances here keeps the hierarchy readable.
+    /// Where a soldier stands and which way it faces are written by a parallel transform job, the way the agent
+    /// pool writes its views (§10): at sixteen hundred soldiers, writing them one by one on the main thread was
+    /// most of this view's cost. Only the parts that animate - a hand mid-swing, a gun mid-kick, a flash - are
+    /// written on the main thread, and only while they move.
     /// </summary>
     public sealed class CombatView : IDisposable
     {
@@ -74,6 +79,16 @@ namespace Examples.Rts
         private readonly Transform _root;
 
         private readonly Dictionary<Entity, SoldierView> _soldiers = new();
+
+        /// <summary>
+        /// The live soldiers by slot, in lockstep with <see cref="_roots"/> and <see cref="_rootData"/>: only
+        /// <see cref="AddSlot"/> and <see cref="RemoveSlot"/> change their shape, and both keep all three
+        /// aligned by swapping the last slot into a hole.
+        /// </summary>
+        private readonly List<SoldierView> _bySlot = new();
+
+        private TransformAccessArray _roots;
+        private NativeList<RootData> _rootData;
         private readonly Stack<SoldierView> _idleSwords = new();
         private readonly Stack<SoldierView> _idleGuns = new();
         private readonly List<Entity> _unseen = new();
@@ -86,12 +101,22 @@ namespace Examples.Rts
 
         private readonly List<GameObject> _created = new();
 
+        /// <summary>
+        /// One body material per side, made from the prefab's on first use. Shared materials rather than a
+        /// per-renderer property block, because a property block takes a renderer out of the SRP batcher: at
+        /// sixteen hundred soldiers that was thousands of unbatched draws a frame for two colours.
+        /// </summary>
+        private readonly Dictionary<byte, Material> _sideMaterials = new();
+
         private int _tick;
 
         public CombatView(CombatViewPrefabs prefabs, Transform root)
         {
             _prefabs = prefabs;
             _root = root;
+
+            _roots = new TransformAccessArray(256);
+            _rootData = new NativeList<RootData>(256, Allocator.Persistent);
         }
 
         /// <summary>Sorting offset of the soldiers towards the camera, in world units.</summary>
@@ -136,20 +161,37 @@ namespace Examples.Rts
                 view = Acquire(frame.Kind);
                 _soldiers[entity] = view;
 
-                view.Facing = Heading(frame) ?? view.Facing;
-                view.Root.rotation = SimToWorld.Rotation(view.Facing);
+                float2 facing = Heading(frame) ?? new float2(0f, 1f);
+                view.Root.rotation = SimToWorld.Rotation(facing);
+                AddSlot(view, facing);
+
                 view.SwingStart = double.NegativeInfinity;
                 view.FlashUntil = double.NegativeInfinity;
+                view.RecoilStart = double.NegativeInfinity;
+
+                // Whatever pose the last soldier left it in is written back to rest on the first frame.
+                view.AtRest = false;
             }
 
             if (view.Faction != frame.Faction || !view.Tinted)
             {
-                Tint(view.Body, RtsFactions.Colour(frame.Faction));
+                if (view.Body != null)
+                {
+                    view.Body.sharedMaterial = SideMaterial(frame.Faction, view.Body.sharedMaterial);
+                }
+
                 view.Faction = frame.Faction;
                 view.Tinted = true;
             }
 
-            view.Frame = frame;
+            RootData data = _rootData[view.Slot];
+            data.Position = frame.Position;
+            data.Velocity = frame.Velocity;
+            data.MaxSpeed = frame.MaxSpeed;
+            data.Aim = frame.Aim;
+            data.HasAim = frame.HasAim;
+            _rootData[view.Slot] = data;
+
             view.SeenTick = _tick;
         }
 
@@ -211,10 +253,16 @@ namespace Examples.Rts
                 _lastShot.Remove(shooter);
             }
 
-            float maxTurn = math.radians(TurnDegreesPerSecond) * deltaTime;
-            foreach (SoldierView view in _soldiers.Values)
+            new RootJob
             {
-                Animate(view, now, maxTurn);
+                Roots = _rootData.AsArray(),
+                Depth = Depth,
+                MaxTurn = math.radians(TurnDegreesPerSecond) * deltaTime,
+            }.Schedule(_roots).Complete();
+
+            foreach (SoldierView view in _bySlot)
+            {
+                Animate(view, now);
             }
 
             MoveBullets(now);
@@ -239,8 +287,32 @@ namespace Examples.Rts
                 }
             }
 
+            foreach (Material material in _sideMaterials.Values)
+            {
+                if (Application.isPlaying)
+                {
+                    UnityEngine.Object.Destroy(material);
+                }
+                else
+                {
+                    UnityEngine.Object.DestroyImmediate(material);
+                }
+            }
+
+            if (_roots.isCreated)
+            {
+                _roots.Dispose();
+            }
+
+            if (_rootData.IsCreated)
+            {
+                _rootData.Dispose();
+            }
+
+            _sideMaterials.Clear();
             _created.Clear();
             _soldiers.Clear();
+            _bySlot.Clear();
             _idleSwords.Clear();
             _idleGuns.Clear();
             _bullets.Clear();
@@ -248,25 +320,19 @@ namespace Examples.Rts
             _lastShot.Clear();
         }
 
-        private void Animate(SoldierView view, double now, float maxTurn)
+        /// <summary>The moving parts of a weapon. The body's place and facing are the job's (see RootJob).</summary>
+        private static void Animate(SoldierView view, double now)
         {
-            SoldierFrame frame = view.Frame;
-
-            if (Heading(frame) is { } heading)
-            {
-                float turn = math.clamp(SignedAngle(view.Facing, heading), -maxTurn, maxTurn);
-                view.Facing = Rotate(view.Facing, turn);
-            }
-
-            view.Root.SetPositionAndRotation(
-                SimToWorld.Position(frame.Position, Depth),
-                SimToWorld.Rotation(view.Facing));
-
             if (view.Kind == CombatWeaponKind.Sword)
             {
-                if (view.Hand != null)
+                // Written only while a swing is playing, and once more when it ends. A soldier at guard is
+                // most soldiers most of the time, and a transform written with the value it already has is
+                // still a transform marked changed.
+                bool swinging = now - view.SwingStart < SWING_SECONDS + RECOVER_SECONDS;
+                if (view.Hand != null && (swinging || !view.AtRest))
                 {
                     view.Hand.localRotation = Quaternion.Euler(0f, 0f, SwingAngle(now - view.SwingStart));
+                    view.AtRest = !swinging;
                 }
 
                 return;
@@ -281,10 +347,13 @@ namespace Examples.Rts
                 }
             }
 
-            if (view.Gun != null)
+            // The same rule for the kick of a gun as for the swing of a sword.
+            bool recoiling = now - view.RecoilStart < RECOIL_SECONDS;
+            if (view.Gun != null && (recoiling || !view.AtRest))
             {
                 float recoil = 1f - math.saturate((float)(now - view.RecoilStart) / RECOIL_SECONDS);
                 view.Gun.localPosition = view.GunRest - new Vector3(0f, RECOIL_DISTANCE * recoil, 0f);
+                view.AtRest = !recoiling;
             }
         }
 
@@ -331,6 +400,65 @@ namespace Examples.Rts
             return null;
         }
 
+        /// <summary>
+        /// Everything the transform job needs about one soldier: where it is, what it is doing, and which way it
+        /// faces now - the one thing the job writes back, because the turn is eased over frames.
+        /// </summary>
+        private struct RootData
+        {
+            public float2 Position;
+            public float2 Velocity;
+            public float MaxSpeed;
+            public float2 Aim;
+            public bool HasAim;
+            public float2 Facing;
+        }
+
+        [BurstCompile]
+        private struct RootJob : IJobParallelForTransform
+        {
+            public NativeArray<RootData> Roots;
+            public float Depth;
+
+            /// <summary>Radians a soldier may turn this frame.</summary>
+            public float MaxTurn;
+
+            public void Execute(int index, TransformAccess transform)
+            {
+                RootData root = Roots[index];
+
+                if (TryHeading(root, out float2 heading))
+                {
+                    float turn = math.clamp(SignedAngle(root.Facing, heading), -MaxTurn, MaxTurn);
+                    root.Facing = Rotate(root.Facing, turn);
+                    Roots[index] = root;
+                }
+
+                transform.position = SimToWorld.Position(root.Position, Depth);
+                transform.rotation = SimToWorld.Rotation(root.Facing);
+            }
+
+            /// <summary>The job's half of <see cref="Heading"/>: the same rule, without the nullable.</summary>
+            private static bool TryHeading(in RootData root, out float2 heading)
+            {
+                if (root.HasAim && math.lengthsq(root.Aim - root.Position) > math.EPSILON)
+                {
+                    heading = math.normalize(root.Aim - root.Position);
+                    return true;
+                }
+
+                float speed = math.length(root.Velocity);
+                if (speed > math.EPSILON && speed >= root.MaxSpeed * FACING_SPEED_FRACTION)
+                {
+                    heading = root.Velocity / speed;
+                    return true;
+                }
+
+                heading = default;
+                return false;
+            }
+        }
+
         private void Launch(float2 from, float2 to, double now)
         {
             float distance = math.distance(from, to);
@@ -339,7 +467,9 @@ namespace Examples.Rts
                 return;
             }
 
-            Transform bullet = _idleBullets.Count > 0 ? _idleBullets.Pop() : Create(_prefabs.Bullet).transform;
+            Transform bullet = _idleBullets.Count > 0
+                ? _idleBullets.Pop()
+                : Create(_prefabs.Bullet, parented: true).transform;
             bullet.gameObject.SetActive(true);
             bullet.SetPositionAndRotation(SimToWorld.Position(from, BulletDepth), SimToWorld.Rotation(to - from));
 
@@ -398,38 +528,69 @@ namespace Examples.Rts
                 Gun = gun,
                 GunRest = gun != null ? gun.localPosition : Vector3.zero,
                 Flash = gun != null ? gun.Find("Flash") : null,
-                Facing = new float2(0f, 1f),
             };
         }
 
         private void Release(Entity entity, SoldierView view)
         {
             _soldiers.Remove(entity);
+            RemoveSlot(view);
             view.Root.gameObject.SetActive(false);
             (view.Kind == CombatWeaponKind.Sword ? _idleSwords : _idleGuns).Push(view);
         }
 
-        private GameObject Create(GameObject prefab)
+        private void AddSlot(SoldierView view, float2 facing)
         {
-            GameObject instance = UnityEngine.Object.Instantiate(prefab, _root);
+            view.Slot = _bySlot.Count;
+            _bySlot.Add(view);
+            _roots.Add(view.Root);
+            _rootData.Add(new RootData { Facing = facing });
+        }
+
+        private void RemoveSlot(SoldierView view)
+        {
+            int slot = view.Slot;
+            int last = _bySlot.Count - 1;
+
+            _roots.RemoveAtSwapBack(slot);
+            _rootData.RemoveAtSwapBack(slot);
+            _bySlot[slot] = _bySlot[last];
+            _bySlot.RemoveAt(last);
+
+            if (slot < _bySlot.Count)
+            {
+                _bySlot[slot].Slot = slot;
+            }
+        }
+
+        /// <summary>
+        /// Soldiers are scene roots, not children of this view's object, because a transform job only runs in
+        /// parallel across roots - parenting them for a tidy hierarchy would quietly serialise it (the agent
+        /// pool says the same). Bullets are few and stay under it.
+        /// </summary>
+        private GameObject Create(GameObject prefab, bool parented = false)
+        {
+            GameObject instance = UnityEngine.Object.Instantiate(prefab, parented ? _root : null);
             instance.SetActive(false);
             _created.Add(instance);
             return instance;
         }
 
-        private static void Tint(Renderer renderer, Color colour)
+        /// <summary>The body material for a side, made from <paramref name="source"/> the first time it is asked for.</summary>
+        private Material SideMaterial(byte side, Material source)
         {
-            if (renderer == null)
+            if (_sideMaterials.TryGetValue(side, out Material material))
             {
-                return;
+                return material;
             }
 
-            // A property block rather than renderer.material, which would leak a material per soldier.
-            var block = new MaterialPropertyBlock();
-            renderer.GetPropertyBlock(block);
-            block.SetColor("_BaseColor", colour);
-            block.SetColor("_Color", colour);
-            renderer.SetPropertyBlock(block);
+            Color colour = RtsFactions.Colour(side);
+            material = new Material(source) { name = $"{source.name} ({RtsFactions.Name(side)})" };
+            material.SetColor("_BaseColor", colour);
+            material.SetColor("_Color", colour);
+
+            _sideMaterials[side] = material;
+            return material;
         }
 
         private static float SignedAngle(float2 from, float2 to) =>
@@ -454,10 +615,14 @@ namespace Examples.Rts
             public Vector3 GunRest;
             public Transform Flash;
 
-            public SoldierFrame Frame;
-            public float2 Facing;
+            /// <summary>Index into the slot lists, kept current by every swap-back.</summary>
+            public int Slot;
+
             public byte Faction;
             public bool Tinted;
+
+            /// <summary>Whether the hand or the gun is already in its rest pose, so it need not be written again.</summary>
+            public bool AtRest;
             public int SeenTick;
 
             public double SwingStart;

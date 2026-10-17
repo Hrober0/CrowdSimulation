@@ -59,6 +59,11 @@ namespace Examples.Rts
         [SerializeField, Range(2, 200), Tooltip("Dots kept per agent.")]
         private int _trailLength = 40;
 
+        [SerializeField, Min(1)]
+        [Tooltip("Trails are kept for this many agents at most, the nearest to this object. A trail is for "
+                 + "reading one agent's stutter; hundreds of them are a frame-time cost and an unreadable smear.")]
+        private int _maxTrails = 100;
+
         /// <summary>
         /// Sampled in <c>Update</c> and only read in <c>OnDrawGizmos</c>: gizmos are drawn once per camera and
         /// not at all when the view is hidden, so sampling there would space the dots by draw rate instead of
@@ -70,12 +75,20 @@ namespace Examples.Rts
 
         private readonly List<Entity> _forgotten = new();
 
+        private readonly List<(float DistanceSq, Entity Agent, float2 Position)> _nearest = new();
+
+        /// <summary>Everything one draw puts on screen, flushed in a few calls. See <see cref="GizmoBatch"/>.</summary>
+        private GizmoBatch _batch;
+
         private float _nextSample;
 
         private void OnDisable()
         {
             _trails.Clear();
             _nextSample = 0f;
+
+            _batch?.Dispose();
+            _batch = null;
         }
 
         private void Update()
@@ -105,22 +118,34 @@ namespace Examples.Rts
             using NativeArray<Entity> agents = QueryAgents(entities);
 
             _sampled.Clear();
+            _nearest.Clear();
 
+            float2 centre = SimToWorld.ToSim(transform.position);
             foreach (Entity agent in agents)
             {
                 AgentMove move = entities.GetComponentData<AgentMove>(agent);
-                if (!InWindow(move.Position))
+                if (InWindow(move.Position))
                 {
-                    continue;
+                    _nearest.Add((math.distancesq(move.Position, centre), agent, move.Position));
                 }
+            }
 
+            // Only the nearest few keep a trail (see _maxTrails). Ten times a second, so a sort is cheap.
+            if (_nearest.Count > _maxTrails)
+            {
+                _nearest.Sort((a, b) => a.DistanceSq.CompareTo(b.DistanceSq));
+                _nearest.RemoveRange(_maxTrails, _nearest.Count - _maxTrails);
+            }
+
+            foreach ((float _, Entity agent, float2 position) in _nearest)
+            {
                 if (!_trails.TryGetValue(agent, out Trail trail) || trail.Capacity != _trailLength)
                 {
                     trail = new Trail(_trailLength);
                     _trails[agent] = trail;
                 }
 
-                trail.Add(move.Position);
+                trail.Add(position);
                 _sampled.Add(agent);
             }
 
@@ -159,6 +184,8 @@ namespace Examples.Rts
 
             using NativeArray<Entity> agents = QueryAgents(entities);
 
+            _batch ??= new GizmoBatch();
+
             // Asked once for the whole draw - see UiGizmos.ClearRect.
             Rect clear = UiGizmos.ClearRect();
 
@@ -188,20 +215,17 @@ namespace Examples.Rts
 
                 if (_drawRadius)
                 {
-                    Gizmos.color = new Color(1f, 1f, 1f, 0.25f);
-                    Gizmos.DrawWireSphere(position, move.Radius);
+                    _batch.WireCircle(new Color(1f, 1f, 1f, 0.25f), position, move.Radius);
                 }
 
                 if (_drawIntent && math.distancesq(move.PrefVelocity, move.Velocity) > 0.01f)
                 {
-                    Gizmos.color = Color.cyan;
-                    DrawRay(move.Position, move.PrefVelocity, move.MaxSpeed);
+                    DrawRay(Color.cyan, move.Position, move.PrefVelocity, move.MaxSpeed);
                 }
 
                 if (_drawVelocity)
                 {
-                    Gizmos.color = Color.white;
-                    DrawRay(move.Position, move.Velocity, move.MaxSpeed);
+                    DrawRay(Color.white, move.Position, move.Velocity, move.MaxSpeed);
                 }
 
                 if (entities.IsComponentEnabled<PathFollow>(agent))
@@ -224,43 +248,47 @@ namespace Examples.Rts
                     DrawDoorUse(entities, agent, move);
                 }
             }
+
+            _batch.Flush();
         }
 
         /// <summary>
         /// A disc whose colour is the speed as a fraction of the agent's maximum: red stopped, yellow halfway,
         /// green flat out. A crowd that strobes red-green in step is a crowd braking for something.
+        ///
+        /// In eight steps rather than continuously, so that a crowd is eight batches rather than one per agent.
         /// </summary>
-        private static void DrawSpeed(Vector3 position, in AgentMove move)
+        private void DrawSpeed(Vector3 position, in AgentMove move)
         {
             float fraction = move.MaxSpeed > 0f ? math.saturate(math.length(move.Velocity) / move.MaxSpeed) : 0f;
+            fraction = GizmoBatch.Step(fraction, 8);
 
             Color colour = fraction < 0.5f
                 ? Color.Lerp(Color.red, Color.yellow, fraction * 2f)
                 : Color.Lerp(Color.yellow, Color.green, (fraction - 0.5f) * 2f);
 
             colour.a = 0.55f;
-            Gizmos.color = colour;
-            Gizmos.DrawSphere(position, math.max(move.Radius * 0.6f, 0.1f));
+            _batch.FillDisc(colour, position, math.max(move.Radius * 0.6f, 0.1f));
         }
 
         /// <summary>A velocity, drawn a cell long at full speed so the length reads as a fraction of it.</summary>
-        private static void DrawRay(float2 from, float2 velocity, float maxSpeed)
+        private void DrawRay(Color colour, float2 from, float2 velocity, float maxSpeed)
         {
             if (maxSpeed <= 0f || math.lengthsq(velocity) < math.EPSILON)
             {
                 return;
             }
 
-            Gizmos.DrawRay(SimToWorld.Position(from), SimToWorld.Direction(velocity / maxSpeed));
+            _batch.Line(colour, SimToWorld.Position(from), SimToWorld.Position(from + velocity / maxSpeed));
         }
 
-        private static void DrawGoal(in AgentMove move, in PathFollow path)
+        private void DrawGoal(in AgentMove move, in PathFollow path)
         {
             Vector3 goal = SimToWorld.Position(GridCoords.CellCenter(path.GoalCell));
+            var green = new Color(0.2f, 1f, 0.4f, 0.6f);
 
-            Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.6f);
-            Gizmos.DrawWireCube(goal, SimToWorld.Direction(new float2(0.6f, 0.6f)));
-            Gizmos.DrawLine(SimToWorld.Position(move.Position), goal);
+            _batch.WireRect(green, goal, new Vector2(0.6f, 0.6f));
+            _batch.Line(green, SimToWorld.Position(move.Position), goal);
 
             // A waypoint that is not the goal is a gate on the way there, and worth telling apart: it is the
             // one case where the agent is deliberately walking at something other than where it is going.
@@ -269,11 +297,9 @@ namespace Examples.Rts
                 return;
             }
 
-            Gizmos.color = new Color(1f, 0.6f, 0.1f, 0.6f);
-            Gizmos.DrawWireCube(
-                SimToWorld.Position(GridCoords.CellCenter(path.WaypointCell)),
-                SimToWorld.Direction(new float2(0.4f, 0.4f))
-            );
+            _batch.WireRect(new Color(1f, 0.6f, 0.1f, 0.6f),
+                            SimToWorld.Position(GridCoords.CellCenter(path.WaypointCell)),
+                            new Vector2(0.4f, 0.4f));
         }
 
         /// <summary>
@@ -283,20 +309,20 @@ namespace Examples.Rts
         /// <c>ArrivalQueueSystem</c>), so concentric rings around a busy door *are* the queue - and an agent
         /// sitting on its own ring is waiting correctly, while one drifting inside somebody else's is the bug.
         /// </summary>
-        private static void DrawHold(in AgentMove move, in PathFollow path)
+        private void DrawHold(in AgentMove move, in PathFollow path)
         {
             Vector3 goal = SimToWorld.Position(GridCoords.CellCenter(path.GoalCell));
+            var amber = new Color(1f, 0.75f, 0.2f, 0.7f);
 
-            Gizmos.color = new Color(1f, 0.75f, 0.2f, 0.7f);
-            Gizmos.DrawWireSphere(goal, path.HoldDistance);
-            Gizmos.DrawLine(SimToWorld.Position(move.Position), goal);
+            _batch.WireCircle(amber, goal, path.HoldDistance);
+            _batch.Line(amber, SimToWorld.Position(move.Position), goal);
         }
 
         /// <summary>
         /// An agent in a doorway: a box on the entrance cell that shrinks as it goes through, green on the way
         /// in and blue on the way out. Two boxes on one cell would be the one-agent-at-a-time rule broken.
         /// </summary>
-        private static void DrawDoorUse(EntityManager entities, Entity agent, in AgentMove move)
+        private void DrawDoorUse(EntityManager entities, Entity agent, in AgentMove move)
         {
             if (!entities.HasComponent<DoorUse>(agent) || !entities.IsComponentEnabled<DoorUse>(agent))
             {
@@ -305,32 +331,44 @@ namespace Examples.Rts
 
             DoorUse door = entities.GetComponentData<DoorUse>(agent);
 
-            Gizmos.color = door.Kind == DoorUseKind.Enter
+            Color colour = door.Kind == DoorUseKind.Enter
                 ? new Color(0.3f, 1f, 0.5f, 0.8f)
                 : new Color(0.4f, 0.7f, 1f, 0.8f);
 
             float size = math.lerp(0.9f, 0.15f, door.Inside);
             Vector3 cell = SimToWorld.Position(GridCoords.CellCenter(door.Cell));
 
-            Gizmos.DrawWireCube(cell, SimToWorld.Direction(new float2(size, size)));
-            Gizmos.DrawLine(SimToWorld.Position(move.Position), cell);
+            _batch.WireRect(colour, cell, new Vector2(size, size));
+            _batch.Line(colour, SimToWorld.Position(move.Position), cell);
         }
 
+        /// <summary>
+        /// The dots are drawn as tiny crosses in the line batch rather than as filled discs. At a twentieth of a
+        /// cell they read the same, and a disc is nine vertices to rebuild every frame: forty dots on eight
+        /// hundred agents made the trails alone 23 ms of every frame.
+        /// </summary>
         private void DrawTrail(Trail trail)
         {
+            const float dotSize = 0.05f;
+            Vector3 previous = default;
+
             for (int i = 0; i < trail.Count; i++)
             {
-                // Oldest dots fade out, so the direction of travel is readable from a still frame.
-                float age = trail.Count > 1 ? i / (float)(trail.Count - 1) : 1f;
-                Gizmos.color = new Color(0.6f, 0.8f, 1f, 0.15f + 0.55f * age);
+                // Oldest dots fade out, so the direction of travel is readable from a still frame. In four
+                // steps of fade, so that every trail on the map shares four batches.
+                float age = trail.Count > 1 ? GizmoBatch.Step(i / (float)(trail.Count - 1), 4) : 1f;
+                var colour = new Color(0.6f, 0.8f, 1f, 0.15f + 0.55f * age);
 
                 Vector3 dot = SimToWorld.Position(trail[i]);
-                Gizmos.DrawSphere(dot, 0.05f);
+                _batch.Line(colour, dot + new Vector3(-dotSize, -dotSize, 0f), dot + new Vector3(dotSize, dotSize, 0f));
+                _batch.Line(colour, dot + new Vector3(-dotSize, dotSize, 0f), dot + new Vector3(dotSize, -dotSize, 0f));
 
                 if (i > 0)
                 {
-                    Gizmos.DrawLine(SimToWorld.Position(trail[i - 1]), dot);
+                    _batch.Line(colour, previous, dot);
                 }
+
+                previous = dot;
             }
         }
 
