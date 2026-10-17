@@ -37,6 +37,13 @@ namespace Rts
 
         public void Enqueue(DamageEvent damage) => _pending.Enqueue(damage);
 
+        /// <summary>
+        /// For producers that run as parallel jobs - every soldier looking for a target at once. The queue
+        /// lives inside a singleton, so ECS does not order its readers after such a job: whoever schedules one
+        /// completes it before <see cref="DamageApplySystem"/> drains the queue.
+        /// </summary>
+        public NativeQueue<DamageEvent>.ParallelWriter AsParallelWriter() => _pending.AsParallelWriter();
+
         public bool TryDequeue(out DamageEvent damage) => _pending.TryDequeue(out damage);
 
         public void Dispose()

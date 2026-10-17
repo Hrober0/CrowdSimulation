@@ -3,7 +3,6 @@ using CustomNativeCollections;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace Rts
@@ -21,51 +20,45 @@ namespace Rts
     [UpdateAfter(typeof(PathFollowSystem))]
     public partial struct AgentAvoidanceSystem : ISystem
     {
-        private ComponentLookup<AgentMove> _agents;
-
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<AgentSpatialHash>();
-
-            _agents = state.GetComponentLookup<AgentMove>();
         }
 
+        /// <remarks>
+        /// Walking agents only, through the job's query. A parked one still has to be *avoided* - it is in the
+        /// spatial hash - but solving for a velocity it will never use is the per-frame cost §6 exists to avoid.
+        ///
+        /// An entity job over chunks rather than a job over an entity array with a lookup into
+        /// <see cref="AgentMove"/> (RtsPerformance.md §4): no array to build and allocate every frame, linear
+        /// access instead of random, and no switched-off safety, because each agent writes only itself and
+        /// reads its neighbours from the hash's copies.
+        ///
+        /// Still completed here, because the hash it reads is a container inside a singleton: nothing would
+        /// stop the next frame's rebuild from clearing it under a job still running.
+        /// </remarks>
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            // Walking agents only. A parked one still has to be *avoided* - it is in the spatial hash - but
-            // solving for a velocity it will never use is the per-frame cost §6 exists to avoid.
-            EntityQuery query = SystemAPI.QueryBuilder().WithAllRW<AgentMove>().WithAll<PathFollow>().Build();
-            int agentCount = query.CalculateEntityCount();
-            if (agentCount == 0)
-            {
-                return;
-            }
-
             float deltaTime = SystemAPI.Time.DeltaTime;
             if (deltaTime <= 0f)
             {
                 return;
             }
 
-            NativeArray<Entity> entities = query.ToEntityArray(Allocator.TempJob);
-
-            _agents.Update(ref state);
-
             state.Dependency = new AgentVelocityJob
             {
-                Entities = entities,
-                Agents = _agents,
                 SpatialHash = SystemAPI.GetSingleton<AgentSpatialHash>().Hash,
                 InverseTimeStep = 1f / deltaTime,
-            }.ScheduleParallel(agentCount, 64, state.Dependency);
+            }.ScheduleParallel(state.Dependency);
 
             state.Dependency.Complete();
-            entities.Dispose();
         }
     }
 
     [BurstCompile]
-    public struct AgentVelocityJob : IJobFor
+    [WithAll(typeof(PathFollow))]
+    public partial struct AgentVelocityJob : IJobEntity
     {
         /// <summary>
         /// How many neighbours one agent solves against. A body that fills most of its cell has more
@@ -102,17 +95,11 @@ namespace Rts
         /// <summary>Seconds a standing agent needs to reach full speed, and the same to turn or stop.</summary>
         private const float SPEED_RAMP_SECONDS = 0.25f;
 
-        [ReadOnly] public NativeArray<Entity> Entities;
-
-        [NativeDisableParallelForRestriction] public ComponentLookup<AgentMove> Agents;
-
         [ReadOnly] public NativeSpatialHash<AgentMove> SpatialHash;
         [ReadOnly] public float InverseTimeStep;
 
-        public void Execute(int index)
+        private void Execute(ref AgentMove move)
         {
-            Entity entity = Entities[index];
-            AgentMove move = Agents[entity];
             Agent agent = ToAgent(move);
 
             var neighbours = new NativeList<AgentNeighbor>(MAX_NEIGHBOURS, Allocator.Temp);
@@ -147,7 +134,6 @@ namespace Rts
             }
 
             move.Velocity = Ramp(move.Velocity, velocity, agent.MaxSpeed);
-            Agents[entity] = move;
 
             neighbours.Dispose();
             orcaLines.Dispose();

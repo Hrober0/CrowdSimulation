@@ -6,8 +6,14 @@ using Unity.Entities;
 namespace Rts
 {
     /// <summary>
-    /// Who is near whom, rebuilt every frame (design §13.3 #12). Avoidance is the only consumer for now;
-    /// order assignment and bridges also read it.
+    /// Who is near whom, rebuilt every frame (design §13.3 #12). Read by avoidance, target finding, idle
+    /// parking and bridges.
+    ///
+    /// **An agent is filed under the cell its centre is in, once.** Every reader asks "whose centre is within
+    /// this distance of here", and a box around that circle already contains every such centre - so filing a
+    /// body under each cell it overlaps bought nothing but copies. It cost plenty: up to four nodes per agent,
+    /// four times the candidates for every query, and avoidance filling its twelve neighbour slots with the
+    /// same neighbour twice.
     /// </summary>
     public struct AgentSpatialHash : IComponentData
     {
@@ -19,7 +25,13 @@ namespace Rts
     public partial struct AgentSpatialHashSystem : ISystem
     {
         private const int INITIAL_CAPACITY = 4096;
-        private const float CELL_SIZE = 1f;
+
+        /// <summary>
+        /// Two cells, not one. Avoidance asks for a box about twelve cells across and a gun for one sixteen
+        /// across, so at one cell a query probed 144-289 mostly empty buckets; at two it probes a quarter of
+        /// that for a slightly longer list per bucket (RtsPerformance.md §4).
+        /// </summary>
+        private const float CELL_SIZE = 2f;
 
         private ComponentLookup<OnBridge> _onBridge;
 
@@ -68,9 +80,7 @@ namespace Rts
                     continue;
                 }
 
-                AgentMove move = agent.ValueRO;
-                float radius = move.Radius;
-                hash.AddAABB(move.Position - radius, move.Position + radius, move);
+                hash.AddPoint(agent.ValueRO.Position, agent.ValueRO);
             }
         }
     }

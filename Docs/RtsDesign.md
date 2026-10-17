@@ -418,9 +418,12 @@ System 13 runs **before** 17 on purpose: an arrival detected during integration 
 
 4 (gates) is parallel across dirty chunks; 5 (fields) is one job per field with a per-frame cap so a burst of new destinations cannot spike a frame.
 
-**Read that table with `RtsPerformance.md` §4 open.** Three of the five systems in the left column are
-main-thread `foreach` loops, not jobs, and §5 records four hard `.Complete()` calls a frame. The table
-describes where parallelism was *designed to go*, not what overlaps today.
+**Read that table with `RtsPerformance.md` §5 and §7 open.** 15, 16 and 17 are parallel jobs now, as are
+target finding and the watchdog; 12 is still a main-thread loop, because the hash it builds is single-writer.
+But every one of those jobs is completed inside its own system - seven hard `.Complete()` calls, all because
+the containers they touch live inside singletons that ECS does not track - so each spreads over the workers
+without overlapping its neighbours. The table describes where parallelism was *designed to go*; tracking
+those containers (`RtsPerformance.md` §8) is what would make it overlap.
 
 ### 13.5 Designing for overlap
 

@@ -1,5 +1,7 @@
 using GridNav;
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -19,39 +21,95 @@ namespace Rts
     [BurstCompile]
     public partial struct AgentIntegrateSystem : ISystem
     {
+        private EntityQuery _walking;
+        private ComponentTypeHandle<AgentMove> _moves;
+        private ComponentTypeHandle<PathFollow> _follows;
+        private ComponentTypeHandle<ArrivedTag> _arrived;
+
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<GridWorld>();
+
+            // Present, not All, for ArrivedTag: it is disabled on exactly the agents this is for.
+            _walking = SystemAPI.QueryBuilder()
+                                .WithAllRW<AgentMove, PathFollow>()
+                                .WithPresentRW<ArrivedTag>()
+                                .Build();
+
+            _moves = state.GetComponentTypeHandle<AgentMove>();
+            _follows = state.GetComponentTypeHandle<PathFollow>();
+            _arrived = state.GetComponentTypeHandle<ArrivedTag>();
         }
 
+        /// <remarks>
+        /// A parallel job (RtsPerformance.md §4): the map is immutable for the whole of
+        /// <c>SimulationSystemGroup</c> (§13.2 invariant 1), and each agent writes only its own position and
+        /// its own two flags.
+        ///
+        /// Completed before returning. The map is containers inside a singleton, which ECS does not track, so
+        /// nothing else would stop the next grid write from landing while the job still reads it.
+        ///
+        /// A chunk job rather than an entity job, because it reads <see cref="PathFollow"/> and switches it off
+        /// on arrival, and an entity job cannot take a component and its enabled bit through two handles.
+        /// </remarks>
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
-            float deltaTime = SystemAPI.Time.DeltaTime;
+            _moves.Update(ref state);
+            _follows.Update(ref state);
+            _arrived.Update(ref state);
 
-            // WithPresent, because ArrivedTag is disabled on exactly the agents this loop is for.
-            foreach ((RefRW<AgentMove> agent, RefRO<PathFollow> path,
-                      EnabledRefRW<PathFollow> walking, EnabledRefRW<ArrivedTag> arrived)
-                     in SystemAPI.Query<RefRW<AgentMove>, RefRO<PathFollow>,
-                                        EnabledRefRW<PathFollow>, EnabledRefRW<ArrivedTag>>()
-                                 .WithPresent<ArrivedTag>())
+            state.Dependency = new IntegrateJob
             {
-                AgentMove move = agent.ValueRO;
-                move.Position = Advance(map, move, deltaTime);
+                Map = SystemAPI.GetSingleton<GridWorld>().Map,
+                DeltaTime = SystemAPI.Time.DeltaTime,
+                Moves = _moves,
+                Follows = _follows,
+                Arrived = _arrived,
+            }.ScheduleParallel(_walking, state.Dependency);
 
-                float2 goalPoint = GridCoords.CellCenter(path.ValueRO.GoalCell);
-                if (math.distance(move.Position, goalPoint) <= path.ValueRO.ArriveDistance)
+            state.Dependency.Complete();
+        }
+
+        [BurstCompile]
+        private struct IntegrateJob : IJobChunk
+        {
+            [ReadOnly] public GridMap Map;
+            public float DeltaTime;
+
+            public ComponentTypeHandle<AgentMove> Moves;
+            public ComponentTypeHandle<PathFollow> Follows;
+            public ComponentTypeHandle<ArrivedTag> Arrived;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
+                                in v128 chunkEnabledMask)
+            {
+                NativeArray<AgentMove> moves = chunk.GetNativeArray(ref Moves);
+                NativeArray<PathFollow> follows = chunk.GetNativeArray(ref Follows);
+                EnabledMask walking = chunk.GetEnabledMask(ref Follows);
+                EnabledMask arrived = chunk.GetEnabledMask(ref Arrived);
+
+                var agents = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (agents.NextEntityIndex(out int i))
                 {
-                    // Both velocities, not just the current one: nothing updates PrefVelocity once
-                    // PathFollow is off, so a leftover value would keep being honoured.
-                    move.Velocity = float2.zero;
-                    move.PrefVelocity = float2.zero;
-                    walking.ValueRW = false;
-                    arrived.ValueRW = true;
-                }
+                    AgentMove move = moves[i];
+                    PathFollow path = follows[i];
 
-                agent.ValueRW = move;
+                    move.Position = Advance(Map, move, DeltaTime);
+
+                    float2 goalPoint = GridCoords.CellCenter(path.GoalCell);
+                    if (math.distance(move.Position, goalPoint) <= path.ArriveDistance)
+                    {
+                        // Both velocities, not just the current one: nothing updates PrefVelocity once
+                        // PathFollow is off, so a leftover value would keep being honoured.
+                        move.Velocity = float2.zero;
+                        move.PrefVelocity = float2.zero;
+                        walking[i] = false;
+                        arrived[i] = true;
+                    }
+
+                    moves[i] = move;
+                }
             }
         }
 

@@ -69,11 +69,11 @@ Verified: clean compile, 361/362 EditMode tests passing (the one failure pre-exi
 
 ## 3. Still un-Bursted
 
-Eight systems, none of them read in full, so none annotated blind. Given Burst erased ~1.3 ms apiece on the
-five above, these are likely carrying the same fixed cost, and this is the cheapest remaining win by a wide
-margin.
+`OrderAssignSystem` and `ThreatDetectionSystem` have since been Bursted (`RtsBattleScaling.md` P1, P3). The
+rest are still managed, and §7's real-frame profile says none of them is worth it yet: the most expensive,
+`IdleAssignSystem`, is under 0.1 ms a frame averaged at 800 haulers.
 
-`BridgeTransitSystem`, `OrderAssignSystem`, `IdleAssignSystem`, `StorageRequestSystem`, `WorkRequestSystem`,
+`BridgeTransitSystem`, `IdleAssignSystem`, `StorageRequestSystem`, `WorkRequestSystem`,
 `ChunkGateGraphSystem`, `FlowFieldCacheSystem`, `GridMapSystem`.
 
 ## 4. Deliberately not done
@@ -86,12 +86,14 @@ follow), 16 (avoidance), 17 (integrate) and 22 (view sync) as `ScheduleParallel`
 schedule jobs; 12, 15 and 17 are main-thread `foreach` loops. That gap is the origin of this whole
 investigation and is worth knowing before trusting the table.
 
-**Parallelising integrate and path follow.** Both are genuinely trivial to convert — `AgentIntegrateSystem`
+**Parallelising integrate and path follow.** *Done in §7, along with the watchdog.* Both are genuinely
+trivial to convert — `AgentIntegrateSystem`
 reads `GridMap` read-only (invariant 1 makes it immutable through `SimulationSystemGroup`) and writes only its
 own entity's `AgentMove` and two enableable flags, which is exactly `IJobEntity.ScheduleParallel`. Cheap to do,
 but there is currently no cost to recover.
 
-**The avoidance sync point.** `AgentAvoidanceSystem` builds `query.ToEntityArray(Allocator.TempJob)` every
+**The avoidance sync point.** *Rewritten in §7 as an entity job; the `Complete()` stays, for the reason
+§5 now gives.* `AgentAvoidanceSystem` builds `query.ToEntityArray(Allocator.TempJob)` every
 frame, then reads and writes `AgentMove` through a `ComponentLookup` marked
 `[NativeDisableParallelForRestriction]` — random access by entity rather than linear chunk iteration, with the
 safety system switched off — and then immediately calls `state.Dependency.Complete()`. As `IJobEntity` it would
@@ -135,11 +137,25 @@ planning horizon is worse than a slow one. The cell size is the free variable, a
 Cell size 2–3 trades ~120 probes for a longer candidate list per cell, and `NeighbourInsertion.Process`
 already early-outs on squared distance. One constant, and the largest single win available *at scale*.
 
+*Done in §7: cell size 2, and each agent filed once at its centre rather than under every cell its body
+overlaps.*
+
 ## 5. Sync points
 
-Four hard `.Complete()` calls per frame: `GridApplySystem`, `ChunkGateGraphSystem`, `FlowFieldCacheSystem`,
-`AgentAvoidanceSystem`. The first is argued for in place and is a handful of edits. The last is the one worth
-removing (§4).
+Seven hard `.Complete()` calls: `GridApplySystem`, `ChunkGateGraphSystem`, `FlowFieldCacheSystem`,
+`AgentAvoidanceSystem`, and since §7 `AttackSystem`, `AgentIntegrateSystem` and `WatchdogSystem`.
+
+**They all have the same cause, and it is not the work.** Every one of these jobs reads or writes a native
+container held *inside a singleton component* - the grid map, the field cache, the agent hash, the damage
+queue. ECS tracks dependencies per component type, not per container, so nothing makes the next writer of the
+container wait for a job still reading it. §7 found out the hard way: the watchdog job, left running, was
+still reading the field cache when the next frame's `FlowFieldCacheSystem` wrote it, and the safety system
+threw every frame. Each job still spreads across every worker; it just cannot overlap the systems after it.
+
+Removing them is one change applied five times, and is the largest piece of parallelism left (§8): give each
+singleton container its own dependency - a `JobHandle` stored beside it that every reader combines into its
+own dependency and every writer completes first - so that the overlap the design table promises becomes
+real.
 
 `ViewSyncSystem` is a deliberate exception and should stay one: its transform job handle is held manually
 rather than in the ECS dependency graph, and is completed at the top of its own next update. The job therefore
@@ -182,3 +198,81 @@ it, which is what the five stalled agents above were doing. Not live: no product
 the tree is the `AgentSpawnSystem` debug spawner. It is a trap for whoever adds the next task kind, not a bug
 today.
 </content>
+
+## 7. Second pass: 2000 armed agents, 800 haulers
+
+Measured in **real frames** with `ProfilerRecorder` on each system's own marker - `"Default World <System>"`,
+which a Bursted system records under the **"Burst Jobs"** category, not "Scripts" - and on the engine's frame
+markers (`PlayerLoop`, `Inl_RenderCameraStack`, draw-call and SetPass counters). Not by running systems by hand
+from a paused play mode, which is how the first pass of `RtsBattleScaling.md` was measured: paused, time
+does not advance, no weapon is ever loaded, and the worst system in the game read as 0.8 ms.
+
+**The battle**, `RtsBigBattle.unity` at 600 swords + 400 guns a side, 1550-1700 alive in the sample windows:
+
+| | before | after |
+| --- | --- | --- |
+| `PlayerLoop` | 13.0 ms | 6.2 ms |
+| `SimulationSystemGroup` | 6.1 ms | 1.8 ms |
+| `AttackSystem`, worst tick | 15 ms | 0.5 ms |
+| `AgentAvoidanceSystem` | 3.3 ms | 1.0 ms |
+| combat view | 2.2 ms | 1.4 ms |
+| SetPass calls | 231 | 23 |
+
+**The economy**, `RtsSandbox.unity` with 800 haulers and the debug overlays on, as the scene ships:
+
+| | before | after |
+| --- | --- | --- |
+| `PlayerLoop` | 139 ms | 7.7 ms |
+| camera render | 135 ms | 6.0 ms |
+| draw calls | 127,639 | 950 |
+
+What changed, in order of what it bought:
+
+1. **The debug overlays drew one gizmo per shape.** Every `Gizmos.DrawLine` / `DrawSphere` / `DrawCube` is a
+   draw call and a material switch, and the overlays draw several per agent and per grid cell - 127k draws a
+   frame at 800 haulers, against a simulation that took 1.2 ms. `GizmoBatch` collects a whole draw into one
+   `DrawLineList` and one mesh per colour, with continuous colours (speed, trail age, cost heat) rounded into a
+   few steps so they share a batch. Trails, the last big cost, are kept for the 100 agents nearest the
+   overlay (`_maxTrails`) and their dots are drawn as line crosses rather than filled discs.
+2. **Soldiers searched for targets one at a time on the main thread.** Every loaded soldier queried the hash
+   for its weapon's whole range box and sorted through a candidate list, every economy tick: a 15 ms hitch ten
+   times a second. Now a parallel entity job - design §13.5's "search parallel, commit serial" - with each
+   soldier writing only its own `Weapon` and its shot into `DamageQueue.AsParallelWriter()`, and a nearest-enemy
+   processor instead of a candidate list.
+3. **The agent hash filed a body under every cell it overlapped, at cell size 1.** Every reader measures to an
+   agent's *centre*, so a box round the query circle already contains every centre it needs: the copies bought
+   nothing. They cost up to four nodes per agent, four times the candidates for every query, and avoidance
+   spending its twelve neighbour slots on the same neighbour twice. Now one node per agent at cell size 2 (§4).
+4. **A per-renderer property block took every soldier out of the SRP batcher.** The combat view now uses one
+   material per side, made once from the prefab's.
+5. **Per-frame agent systems ran as main-thread loops** (§4). Path follow is an entity job; avoidance an entity
+   job over chunks instead of an entity array with a lookup; integrate and the watchdog are chunk jobs.
+   **An entity job cannot read a component and write its enabled bit** - `in PathFollow` beside
+   `EnabledRefRW<PathFollow>` is two handles to one type and fails the safety check - so the two that switch
+   `PathFollow` off on arrival or on giving up are `IJobChunk`s, which read the data and the bit through one
+   handle.
+6. **The combat view wrote every soldier's transform on the main thread.** Soldiers are now scene roots in a
+   `TransformAccessArray` written by a parallel transform job, as the agent pool's are; only a hand mid-swing,
+   a gun mid-kick or a flash is written on the main thread, and only while it moves.
+
+## 8. Parallelism worth doing next
+
+In order of expected value at the 1000-agent budget (§12 of the design). None is needed for 300 a side; all of
+them are for the day the count or the map grows.
+
+1. **Track the singleton containers** (§5). One `JobHandle` per container, combined by readers and completed by
+   writers, turns seven hard syncs into dependencies and lets the agent phase overlap itself the way design
+   §13.4 draws it. The biggest structural win left, and the one every item below benefits from.
+2. **`TaskStepSystem` as a parallel job.** 0.3 ms at 1600 agents, single-threaded. Each agent's steps are its
+   own; what it shares is the interaction queue, which needs the same `AsParallelWriter()` the damage queue
+   got, and the lookups it reads are read-only.
+3. **The combat view's read side** (0.5 ms at 1600). Two dictionary operations per soldier a frame -
+   `NoteShot` and `Show` - plus a dictionary-wide scan for the unseen. A `NativeHashMap` from entity to slot,
+   filled by a Burst job reading `Weapon` and `AgentMove`, would make the main thread's share the acquire and
+   release of views and nothing per soldier.
+4. **Fewer renderers per soldier.** 3600 draw calls at 1600 soldiers is three or four renderers each - body,
+   blade or barrel, guard, flash. Batched by the SRP batcher they are cheap per call, but one mesh per soldier
+   kind, or GPU instancing of the body, would cut the count by three or four.
+5. **The index phase** (design §13.5). The agent hash is the only index today; a resource-node index or a
+   faction target index built beside it would run in parallel with it for free, once item 1 lets them.
+

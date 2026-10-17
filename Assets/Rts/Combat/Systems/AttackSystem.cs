@@ -21,6 +21,11 @@ namespace Rts
     ///
     /// Nothing claims its target. Two soldiers shooting one raider is the right answer, and the damage queue
     /// settles what actually happens - including who was already dead when the second shot landed.
+    ///
+    /// **Soldiers search in parallel** (design §13.5, "search parallel, commit serial"). Each one reads the
+    /// hash, writes only its own <see cref="Weapon"/>, and hands its shot to the damage queue's parallel
+    /// writer; the one applier settles the queue afterwards. Searched one after another on the main thread,
+    /// sixteen hundred soldiers made every tick a 15 ms hitch.
     /// </summary>
     [UpdateInGroup(typeof(RtsEconomyGroup))]
     [UpdateBefore(typeof(DamageApplySystem))]
@@ -48,11 +53,20 @@ namespace Rts
             _faction.Update(ref state);
             _health.Update(ref state);
 
+            // TempJob rather than Temp, because the soldiers' job reads it from worker threads.
             NativeList<StructureTarget> structures = CollectStructures(ref state);
-            var candidates = new NativeList<AgentMove>(16, Allocator.Temp);
+
+            var targeting = new Targeting
+            {
+                Crowd = crowd,
+                Factions = _faction,
+                Health = _health,
+                Structures = structures.AsArray(),
+            };
 
             // Turrets: a weapon bolted to a footprint. Enabled-ness is not asked about, because a building
-            // that carries one is armed by construction - nothing ever disarms a turret.
+            // that carries one is armed by construction - nothing ever disarms a turret. Dozens at most, so
+            // the main thread does them before the soldiers' job takes the Weapon component.
             foreach ((RefRW<Weapon> weapon, RefRO<Faction> faction, DynamicBuffer<BuildingFootprintCell> footprint)
                      in SystemAPI.Query<RefRW<Weapon>, RefRO<Faction>, DynamicBuffer<BuildingFootprintCell>>())
             {
@@ -61,124 +75,53 @@ namespace Rts
                     continue;
                 }
 
-                Fire(ref weapon.ValueRW, faction.ValueRO, CentreOf(footprint),
-                     crowd, structures, candidates, damage, now);
+                if (TryFire(ref weapon.ValueRW, faction.ValueRO, CentreOf(footprint), targeting, now,
+                            out DamageEvent shot))
+                {
+                    damage.Enqueue(shot);
+                }
             }
 
-            // Soldiers: a weapon carried by a body. The query takes only enabled weapons, so a worker is
-            // skipped by the same bit that says it is not a soldier - and an agent that has stepped inside a
-            // building has AgentMove disabled, so it stops shooting and stops being shot at together.
-            foreach ((RefRW<Weapon> weapon, RefRO<Faction> faction, RefRO<AgentMove> move)
-                     in SystemAPI.Query<RefRW<Weapon>, RefRO<Faction>, RefRO<AgentMove>>())
+            // Soldiers: a weapon carried by a body. The job takes only enabled weapons and enabled bodies, so
+            // a worker is skipped by the same bit that says it is not a soldier - and an agent that has stepped
+            // inside a building has AgentMove disabled, so it stops shooting and stops being shot at together.
+            state.Dependency = new SoldierFireJob
             {
-                Fire(ref weapon.ValueRW, faction.ValueRO, move.ValueRO.Position,
-                     crowd, structures, candidates, damage, now);
-            }
+                Crowd = crowd,
+                Factions = _faction,
+                Health = _health,
+                Structures = structures.AsArray(),
+                Damage = damage.AsParallelWriter(),
+                Now = now,
+            }.ScheduleParallel(state.Dependency);
 
-            candidates.Dispose();
+            // Completed here: the queue lives inside a singleton, so nothing would order DamageApplySystem
+            // after the job otherwise. The work inside it is still spread over every worker.
+            state.Dependency.Complete();
             structures.Dispose();
         }
 
         /// <summary>One shot, if it is loaded and there is anything to shoot at.</summary>
-        private void Fire(ref Weapon weapon, Faction mine, float2 muzzle,
-                          in NativeSpatialHash<AgentMove> crowd, in NativeList<StructureTarget> structures,
-                          NativeList<AgentMove> candidates, in DamageQueue damage, double now)
+        private static bool TryFire(ref Weapon weapon, Faction mine, float2 muzzle, in Targeting targeting,
+                                    double now, out DamageEvent shot)
         {
+            shot = default;
+
             if (!weapon.IsArmed || now < weapon.NextShotTime)
-            {
-                return;
-            }
-
-            if (!TryFindTarget(muzzle, weapon.Range, mine, crowd, structures, candidates, out Entity target))
-            {
-                return;
-            }
-
-            damage.Enqueue(new DamageEvent { Target = target, Amount = weapon.Damage });
-
-            weapon.LastTarget = target;
-            weapon.NextShotTime = now + weapon.ReloadSeconds;
-        }
-
-        /// <summary>
-        /// Nearest enemy in range, agent or building, or nothing.
-        ///
-        /// Nearest rather than weakest, most dangerous or most valuable: anything cleverer is a targeting
-        /// *policy*, and a policy is a design decision about how a fight should read rather than a mechanism.
-        /// It belongs above this, in whatever eventually gives a soldier its orders.
-        ///
-        /// **There is no line of sight.** Range is a plain distance, so a shot passes through walls, woods
-        /// and buildings alike. That is an absence rather than a decision, and it is recorded as one in §15.
-        /// </summary>
-        private bool TryFindTarget(float2 muzzle, float range, Faction mine,
-                                   in NativeSpatialHash<AgentMove> crowd,
-                                   in NativeList<StructureTarget> structures,
-                                   NativeList<AgentMove> candidates,
-                                   out Entity target)
-        {
-            target = Entity.Null;
-            float best = range * range;
-
-            candidates.Clear();
-            crowd.QueryAABB(muzzle - range, muzzle + range, candidates);
-
-            // The hash spans an agent over every cell its body touches, so a big body comes back more than
-            // once. Harmless: the nearest of several copies of one agent is that agent.
-            foreach (AgentMove candidate in candidates)
-            {
-                if (!IsEnemy(candidate.Entity, mine))
-                {
-                    continue;
-                }
-
-                float distanceSq = math.lengthsq(candidate.Position - muzzle);
-                if (distanceSq > best)
-                {
-                    continue;
-                }
-
-                best = distanceSq;
-                target = candidate.Entity;
-            }
-
-            // Buildings second, and on the same yardstick, so a soldier standing between a raider and its
-            // camp shoots the raider. A structure only wins the tie-break by being strictly nearer.
-            //
-            // Measured to the nearest edge, not the middle (see FootprintBounds): to the middle, a sword could
-            // never reach anything bigger than a turret.
-            foreach (StructureTarget structure in structures)
-            {
-                if (!Faction.AreEnemies(structure.Faction, mine))
-                {
-                    continue;
-                }
-
-                float distanceSq = structure.Bounds.DistanceSq(muzzle);
-                if (distanceSq > best)
-                {
-                    continue;
-                }
-
-                best = distanceSq;
-                target = structure.Entity;
-            }
-
-            return target != Entity.Null;
-        }
-
-        /// <summary>
-        /// Whether that agent is worth a bullet: on another side, and not already dead this tick. Health is
-        /// asked about because the applier writes it immediately and destroys later, so an entity can be at
-        /// zero and still be standing in this frame's hash.
-        /// </summary>
-        private bool IsEnemy(Entity candidate, Faction mine)
-        {
-            if (!_faction.HasComponent(candidate) || !Faction.AreEnemies(_faction[candidate], mine))
             {
                 return false;
             }
 
-            return !_health.HasComponent(candidate) || _health[candidate].IsAlive;
+            if (!targeting.TryFindTarget(muzzle, weapon.Range, mine, out Entity target))
+            {
+                return false;
+            }
+
+            shot = new DamageEvent { Target = target, Amount = weapon.Damage };
+
+            weapon.LastTarget = target;
+            weapon.NextShotTime = now + weapon.ReloadSeconds;
+            return true;
         }
 
         /// <summary>
@@ -187,7 +130,7 @@ namespace Rts
         /// </summary>
         private NativeList<StructureTarget> CollectStructures(ref SystemState state)
         {
-            var structures = new NativeList<StructureTarget>(16, Allocator.Temp);
+            var structures = new NativeList<StructureTarget>(16, Allocator.TempJob);
 
             foreach ((RefRO<Faction> faction, RefRO<Health> health,
                       DynamicBuffer<BuildingFootprintCell> footprint, Entity entity)
@@ -224,6 +167,137 @@ namespace Rts
             }
 
             return sum / footprint.Length;
+        }
+
+        /// <summary>Every soldier at once, each writing only its own weapon and a shot into the queue.</summary>
+        [BurstCompile]
+        private partial struct SoldierFireJob : IJobEntity
+        {
+            [ReadOnly] public NativeSpatialHash<AgentMove> Crowd;
+            [ReadOnly] public ComponentLookup<Faction> Factions;
+            [ReadOnly] public ComponentLookup<Health> Health;
+            [ReadOnly] public NativeArray<StructureTarget> Structures;
+
+            public NativeQueue<DamageEvent>.ParallelWriter Damage;
+            public double Now;
+
+            private void Execute(ref Weapon weapon, in Faction faction, in AgentMove move)
+            {
+                var targeting = new Targeting
+                {
+                    Crowd = Crowd,
+                    Factions = Factions,
+                    Health = Health,
+                    Structures = Structures,
+                };
+
+                if (TryFire(ref weapon, faction, move.Position, targeting, Now, out DamageEvent shot))
+                {
+                    Damage.Enqueue(shot);
+                }
+            }
+        }
+
+        /// <summary>The read-only half of a shot: what is there to hit, shared by turrets and soldiers.</summary>
+        private struct Targeting
+        {
+            public NativeSpatialHash<AgentMove> Crowd;
+            public ComponentLookup<Faction> Factions;
+            public ComponentLookup<Health> Health;
+            public NativeArray<StructureTarget> Structures;
+
+            /// <summary>
+            /// Nearest enemy in range, agent or building, or nothing.
+            ///
+            /// Nearest rather than weakest, most dangerous or most valuable: anything cleverer is a targeting
+            /// *policy*, and a policy is a design decision about how a fight should read rather than a mechanism.
+            /// It belongs above this, in whatever eventually gives a soldier its orders.
+            ///
+            /// **There is no line of sight.** Range is a plain distance, so a shot passes through walls, woods
+            /// and buildings alike. That is an absence rather than a decision, and it is recorded as one in §15.
+            /// </summary>
+            public readonly bool TryFindTarget(float2 muzzle, float range, Faction mine, out Entity target)
+            {
+                var nearest = new NearestEnemy
+                {
+                    Muzzle = muzzle,
+                    BestSq = range * range,
+                    Mine = mine,
+                    Factions = Factions,
+                    Health = Health,
+                    Target = Entity.Null,
+                };
+
+                Crowd.ForEachInAABB(muzzle - range, muzzle + range, ref nearest);
+
+                // Buildings second, and on the same yardstick, so a soldier standing between a raider and its
+                // camp shoots the raider. A structure only wins the tie-break by being strictly nearer.
+                //
+                // Measured to the nearest edge, not the middle (see FootprintBounds): to the middle, a sword
+                // could never reach anything bigger than a turret.
+                float best = nearest.BestSq;
+                target = nearest.Target;
+
+                foreach (StructureTarget structure in Structures)
+                {
+                    if (!Faction.AreEnemies(structure.Faction, mine))
+                    {
+                        continue;
+                    }
+
+                    float distanceSq = structure.Bounds.DistanceSq(muzzle);
+                    if (distanceSq > best)
+                    {
+                        continue;
+                    }
+
+                    best = distanceSq;
+                    target = structure.Entity;
+                }
+
+                return target != Entity.Null;
+            }
+        }
+
+        /// <summary>
+        /// Keeps the nearest enemy agent while the hash is walked, rather than collecting every candidate into
+        /// a list first and sorting through it afterwards.
+        /// </summary>
+        private struct NearestEnemy : ISpatialQueryProcessor<AgentMove>
+        {
+            public float2 Muzzle;
+            public float BestSq;
+            public Faction Mine;
+            public ComponentLookup<Faction> Factions;
+            public ComponentLookup<Health> Health;
+            public Entity Target;
+
+            public void Process(AgentMove candidate)
+            {
+                float distanceSq = math.lengthsq(candidate.Position - Muzzle);
+                if (distanceSq > BestSq || !IsEnemy(candidate.Entity))
+                {
+                    return;
+                }
+
+                BestSq = distanceSq;
+                Target = candidate.Entity;
+            }
+
+            /// <summary>
+            /// Whether that agent is worth a bullet: on another side, and not already dead this tick. Health is
+            /// asked about because the applier writes it immediately and destroys later, so an entity can be at
+            /// zero and still be standing in this frame's hash.
+            /// </summary>
+            private readonly bool IsEnemy(Entity candidate)
+            {
+                if (!Factions.HasComponent(candidate) || !Faction.AreEnemies(Factions[candidate], Mine))
+                {
+                    return false;
+                }
+
+                return !Health.HasComponent(candidate) || Health[candidate].IsAlive;
+            }
         }
 
         /// <summary>A building flattened to the two facts a shot needs: where it is and whose it is.</summary>

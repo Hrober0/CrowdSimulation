@@ -1,5 +1,6 @@
 using GridNav;
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -57,16 +58,31 @@ namespace Rts
             state.RequireForUpdate<FlowFieldCache>();
         }
 
+        /// <remarks>
+        /// A parallel job: each agent reads the immutable map and the cache and writes only its own
+        /// <c>PrefVelocity</c> (RtsPerformance.md §4). Not completed here: avoidance is scheduled behind it by
+        /// the dependency on <see cref="AgentMove"/> and completes both, inside this frame and before anything
+        /// can write the map or the cache.
+        /// </remarks>
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            GridMap map = SystemAPI.GetSingleton<GridWorld>().Map;
-            FlowFieldCache cache = SystemAPI.GetSingleton<FlowFieldCache>();
-
-            foreach ((RefRW<AgentMove> agent, RefRO<PathFollow> path)
-                     in SystemAPI.Query<RefRW<AgentMove>, RefRO<PathFollow>>())
+            state.Dependency = new FollowJob
             {
-                agent.ValueRW.PrefVelocity = PreferredVelocity(map, cache, agent.ValueRO, path.ValueRO);
+                Map = SystemAPI.GetSingleton<GridWorld>().Map,
+                Cache = SystemAPI.GetSingleton<FlowFieldCache>(),
+            }.ScheduleParallel(state.Dependency);
+        }
+
+        [BurstCompile]
+        private partial struct FollowJob : IJobEntity
+        {
+            [ReadOnly] public GridMap Map;
+            [ReadOnly] public FlowFieldCache Cache;
+
+            private void Execute(ref AgentMove agent, in PathFollow path)
+            {
+                agent.PrefVelocity = PreferredVelocity(Map, Cache, agent, path);
             }
         }
 
