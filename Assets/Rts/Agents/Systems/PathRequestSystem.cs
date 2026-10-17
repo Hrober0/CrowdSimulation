@@ -28,6 +28,12 @@ namespace Rts
 
             foreach (RefRO<PathFollow> path in SystemAPI.Query<RefRO<PathFollow>>())
             {
+                // A straight-line chase steers at a point and has no use for a field.
+                if (path.ValueRO.Direct)
+                {
+                    continue;
+                }
+
                 cache.Request(path.ValueRO.WaypointCell, path.ValueRO.Traversal);
             }
         }

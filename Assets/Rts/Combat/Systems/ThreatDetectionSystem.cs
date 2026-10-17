@@ -1,4 +1,4 @@
-using CustomNativeCollections;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -23,6 +23,13 @@ namespace Rts
     /// to take it are everyone that thing is an enemy *of* - which with three sides on the map is two
     /// different factions, both correctly dispatched, without a faction field or a relationship table
     /// anywhere.
+    ///
+    /// **Asked once per agent, not once per soldier** (Docs/RtsBattleScaling.md P1). The question is "is this
+    /// body inside some other side's leash", and the first version answered it from the soldier's end: every
+    /// post searched the agent hash over its whole leash box. That is soldiers × leash² cell probes, and a
+    /// leash long enough to see across a battlefield made it 450 ms a tick at 300 a side. Turned round, every
+    /// agent looks at the posts near it, bucketed by side, and stops at the first one whose leash it is in -
+    /// in a fight that is almost always the first bucket it looks at.
     /// </summary>
     [UpdateInGroup(typeof(RtsEconomyGroup))]
     [UpdateAfter(typeof(WorkRequestSystem))]
@@ -36,65 +43,61 @@ namespace Rts
         /// </summary>
         private const byte FIGHT_PRIORITY = 12;
 
-        private ComponentLookup<Faction> _factions;
+        /// <summary>
+        /// Cells per side of a post bucket. Large against a body and small against a leash: a leash of ten
+        /// looks at a handful of buckets, and a crowded bucket is still only the posts that stand in it.
+        /// </summary>
+        private const float POST_BUCKET_SIZE = 8f;
+
         private ComponentLookup<Health> _health;
+        private ComponentLookup<OnBridge> _onBridge;
 
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<OrderBook>();
-            state.RequireForUpdate<AgentSpatialHash>();
 
-            _factions = state.GetComponentLookup<Faction>(isReadOnly: true);
             _health = state.GetComponentLookup<Health>(isReadOnly: true);
+            _onBridge = state.GetComponentLookup<OnBridge>(isReadOnly: true);
         }
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             OrderBook book = SystemAPI.GetSingleton<OrderBook>();
-            NativeSpatialHash<AgentMove> crowd = SystemAPI.GetSingleton<AgentSpatialHash>().Hash;
             double now = SystemAPI.Time.ElapsedTime;
 
-            _factions.Update(ref state);
             _health.Update(ref state);
+            _onBridge.Update(ref state);
 
             // Seeded with whatever is already being fought, so a threat somebody is walking at is neither
             // posted again nor retired. Without this the order goes up afresh every tick, a second soldier
             // takes it, then a third - which is precisely the pile-on that posting orders at all was for.
             NativeHashSet<Entity> threats = CollectEngaged(ref state);
-            var candidates = new NativeList<AgentMove>(16, Allocator.Temp);
+            PostIndex posts = CollectPosts(ref state);
 
-            // Looked for from the *post* rather than from the soldier. A garrison guards a place, so what
-            // counts as a threat is what comes near the place - and a soldier that has been drawn out to the
-            // edge of its leash must not be able to see, and then be sent at, something further out still.
-            foreach ((RefRO<Post> post, RefRO<Faction> faction)
-                     in SystemAPI.Query<RefRO<Post>, RefRO<Faction>>().WithAll<Weapon, AgentMove>())
+            if (!posts.IsEmpty)
             {
-                Post watch = post.ValueRO;
-                if (watch.Leash <= 0f)
+                // Every body on the map, as the agent hash sees them: enabled AgentMove (not inside a
+                // building) and not carried over a bridge. A threat is something that can be walked at.
+                foreach ((RefRO<AgentMove> move, RefRO<Faction> faction, Entity entity)
+                         in SystemAPI.Query<RefRO<AgentMove>, RefRO<Faction>>().WithEntityAccess())
                 {
-                    continue;
-                }
-
-                candidates.Clear();
-                crowd.QueryAABB(watch.Home - watch.Leash, watch.Home + watch.Leash, candidates);
-
-                foreach (AgentMove candidate in candidates)
-                {
-                    if (!IsThreat(candidate, faction.ValueRO, watch))
+                    if (threats.Contains(entity) || !IsCandidate(entity))
                     {
                         continue;
                     }
 
-                    if (threats.Add(candidate.Entity))
+                    if (posts.IsInsideEnemyLeash(move.ValueRO.Position, faction.ValueRO))
                     {
-                        PostThreat(book, candidate.Entity, now);
+                        threats.Add(entity);
+                        PostThreat(book, entity, now);
                     }
                 }
             }
 
             Retire(book, threats);
 
-            candidates.Dispose();
+            posts.Dispose();
             threats.Dispose();
         }
 
@@ -104,7 +107,7 @@ namespace Rts
         /// </summary>
         private NativeHashSet<Entity> CollectEngaged(ref SystemState state)
         {
-            var engaged = new NativeHashSet<Entity>(16, Allocator.Temp);
+            var engaged = new NativeHashSet<Entity>(64, Allocator.Temp);
 
             foreach (RefRO<AssignedOrder> assigned in SystemAPI.Query<RefRO<AssignedOrder>>())
             {
@@ -118,23 +121,38 @@ namespace Rts
         }
 
         /// <summary>
-        /// An enemy, alive, and actually inside the leash rather than merely inside the box the hash was
-        /// asked for - a corner of that box is half again as far out as the radius.
+        /// Every post worth watching: a soldier that is armed and standing on the map. Looked for from the
+        /// *post* rather than from the soldier, because a garrison guards a place - a soldier drawn out to the
+        /// edge of its leash must not be able to see, and then be sent at, something further out still.
         /// </summary>
-        private bool IsThreat(in AgentMove candidate, Faction mine, in Post watch)
+        private PostIndex CollectPosts(ref SystemState state)
         {
-            if (!_factions.HasComponent(candidate.Entity)
-                || !Faction.AreEnemies(_factions[candidate.Entity], mine))
+            var posts = new PostIndex(64, Allocator.Temp);
+
+            foreach ((RefRO<Post> post, RefRO<Faction> faction)
+                     in SystemAPI.Query<RefRO<Post>, RefRO<Faction>>().WithAll<Weapon, AgentMove>())
+            {
+                if (post.ValueRO.Leash > 0f)
+                {
+                    posts.Add(post.ValueRO, faction.ValueRO);
+                }
+            }
+
+            return posts;
+        }
+
+        /// <summary>
+        /// On the map, alive, and not over a bridge. Health is asked about because the applier writes it
+        /// immediately and destroys later, so an entity can be at zero and still be standing here this tick.
+        /// </summary>
+        private bool IsCandidate(Entity entity)
+        {
+            if (_onBridge.HasComponent(entity) && _onBridge.IsComponentEnabled(entity))
             {
                 return false;
             }
 
-            if (_health.HasComponent(candidate.Entity) && !_health[candidate.Entity].IsAlive)
-            {
-                return false;
-            }
-
-            return watch.IsWithinLeash(candidate.Position);
+            return !_health.HasComponent(entity) || _health[entity].IsAlive;
         }
 
         /// <summary>
@@ -182,6 +200,97 @@ namespace Rts
                     book.RemoveAt(i);
                 }
             }
+        }
+
+        /// <summary>
+        /// Posts bucketed by place and by side, so "is this point inside some enemy's leash" looks only at the
+        /// buckets of the other sides that a leash could reach from.
+        /// </summary>
+        private struct PostIndex
+        {
+            private NativeParallelMultiHashMap<int3, Watch> _buckets;
+            private NativeList<Faction> _sides;
+            private float _longestLeash;
+
+            public PostIndex(int capacity, Allocator allocator)
+            {
+                _buckets = new NativeParallelMultiHashMap<int3, Watch>(capacity, allocator);
+                _sides = new NativeList<Faction>(4, allocator);
+                _longestLeash = 0f;
+            }
+
+            public bool IsEmpty => _sides.IsEmpty;
+
+            public void Add(in Post post, Faction side)
+            {
+                _buckets.Add(Key(BucketOf(post.Home), side), new Watch
+                {
+                    Home = post.Home,
+                    LeashSq = post.Leash * post.Leash,
+                });
+
+                _longestLeash = math.max(_longestLeash, post.Leash);
+
+                if (!_sides.Contains(side))
+                {
+                    _sides.Add(side);
+                }
+            }
+
+            /// <summary>
+            /// Whether any post of a side this one is at war with has <paramref name="position"/> inside its
+            /// leash. Stops at the first one found: one is enough to make it a threat.
+            /// </summary>
+            public readonly bool IsInsideEnemyLeash(float2 position, Faction mine)
+            {
+                int2 min = BucketOf(position - _longestLeash);
+                int2 max = BucketOf(position + _longestLeash);
+
+                foreach (Faction side in _sides)
+                {
+                    if (!Faction.AreEnemies(side, mine))
+                    {
+                        continue;
+                    }
+
+                    for (int y = min.y; y <= max.y; y++)
+                    for (int x = min.x; x <= max.x; x++)
+                    {
+                        if (!_buckets.TryGetFirstValue(Key(new int2(x, y), side), out Watch watch,
+                                                       out NativeParallelMultiHashMapIterator<int3> it))
+                        {
+                            continue;
+                        }
+
+                        do
+                        {
+                            if (math.distancesq(position, watch.Home) <= watch.LeashSq)
+                            {
+                                return true;
+                            }
+                        }
+                        while (_buckets.TryGetNextValue(out watch, ref it));
+                    }
+                }
+
+                return false;
+            }
+
+            public void Dispose()
+            {
+                _buckets.Dispose();
+                _sides.Dispose();
+            }
+
+            private static int2 BucketOf(float2 position) => (int2)math.floor(position / POST_BUCKET_SIZE);
+
+            private static int3 Key(int2 bucket, Faction side) => new(bucket, side.Id);
+        }
+
+        private struct Watch
+        {
+            public float2 Home;
+            public float LeashSq;
         }
     }
 }

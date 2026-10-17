@@ -71,6 +71,21 @@ namespace Rts
 
         /// <summary>Whether <see cref="QueuedSince"/> holds a time rather than "not queueing".</summary>
         public readonly bool IsQueued => QueuedSince >= 0f;
+
+        /// <summary>
+        /// Walk straight at <see cref="DirectPoint"/> instead of following a flow field (Docs/RtsBattleScaling.md
+        /// P2). Set only by a chase whose target is close and in plain sight; every new walk clears it.
+        ///
+        /// A field per moving target is the wrong tool at that range: hundreds of soldiers in a melee each
+        /// wanted their own, the cache held a fraction of them, and three in four stood waiting for a path to
+        /// somebody two cells away. A straight line costs nothing to ask for and needs no cache. What it gives
+        /// up - the cost model, so a road discount or a breachable wall is not weighed - is the right trade
+        /// inside a fight and the wrong one anywhere else, which is why nothing but a chase sets it.
+        /// </summary>
+        public bool Direct;
+
+        /// <summary>Where a <see cref="Direct"/> walk is heading: the target's position, refreshed every tick.</summary>
+        public float2 DirectPoint;
     }
 
     /// <summary>One gate on the way to the goal, in the order they are crossed.</summary>

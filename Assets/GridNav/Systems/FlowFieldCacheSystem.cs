@@ -17,7 +17,11 @@ namespace GridNav
     [UpdateAfter(typeof(ChunkGateGraphSystem))]
     public partial struct FlowFieldCacheSystem : ISystem
     {
-        private const int MAX_BUILDS_PER_FRAME = 4;
+        /// <summary>
+        /// Builds run as one parallel Burst job, about half a millisecond of work each, so sixteen spread over
+        /// the worker threads cost little more wall-clock time than four did (Docs/RtsBattleScaling.md P2).
+        /// </summary>
+        private const int MAX_BUILDS_PER_FRAME = 16;
 
         public void OnCreate(ref SystemState state)
         {

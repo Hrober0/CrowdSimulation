@@ -73,6 +73,13 @@ namespace Rts
         private static float2 PreferredVelocity(in GridMap map, in FlowFieldCache cache,
                                                 in AgentMove agent, in PathFollow path)
         {
+            // A close chase in plain sight: straight at the target, at full speed. The chase itself decides when
+            // it is close enough to stop, so there is nothing to ease towards and no queue to wait in.
+            if (path.Direct)
+            {
+                return Steer(agent, path.DirectPoint, agent.MaxSpeed);
+            }
+
             float toGoal = math.distance(agent.Position, GridCoords.CellCenter(path.GoalCell));
 
             if (!path.Holding)

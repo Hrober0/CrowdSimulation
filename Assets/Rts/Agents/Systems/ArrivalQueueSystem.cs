@@ -184,6 +184,14 @@ namespace Rts
             {
                 PathFollow path = follow.ValueRO;
 
+                // A straight-line chase is after a body, not a cell, and takes no turns: two soldiers closing on
+                // one raider are a fight, not a doorway.
+                if (path.Direct)
+                {
+                    Release(follow);
+                    continue;
+                }
+
                 // Still in the hands of the long-range tier: the waypoint is a gate rather than the
                 // destination, and there is no last stretch to take turns over yet.
                 bool nearGoal = path.WaypointCell.Equals(path.GoalCell);

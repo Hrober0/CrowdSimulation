@@ -27,6 +27,28 @@ namespace Rts
         /// <summary>Used when a task step is given to an agent that has never been told how close is close enough.</summary>
         private const float DEFAULT_ARRIVE_DISTANCE = 0.4f;
 
+        /// <summary>
+        /// How close a chase target has to be, in cells, before the chaser stops asking for a flow field and
+        /// walks straight at it - provided nothing blocks the way (Docs/RtsBattleScaling.md P2).
+        /// </summary>
+        private const float DIRECT_CHASE_DISTANCE = 8f;
+
+        /// <summary>Spacing of the samples along a straight chase that have to be passable, in cells.</summary>
+        private const float CLEAR_WALK_STEP = 0.25f;
+
+        /// <summary>
+        /// Half the width of the corridor a straight chase checks, in cells: a body's radius and a little, so a
+        /// line that grazes a tree's corner does not count as clear for something that is 0.84 across.
+        /// </summary>
+        private const float CLEAR_WALK_HALF_WIDTH = 0.45f;
+
+        /// <summary>
+        /// A far chase aims at the middle of the 4x4 block its target stands in rather than at the target's own
+        /// cell, so soldiers closing on the same part of an enemy line share a field instead of each wanting
+        /// one - and the goal moves a quarter as often (Docs/RtsBattleScaling.md P2).
+        /// </summary>
+        private const int FAR_GOAL_BLOCK = 4;
+
         private ComponentLookup<AgentMove> _agents;
         private ComponentLookup<Health> _health;
         private ComponentLookup<Post> _posts;
@@ -45,6 +67,10 @@ namespace Rts
         {
             InteractionQueue interactions = SystemAPI.GetSingleton<InteractionQueue>();
             float deltaTime = SystemAPI.Time.DeltaTime;
+
+            // Optional, because a chase can still be run on fields alone: without a grid there is simply never a
+            // straight line to take.
+            GridMap map = SystemAPI.TryGetSingleton(out GridWorld grid) ? grid.Map : default;
 
             _agents.Update(ref state);
             _health.Update(ref state);
@@ -101,7 +127,7 @@ namespace Rts
                         // Everything that ends a chase ends it here: the target dying, the target getting
                         // out of the leash, or the soldier getting close enough that the weapon can do the
                         // rest without anybody taking another step.
-                        if (!TryChase(entity, step, ref follow.ValueRW, out bool closeEnough))
+                        if (!TryChase(entity, step, map, ref follow.ValueRW, out bool closeEnough))
                         {
                             walking.ValueRW = false;
                             arrived.ValueRW = false;
@@ -173,7 +199,8 @@ namespace Rts
         /// dragged out and released comes back because the order stops being handed to it, not because it
         /// hit an invisible wall.
         /// </summary>
-        private bool TryChase(Entity chaser, in TaskStep step, ref PathFollow follow, out bool closeEnough)
+        private bool TryChase(Entity chaser, in TaskStep step, in GridMap map, ref PathFollow follow,
+                              out bool closeEnough)
         {
             closeEnough = false;
 
@@ -213,14 +240,86 @@ namespace Rts
             }
 
             int2 cell = GridCoords.CellOf(target);
-            if (!follow.GoalCell.Equals(cell))
+
+            // Close and in plain sight: straight at it, no field. The goal cell is still kept on the target, so
+            // anything reading where this agent is going gets an honest answer.
+            if (map.IsCreated && HasClearWalk(map, here, target))
             {
-                TaskStep aimed = step;
-                aimed.Cell = cell;
-                follow = Walk(follow, aimed);
+                if (!follow.GoalCell.Equals(cell))
+                {
+                    follow = Walk(follow, Aimed(step, cell));
+                }
+
+                follow.Direct = true;
+                follow.DirectPoint = target;
+                return true;
+            }
+
+            // Only far chases share a block. One that is close but blocked - a tree in the way - needs the field
+            // to lead it round to the target itself, not to the middle of a block beside it.
+            bool far = math.distancesq(here, target) > DIRECT_CHASE_DISTANCE * DIRECT_CHASE_DISTANCE;
+            int2 goal = map.IsCreated && far ? FarGoal(map, cell) : cell;
+            if (!follow.GoalCell.Equals(goal) || follow.Direct)
+            {
+                follow = Walk(follow, Aimed(step, goal));
             }
 
             return true;
+        }
+
+        private static TaskStep Aimed(in TaskStep step, int2 cell)
+        {
+            TaskStep aimed = step;
+            aimed.Cell = cell;
+            return aimed;
+        }
+
+        /// <summary>
+        /// Whether a body could walk the straight line from one point to the other: within
+        /// <see cref="DIRECT_CHASE_DISTANCE"/>, and every sample along the middle and both edges of a body-wide
+        /// corridor on a passable cell.
+        /// </summary>
+        private static bool HasClearWalk(in GridMap map, float2 from, float2 to)
+        {
+            float2 delta = to - from;
+            float length = math.length(delta);
+
+            if (length > DIRECT_CHASE_DISTANCE)
+            {
+                return false;
+            }
+
+            if (length < math.EPSILON)
+            {
+                return true;
+            }
+
+            float2 side = new float2(-delta.y, delta.x) / length * CLEAR_WALK_HALF_WIDTH;
+            int samples = (int)math.ceil(length / CLEAR_WALK_STEP);
+
+            for (int i = 1; i <= samples; i++)
+            {
+                float2 point = from + delta * (i / (float)samples);
+
+                if (!map.IsPassable(GridCoords.CellOf(point))
+                    || !map.IsPassable(GridCoords.CellOf(point + side))
+                    || !map.IsPassable(GridCoords.CellOf(point - side)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The middle of the <see cref="FAR_GOAL_BLOCK"/> block a far target stands in, or the target's own
+        /// cell when that middle is not somewhere a field can lead to.
+        /// </summary>
+        private static int2 FarGoal(in GridMap map, int2 cell)
+        {
+            int2 block = (int2)math.floor((float2)cell / FAR_GOAL_BLOCK) * FAR_GOAL_BLOCK + FAR_GOAL_BLOCK / 2;
+            return map.IsPassable(block) ? block : cell;
         }
 
         private static PathFollow Walk(PathFollow follow, in TaskStep step)
@@ -238,6 +337,9 @@ namespace Rts
             // destination it no longer has, and time spent in it must not be carried into the next one.
             follow.Holding = false;
             follow.QueuedSince = -1f;
+
+            // Every walk starts on the field; only a chase that can see its target turns this back on.
+            follow.Direct = false;
 
             return follow;
         }

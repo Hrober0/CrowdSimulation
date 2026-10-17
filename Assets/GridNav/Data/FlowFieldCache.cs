@@ -18,8 +18,12 @@ namespace GridNav
     /// </summary>
     public struct FlowFieldCache : IComponentData, IDisposable
     {
-        /// <summary>32 windows of 128x128 at three bytes a cell is about 1.5 MB.</summary>
-        public const int CAPACITY = 32;
+        /// <summary>
+        /// 128 windows of 128x128 at three bytes a cell is about 6 MB. Was 32: a battle asks for a field per
+        /// distant target, and 32 left most of an army standing still waiting for one to be evicted
+        /// (Docs/RtsBattleScaling.md P2).
+        /// </summary>
+        public const int CAPACITY = 128;
 
         private FlowFieldStorage _storage;
         private NativeParallelHashMap<FieldKey, int> _slotByGoal;

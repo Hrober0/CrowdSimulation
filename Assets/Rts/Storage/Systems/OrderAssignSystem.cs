@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using GridNav;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -30,6 +31,19 @@ namespace Rts
     public partial struct OrderAssignSystem : ISystem
     {
         private const int MAX_CLAIMS_PER_TICK = 16;
+
+        /// <summary>
+        /// Fight orders have a budget of their own, large enough to be no budget at all in practice
+        /// (Docs/RtsBattleScaling.md P3). The cap above protects reservations and the crowd at a door, and a
+        /// fight order has neither: it reserves nothing and is emptied the moment it is claimed.
+        ///
+        /// Sharing sixteen a tick with the economy meant an army of three hundred took four seconds to be told
+        /// to move. Any cap below the size of a battle is also a bias, not just a delay: orders are posted in
+        /// entity order, so one side's targets are handed out first and the *other* side marches a tick or two
+        /// early. Between evenly matched armies that head start snowballs - at 256 a tick, whichever side had
+        /// spawned first won 131 to 0, every time, both ways round.
+        /// </summary>
+        private const int MAX_FIGHT_CLAIMS_PER_TICK = 1024;
 
         /// <summary>
         /// Used by buildings that do not set their own <see cref="HaulLimit"/> (§15: tuning).
@@ -89,6 +103,7 @@ namespace Rts
             _cellObjects = state.GetComponentLookup<CellObject>(isReadOnly: true);
         }
 
+        [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             OrderBook book = SystemAPI.GetSingleton<OrderBook>();
@@ -135,9 +150,28 @@ namespace Rts
             double now = SystemAPI.Time.ElapsedTime;
 
             int claims = 0;
-            for (int i = 0; i < ranked.Length && claims < MAX_CLAIMS_PER_TICK && agents.Length > 0; i++)
+            int fightClaims = 0;
+            for (int i = 0;
+                 i < ranked.Length && agents.Length > 0
+                 && (claims < MAX_CLAIMS_PER_TICK || fightClaims < MAX_FIGHT_CLAIMS_PER_TICK);
+                 i++)
             {
-                if (TryAssign(book, ranked[i].Index, sites, agents, busy, reach, objects, map, now))
+                bool fight = book[ranked[i].Index].Kind == OrderKind.Fight;
+                if (fight ? fightClaims >= MAX_FIGHT_CLAIMS_PER_TICK : claims >= MAX_CLAIMS_PER_TICK)
+                {
+                    continue;
+                }
+
+                if (!TryAssign(book, ranked[i].Index, sites, agents, busy, reach, objects, map, now))
+                {
+                    continue;
+                }
+
+                if (fight)
+                {
+                    fightClaims++;
+                }
+                else
                 {
                     claims++;
                 }
