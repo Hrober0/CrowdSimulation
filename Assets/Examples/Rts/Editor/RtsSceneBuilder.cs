@@ -34,6 +34,37 @@ namespace Examples.Rts.EditorTools
         private const string PANEL_SETTINGS = GENERATED_DIR + "/RtsPanelSettings.asset";
         private const string RUNTIME_THEME = "Assets/UI Toolkit/UnityThemes/UnityDefaultRuntimeTheme.tss";
 
+        private const string BATTLE_SCENE_PATH = "Assets/Examples/Rts/RtsBattle.unity";
+        private const string BIG_BATTLE_SCENE_PATH = "Assets/Examples/Rts/RtsBigBattle.unity";
+        private const string BATTLE_AGENT_PREFAB = GENERATED_DIR + "/RtsBattleAgentView.prefab";
+        private const string SWORD_PREFAB = GENERATED_DIR + "/RtsSoldierSword.prefab";
+        private const string GUN_PREFAB = GENERATED_DIR + "/RtsSoldierGun.prefab";
+        private const string BULLET_PREFAB = GENERATED_DIR + "/RtsBullet.prefab";
+        private const string BATTLE_AGENT_MATERIAL = GENERATED_DIR + "/RtsBattleAgentView.mat";
+        private const string SOLDIER_BODY_MATERIAL = GENERATED_DIR + "/RtsSoldierBody.mat";
+        private const string BLADE_MATERIAL = GENERATED_DIR + "/RtsBlade.mat";
+        private const string HILT_MATERIAL = GENERATED_DIR + "/RtsHilt.mat";
+        private const string GUN_MATERIAL = GENERATED_DIR + "/RtsGun.mat";
+        private const string FLASH_MATERIAL = GENERATED_DIR + "/RtsMuzzleFlash.mat";
+        private const string BULLET_MATERIAL = GENERATED_DIR + "/RtsBullet.mat";
+
+        /// <summary>
+        /// A soldier's body, in cells across. Wider than the agent view's disc behind it, so that disc never
+        /// shows round the edge, and only a little wider than the 0.84 the simulation thinks the body is.
+        /// </summary>
+        private const float SOLDIER_BODY = 0.9f;
+
+        /// <summary>
+        /// Draw order of the combat view. The project renders through the 2D renderer, which orders by sorting
+        /// order rather than by depth - so the soldier drawn a little nearer the camera than the agent disc
+        /// behind it still loses to it unless it says so here.
+        /// </summary>
+        private const int SOLDIER_ORDER = 10;
+
+        private const int WEAPON_ORDER = 11;
+        private const int FLASH_ORDER = 12;
+        private const int BULLET_ORDER = 20;
+
         [MenuItem("Tools/RTS/Build Sandbox Scene")]
         public static void Build()
         {
@@ -71,7 +102,117 @@ namespace Examples.Rts.EditorTools
             Debug.Log($"RTS sandbox scene written to {SCENE_PATH}");
         }
 
-        private static void BuildCamera()
+        /// <summary>
+        /// The battle scene: two armies of swords and guns on an open field (<see cref="RtsBattleWorld"/>), drawn
+        /// by the combat view so that blades, guns and the rounds they fire can be seen.
+        ///
+        /// Shares the sandbox's generated assets where it can and only builds them if they are missing, because
+        /// re-creating one gives it a new GUID and would leave the sandbox scene pointing at nothing.
+        /// </summary>
+        [MenuItem("Tools/RTS/Build Battle Scene")]
+        public static void BuildBattle() =>
+            BuildBattle(BATTLE_SCENE_PATH, cameraSize: 10f, agentOverlay: true, configure: null);
+
+        /// <summary>
+        /// The same battle at 300 a side: 180 swords in front of 120 guns, in blocks rather than columns, on a
+        /// map twice the size. Everything else - the view, the rules, the prefabs - is the small battle's.
+        /// </summary>
+        /// <remarks>
+        /// No per-agent debug overlay: it draws a gizmo trail per agent in the Scene view, which is a debugging
+        /// aid at twenty agents and a frame-time cost at six hundred.
+        /// </remarks>
+        [MenuItem("Tools/RTS/Build Big Battle Scene")]
+        public static void BuildBigBattle() => BuildBattle(BIG_BATTLE_SCENE_PATH, cameraSize: 24f,
+                                                           agentOverlay: false, world =>
+        {
+            SetValue(world, "_worldRadius", p => p.intValue = 48);
+            SetValue(world, "_swordsPerSide", p => p.intValue = 180);
+            SetValue(world, "_gunsPerSide", p => p.intValue = 120);
+            SetValue(world, "_gap", p => p.floatValue = 16f);
+            SetValue(world, "_depth", p => p.floatValue = 12f);
+            SetValue(world, "_rankDepth", p => p.floatValue = 7f);
+            SetValue(world, "_cellsPerSoldier", p => p.floatValue = 1.3f);
+            SetValue(world, "_treesPerWood", p => p.intValue = 14);
+        });
+
+        private static void BuildBattle(string scenePath, float cameraSize, bool agentOverlay,
+                                        System.Action<RtsBattleWorld> configure)
+        {
+            Directory.CreateDirectory(GENERATED_DIR);
+
+            if (!File.Exists(OBJECT_PREFAB))
+            {
+                BuildCirclePrefab(OBJECT_PREFAB, OBJECT_MATERIAL, "RtsObjectView", new Color(0.28f, 0.62f, 0.32f));
+            }
+
+            if (!File.Exists(BUILDING_PREFAB))
+            {
+                BuildQuadPrefab(BUILDING_PREFAB, BUILDING_MATERIAL, "RtsBuildingView", Color.white, 1f);
+            }
+
+            if (!File.Exists(PANEL_SETTINGS))
+            {
+                BuildPanelSettings();
+            }
+
+            Mesh circle = LoadOrCreateCircleMesh(CIRCLE_MESH);
+
+            // One body material for both soldier prefabs. Creating it once per prefab replaces the first
+            // asset with the second, and the prefab saved in between is left holding the one that was lost.
+            Material body = CreateUnlitMaterial(SOLDIER_BODY_MATERIAL, Color.white, twoSided: true);
+
+            BuildBattleAgentPrefab(circle);
+            BuildSwordPrefab(circle, body);
+            BuildGunPrefab(circle, body);
+            BuildBulletPrefab();
+
+            // Flushed before the scene points at them, for the reason Build gives.
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            Camera camera = BuildCamera();
+            camera.orthographicSize = cameraSize;
+
+            var battle = new GameObject("RTS Battle");
+
+            RtsToolController tools = battle.AddComponent<RtsToolController>();
+            RtsBattleWorld world = battle.AddComponent<RtsBattleWorld>();
+            configure?.Invoke(world);
+            if (agentOverlay)
+            {
+                battle.AddComponent<AgentDebugOverlay>();
+            }
+
+            battle.AddComponent<SelectedAgentOverlay>();
+
+            AgentViewSettings agents = battle.AddComponent<AgentViewSettings>();
+            BuildingViewSettings buildings = battle.AddComponent<BuildingViewSettings>();
+            CellObjectViewSettings objects = battle.AddComponent<CellObjectViewSettings>();
+
+            SetPrivate(agents, "_agentPrefab", Load<GameObject>(BATTLE_AGENT_PREFAB));
+            SetPrivate(buildings, "_buildingPrefab", Load<GameObject>(BUILDING_PREFAB));
+            SetPrivate(objects, "_objectPrefab", Load<GameObject>(OBJECT_PREFAB));
+
+            // Its own object, because its instances are parented under it and would bury the battle object's
+            // components in the hierarchy.
+            var combatObject = new GameObject("Combat View");
+            CombatViewSettings combat = combatObject.AddComponent<CombatViewSettings>();
+            SetPrivate(combat, "_prefabs.Sword", Load<GameObject>(SWORD_PREFAB));
+            SetPrivate(combat, "_prefabs.Gun", Load<GameObject>(GUN_PREFAB));
+            SetPrivate(combat, "_prefabs.Bullet", Load<GameObject>(BULLET_PREFAB));
+
+            BuildUi(Load<PanelSettings>(PANEL_SETTINGS), tools);
+
+            EditorSceneManager.SaveScene(scene, scenePath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log($"RTS battle scene written to {scenePath}");
+        }
+
+        private static Camera BuildCamera()
         {
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
@@ -84,6 +225,7 @@ namespace Examples.Rts.EditorTools
             camera.clearFlags = CameraClearFlags.SolidColor;
 
             cameraObject.AddComponent<RtsCameraController>();
+            return camera;
         }
 
         private static GameObject BuildSandbox(
@@ -184,12 +326,22 @@ namespace Examples.Rts.EditorTools
             material.SetFloat("_Cull", 0f);
 
             var circle = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
-            circle.GetComponent<MeshFilter>().sharedMesh = CreateCircleMesh(CIRCLE_MESH);
+            circle.GetComponent<MeshFilter>().sharedMesh = LoadOrCreateCircleMesh(CIRCLE_MESH);
             circle.GetComponent<MeshRenderer>().sharedMaterial = material;
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(circle, prefabPath);
             Object.DestroyImmediate(circle);
             return prefab;
+        }
+
+        /// <summary>
+        /// The disc mesh, made once. Both scenes' prefabs point at it, and re-creating an asset replaces it
+        /// under a new GUID - which would leave whichever scene was not being rebuilt pointing at nothing.
+        /// </summary>
+        private static Mesh LoadOrCreateCircleMesh(string path)
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            return existing != null ? existing : CreateCircleMesh(path);
         }
 
         /// <summary>A triangle fan of radius 0.5 in the XY plane, saved as an asset the prefab can point at.</summary>
@@ -220,7 +372,120 @@ namespace Examples.Rts.EditorTools
             return mesh;
         }
 
-        private static Material CreateUnlitMaterial(string path, Color colour)
+        /// <summary>
+        /// The agent view for the battle: a grey disc a little smaller than a soldier's body, so it is hidden
+        /// behind every armed agent and only an unarmed one shows it.
+        /// </summary>
+        private static void BuildBattleAgentPrefab(Mesh circle)
+        {
+            Material material = CreateUnlitMaterial(BATTLE_AGENT_MATERIAL, new Color(0.6f, 0.6f, 0.6f), twoSided: true);
+
+            var agent = new GameObject("RtsBattleAgentView", typeof(MeshFilter), typeof(MeshRenderer));
+            agent.GetComponent<MeshFilter>().sharedMesh = circle;
+            agent.GetComponent<MeshRenderer>().sharedMaterial = material;
+            agent.transform.localScale = new Vector3(0.84f, 0.84f, 1f);
+
+            SavePrefab(agent, BATTLE_AGENT_PREFAB);
+        }
+
+        /// <summary>
+        /// A body with a sword in its right hand. The blade hangs off a 'Hand' pivot rather than off the body,
+        /// because the swing is a turn about the hand - <see cref="CombatView"/> rotates that and nothing else.
+        /// Forward is +Y, which is what <see cref="SimToWorld.Rotation"/> turns onto the facing.
+        /// </summary>
+        private static void BuildSwordPrefab(Mesh circle, Material body)
+        {
+            var root = new GameObject("RtsSoldierSword");
+            AddBody(root.transform, circle, body);
+
+            Transform hand = new GameObject("Hand").transform;
+            hand.SetParent(root.transform, false);
+            hand.localPosition = new Vector3(0.32f, 0.12f, -0.02f);
+
+            AddQuad(hand, "Blade", new Vector3(0f, 0.44f, 0f), new Vector2(0.1f, 0.74f),
+                    CreateUnlitMaterial(BLADE_MATERIAL, new Color(0.92f, 0.94f, 1f)), WEAPON_ORDER);
+            AddQuad(hand, "Guard", new Vector3(0f, 0.07f, -0.005f), new Vector2(0.28f, 0.07f),
+                    CreateUnlitMaterial(HILT_MATERIAL, new Color(0.85f, 0.68f, 0.25f)), FLASH_ORDER);
+
+            SavePrefab(root, SWORD_PREFAB);
+        }
+
+        /// <summary>
+        /// A body with a gun held out in front. 'Gun' is an unscaled pivot so that the barrel's scale does not
+        /// squash the 'Flash' beside it, and the flash sits at the muzzle because that is where a round leaves.
+        /// </summary>
+        private static void BuildGunPrefab(Mesh circle, Material body)
+        {
+            var root = new GameObject("RtsSoldierGun");
+            AddBody(root.transform, circle, body);
+
+            Transform gun = new GameObject("Gun").transform;
+            gun.SetParent(root.transform, false);
+            gun.localPosition = new Vector3(0.2f, 0.3f, -0.02f);
+
+            AddQuad(gun, "Barrel", new Vector3(0f, 0.22f, 0f), new Vector2(0.13f, 0.56f),
+                    CreateUnlitMaterial(GUN_MATERIAL, new Color(0.62f, 0.56f, 0.5f)), WEAPON_ORDER);
+
+            GameObject flash = AddQuad(gun, "Flash", new Vector3(0f, 0.6f, -0.005f), new Vector2(0.32f, 0.32f),
+                                       CreateUnlitMaterial(FLASH_MATERIAL, new Color(1f, 0.75f, 0.2f)),
+                                       FLASH_ORDER);
+            flash.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            flash.SetActive(false);
+
+            SavePrefab(root, GUN_PREFAB);
+        }
+
+        /// <summary>A round in flight: a short streak along +Y, so it reads as moving the way it points.</summary>
+        private static void BuildBulletPrefab()
+        {
+            var root = new GameObject("RtsBullet");
+            AddQuad(root.transform, "Streak", Vector3.zero, new Vector2(0.12f, 0.5f),
+                    CreateUnlitMaterial(BULLET_MATERIAL, new Color(1f, 0.95f, 0.55f)), BULLET_ORDER);
+
+            SavePrefab(root, BULLET_PREFAB);
+        }
+
+        /// <summary>The disc the faction colour goes on. White, because a tint multiplies it.</summary>
+        private static void AddBody(Transform parent, Mesh circle, Material material)
+        {
+            var body = new GameObject("Body", typeof(MeshFilter), typeof(MeshRenderer));
+            body.transform.SetParent(parent, false);
+            body.transform.localScale = new Vector3(SOLDIER_BODY, SOLDIER_BODY, 1f);
+            body.GetComponent<MeshFilter>().sharedMesh = circle;
+            var renderer = body.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.sortingOrder = SOLDIER_ORDER;
+        }
+
+        private static GameObject AddQuad(Transform parent, string name, Vector3 position, Vector2 size,
+                                          Material material, int sortingOrder)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = name;
+            quad.transform.SetParent(parent, false);
+            quad.transform.localPosition = position;
+            quad.transform.localScale = new Vector3(size.x, size.y, 1f);
+
+            // Nothing is ever raycast against, for the reason BuildQuadPrefab gives.
+            Object.DestroyImmediate(quad.GetComponent<Collider>());
+
+            var renderer = quad.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.sortingOrder = sortingOrder;
+            return quad;
+        }
+
+        private static void SavePrefab(GameObject root, string path)
+        {
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+        }
+
+        /// <param name="twoSided">
+        /// For discs, which are only visible from one side otherwise (see BuildCirclePrefab). Set before the
+        /// asset is written rather than after, so that it is part of what is saved.
+        /// </param>
+        private static Material CreateUnlitMaterial(string path, Color colour, bool twoSided = false)
         {
             // Explicit check rather than ??, because Unity objects overload equality and a "null" one is not
             // reliably null to the coalescing operator.
@@ -236,6 +501,11 @@ namespace Examples.Rts.EditorTools
             // use. Setting a property a shader does not have is harmless.
             material.SetColor("_BaseColor", colour);
             material.SetColor("_Color", colour);
+
+            if (twoSided)
+            {
+                material.SetFloat("_Cull", 0f);
+            }
 
             // CreateAsset turns the instance it is given *into* the asset, so this is the thing to hand back.
             // Re-loading the path instead can return null, because the import has not necessarily run yet.
@@ -261,6 +531,22 @@ namespace Examples.Rts.EditorTools
         /// those fields public purely so that a build script can reach it, which would widen the API of every
         /// component for the benefit of one editor tool.
         /// </summary>
+        /// <summary><see cref="SetPrivate"/> for a plain value rather than an object reference.</summary>
+        private static void SetValue(Object target, string field, System.Action<SerializedProperty> set)
+        {
+            var serialized = new SerializedObject(target);
+            SerializedProperty property = serialized.FindProperty(field);
+
+            if (property == null)
+            {
+                Debug.LogError($"{target.GetType().Name} has no serialized field '{field}'.");
+                return;
+            }
+
+            set(property);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         private static void SetPrivate(Object target, string field, Object value)
         {
             var serialized = new SerializedObject(target);
